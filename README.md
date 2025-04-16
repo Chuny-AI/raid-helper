@@ -48,6 +48,12 @@ Make sure you have the following installed:
 
 2. Once the server is running, it will allow you to generate customized Discord embeds and interact with users for role selection, data inputs, and more. Make sure to follow the setup instructions within the code for integrating with Discord's API.
 
+![Image](https://github.com/user-attachments/assets/fa7687a8-b132-45b3-9f56-f3d9d86e1890)
+
+![Image](https://github.com/user-attachments/assets/59d933cf-9f6b-4d66-923d-9855398cb5e9)
+
+![Image](https://github.com/user-attachments/assets/e13ca752-e683-4ead-a9b1-47cd43f5eb1d)
+
 ## Configuration
 
 You can customize various settings such as embed colors, templates, and role options by editing the configuration files within the repository. 
