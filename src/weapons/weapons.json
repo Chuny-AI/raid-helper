@@ -176,6 +176,13 @@
           "units": 1,
           "image": "",
           "emoji": "1286453627623440394"
+        },
+        {
+          "id": 127,
+          "name": "Bastón de mirada firme",
+          "units": 1,
+          "image": "",
+          "emoji": "1415437230838648963"
         }
       ]
     },
@@ -513,6 +520,12 @@
           "units": 1,
           "image": "",
           "emoji": "1286453990615421029"
+        },{
+          "id": 126,
+          "name": "Martillo Relámpago",
+          "units": 1,
+          "image": "",
+          "emoji": "1415437240846258237"
         }
       ]
     },
