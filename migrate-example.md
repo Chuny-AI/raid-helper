@@ -29,6 +29,7 @@ El JSON debe seguir esta estructura:
   "image": "URL de la imagen",
   "url": "URL del template (opcional)",
   "roles": ["ID1", "ID2"],
+  "notifyAll": false,
   "weapons": {
     "weapon_key": {
       "displayName": "Nombre del arma",

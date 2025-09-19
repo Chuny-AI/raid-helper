@@ -24,6 +24,10 @@ const weaponDataSchema = new mongoose.Schema({
   url: {
     type: String,
     default: ""
+  },
+  sendBuildToPrivate: {
+    type: Boolean,
+    default: true
   }
 });
 
@@ -75,6 +79,10 @@ const templateSchema = new mongoose.Schema({
     type: String,
     required: true,
     index: true
+  },
+  notifyAll: {
+    type: Boolean,
+    default: false
   },
   createdAt: {
     type: Date,

@@ -17,7 +17,8 @@
          "units": 1,
          "image": "",
          "emoji": "1415437240846258237",
-         "url": ""
+         "url": "",
+         "sendBuildToPrivate": true
        }
       ]
     },
@@ -31,7 +32,8 @@
           "units": 1,
           "image": "",
           "emoji": "1286453835937746964",
-          "url": ""
+          "url": "",
+          "sendBuildToPrivate": true
         }
       ]
     },
@@ -45,7 +47,8 @@
          "units": 1,
          "image": "",
          "emoji": "1415437230838648963",
-         "url": ""
+         "url": "",
+         "sendBuildToPrivate": true
        }
       ]
     },
@@ -59,7 +62,8 @@
          "units": 5,
          "image": "",
          "emoji": "1286454785108873267",
-         "url": ""
+         "url": "",
+         "sendBuildToPrivate": true
        }
      ]
    },
@@ -73,7 +77,8 @@
           "units": 1,
           "image": "",
           "emoji": "1286454717525921812",
-          "url": ""
+          "url": "",
+          "sendBuildToPrivate": true
         }
       ]
     },
@@ -87,7 +92,8 @@
           "units": 1,
           "image": "",
           "emoji": "1286453946659115090",
-          "url": ""
+          "url": "",
+          "sendBuildToPrivate": true
         }
       ]
     },
@@ -101,7 +107,8 @@
           "units": 1,
           "image": "",
           "emoji": "1286454278868832256",
-          "url": ""
+          "url": "",
+          "sendBuildToPrivate": true
         }
       ]
     },
@@ -115,7 +122,8 @@
           "units": 1,
           "image": "",
           "emoji": "1286453795236085770",
-          "url": ""
+          "url": "",
+          "sendBuildToPrivate": true
         }
       ]
     },
@@ -129,7 +137,8 @@
           "units": 10,
           "image": "",
           "emoji": "1290446199706484736",
-          "url": ""
+          "url": "",
+          "sendBuildToPrivate": false
         }
       ]
     },
@@ -143,7 +152,8 @@
           "units": 10,
           "image": "",
           "emoji": "1288146526698344550",
-          "url": ""
+          "url": "",
+          "sendBuildToPrivate": false
         }
       ]
     }

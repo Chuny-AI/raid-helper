@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { migrateTemplatesFromFiles, createTemplate, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { checkPremium } = require("../../middleware/premiumCheck");
+const { checkOwner } = require("../../middleware/ownerCheck");
 
 /**
  * Comando para migrar templates manualmente desde JSON o archivos
@@ -25,12 +26,10 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar permisos de administrador
-      if (!interaction.member.permissions.has('Administrator')) {
-        return interaction.reply({
-          content: "❌ Solo los administradores pueden usar este comando.",
-          ephemeral: true,
-        });
+      // Verificar si es el propietario del bot
+      const isOwner = await checkOwner(interaction);
+      if (!isOwner) {
+        return;
       }
 
       /**

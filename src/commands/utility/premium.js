@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { updateServerPremium, isServerPremium, getPremiumServers } = require("../../services/serverService");
 const { getOrCreateServer } = require("../../services/serverService");
+const { checkOwner } = require("../../middleware/ownerCheck");
 
 /**
  * Comando para gestionar el estado premium de servidores
@@ -45,29 +46,10 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar si es el propietario del bot (solo para desarrollo)
-      let botOwnerId;
-      
-      // Intentar obtener el ID del propietario desde la aplicación
-      const application = interaction.client.application;
-      if (application && application.owner) {
-        botOwnerId = application.owner.id;
-      } else {
-        // Fallback: usar variable de entorno
-        botOwnerId = process.env.BOT_OWNER_ID;
-        if (!botOwnerId) {
-          return interaction.reply({
-            content: "❌ No se pudo verificar la información del propietario del bot.",
-            ephemeral: true,
-          });
-        }
-      }
-
-      if (interaction.user.id !== botOwnerId) {
-        return interaction.reply({
-          content: "❌ Solo el propietario del bot puede usar este comando.",
-          ephemeral: true,
-        });
+      // Verificar si es el propietario del bot
+      const isOwner = await checkOwner(interaction);
+      if (!isOwner) {
+        return;
       }
 
       const subcommand = interaction.options.getSubcommand();

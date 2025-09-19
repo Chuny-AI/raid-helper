@@ -136,13 +136,17 @@ const migrateTemplatesFromFiles = async (serverId) => {
           templateData.url = "";
         }
         
-        // Añadir URL a cada arma si no existe
+        // Añadir URL y sendBuildToPrivate a cada arma si no existen
         if (templateData.weapons) {
           Object.keys(templateData.weapons).forEach(weaponKey => {
             if (templateData.weapons[weaponKey].data) {
               templateData.weapons[weaponKey].data.forEach(weapon => {
                 if (!weapon.url) {
                   weapon.url = "";
+                }
+                // Añadir sendBuildToPrivate si no existe (por defecto true)
+                if (weapon.sendBuildToPrivate === undefined) {
+                  weapon.sendBuildToPrivate = true;
                 }
               });
             }

@@ -80,12 +80,24 @@ Make sure you have the following installed:
    - `Embed Links`
 
 3. Once the bot is online, you can use the following commands:
-   - `/latency` - Check bot latency
-   - `/raid` - Create a raid notification using templates (premium required)
-   - `/templates` - List available templates in the server
-   - `/debug` - Debug information about server and templates
-   - `/migrate` - Migrate templates from JSON or files (admin + premium required)
+   - `/latency` - Check bot latency (visible to all users)
+   - `/raid` - Create a raid notification using templates (premium servers only)
+   - `/templates` - List available templates in the server (premium servers only)
+   - `/roles` - Manage authorized roles for sending notifications (admins only)
+   - `/debug` - Debug information about server and templates (premium servers only)
+   - `/migrate` - Migrate templates from JSON or files (bot owner only)
    - `/premium` - Manage premium status (bot owner only)
+
+## Command Visibility
+
+The bot implements a command visibility system based on user permissions:
+
+- **All Users**: `/latency` - Basic commands visible to everyone
+- **Premium Servers**: `/raid`, `/templates`, `/debug` - Commands only visible on premium servers
+- **Administrators**: `/roles` - Commands only visible to server administrators
+- **Bot Owner**: `/migrate`, `/premium` - Commands only visible to the bot owner
+
+Commands that are not visible to a user will not appear in Discord's command autocomplete and will show an error message if attempted to use.
 
 ## Commands
 
@@ -100,9 +112,22 @@ Create a raid notification using a template from your server (premium required).
 - **time**: Custom time format (optional)
 - **color**: Custom color in hex format (optional)
 - **image**: Custom image URL (optional)
+- **reminder**: Time before activity to send reminder (optional)
+- **notify_all**: Send notification to all server users (optional, requires admin or authorized role)
 
 ### `/templates`
 List all available templates in the current server.
+
+### `/roles`
+Manage authorized roles for sending notifications to all users (admin only).
+- **add**: Add a role to the authorized list
+  - **role**: Role to authorize (required)
+- **remove**: Remove a role from the authorized list
+  - **role**: Role to deauthorize (required)
+- **list**: List all authorized roles
+- **clear**: Remove all authorized roles from the server
+
+**Note:** Administrators can always send notifications to all users, regardless of role authorization.
 
 ### `/debug`
 Debug command to check server status and template information.

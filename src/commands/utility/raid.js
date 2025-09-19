@@ -1,11 +1,12 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { createEmbed, embedsMap } = require("../../utils/embed");
+const { createEmbed, embedsMap, createMassNotificationEmbed } = require("../../utils/embed");
 const { parseTime } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
 const { createSelect } = require("../../utils/select");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { checkPremium } = require("../../middleware/premiumCheck");
+const { isUserAuthorized } = require("../../services/authorizedRoleService");
 
 const pingRoles = (template) => {
   const roles = template.roles;
@@ -69,6 +70,22 @@ module.exports = {
           "Proporciona una URL para la imagen del embed (opcional)"
         )
         .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("reminder")
+        .setDescription(
+          'Tiempo antes de la actividad para enviar recordatorio (ej: "10m", "30m", "1h") (opcional)'
+        )
+        .setRequired(false)
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("notify_all")
+        .setDescription(
+          "Enviar notificación a todos los usuarios del servidor (opcional)"
+        )
+        .setRequired(false)
     ),
 
   async autocomplete(interaction) {
@@ -117,6 +134,8 @@ module.exports = {
       const color = interaction.options.getString("color");
       const image = interaction.options.getString("image");
       const description = interaction.options.getString("description");
+      const reminder = interaction.options.getString("reminder");
+      const notifyAll = interaction.options.getBoolean("notify_all");
       const user = interaction.user;
       const guildId = interaction.guild.id;
 
@@ -137,7 +156,50 @@ module.exports = {
         });
       }
 
-      const delayTime = parseTime(time ?? template.time);
+      let delayTime;
+      try {
+        delayTime = parseTime(time ?? template.time);
+      } catch (timeError) {
+        return interaction.reply({
+          content: `❌ Error en el tiempo del evento: ${timeError.message}`,
+          ephemeral: true,
+        });
+      }
+
+      // Validar que el tiempo del evento no exceda 1 hora
+      const maxEventTime = 60 * 60 * 1000; // 1 hora en milisegundos
+      if (delayTime > maxEventTime) {
+        return interaction.reply({
+          content: "❌ El tiempo del evento no puede exceder 1 hora. Usa un tiempo menor (ej: 45m, 30m).",
+          ephemeral: true,
+        });
+      }
+
+      // Validar reminder si se proporcionó
+      if (reminder) {
+        let reminderTime;
+        try {
+          reminderTime = parseTime(reminder);
+        } catch (reminderError) {
+          return interaction.reply({
+            content: `❌ Error en el tiempo del recordatorio: ${reminderError.message}`,
+            ephemeral: true,
+          });
+        }
+        
+        if (reminderTime >= delayTime) {
+          return interaction.reply({
+            content: "❌ El tiempo del recordatorio debe ser menor al tiempo del evento.",
+            ephemeral: true,
+          });
+        }
+        if (reminderTime <= 0) {
+          return interaction.reply({
+            content: "❌ El tiempo del recordatorio debe ser mayor a 0.",
+            ephemeral: true,
+          });
+        }
+      }
 
       if (color && !isValidHex(color)) {
         return interaction.reply({
@@ -155,6 +217,87 @@ module.exports = {
       }
 
       embedsMap[templateName].push({ id: interaction.id, embed });
+
+      /**
+       * Verificar permisos para enviar notificaciones a todos los usuarios
+       */
+      if (notifyAll || template.notifyAll) {
+        const hasNotificationPermission = await isUserAuthorized(interaction.member, guildId);
+        
+        if (!hasNotificationPermission) {
+          return interaction.reply({
+            content: "❌ No tienes permisos para enviar notificaciones a todos los usuarios. Solo los administradores y usuarios con roles autorizados pueden usar esta función. Usa `/roles list` para ver los roles autorizados.",
+            ephemeral: true,
+          });
+        }
+      }
+
+      /**
+       * Enviar notificación a todos los usuarios si notify_all está habilitado
+       * (ya sea por parámetro del comando o por configuración del template)
+       */
+      if (notifyAll || template.notifyAll) {
+        try {
+          // Obtener todos los miembros del servidor
+          const members = await interaction.guild.members.fetch();
+          const memberList = members.map(member => member.user);
+          
+          // Crear embed de notificación masiva
+          const activityTitle = title || template.title;
+          const timeRemaining = time || template.time;
+          const massNotificationEmbed = createMassNotificationEmbed(
+            activityTitle,
+            interaction.guild.name,
+            timeRemaining,
+            user.toString()
+          );
+          
+          // Enviar DM a cada usuario
+          for (const member of memberList) {
+            try {
+              await member.send({
+                embeds: [massNotificationEmbed]
+              });
+            } catch (dmError) {
+              // Ignorar errores de DM (usuarios con DMs deshabilitados, etc.)
+              console.log(`[INFO] No se pudo enviar DM a ${member.username}: ${dmError.message}`);
+            }
+          }
+          
+          console.log(`[INFO] Notificación masiva enviada a ${memberList.length} usuarios del servidor`);
+        } catch (notifyError) {
+          console.error('[ERROR] Error enviando notificaciones:', notifyError);
+        }
+      }
+
+      /**
+       * Configurar recordatorio si se especificó
+       */
+      if (reminder) {
+        try {
+          const { createReminder, addInterestedUser } = require('../../utils/reminderManager');
+          const activityTitle = title || template.title;
+          const activityTime = time || template.time;
+          
+          createReminder(
+            interaction.id,
+            reminder,
+            activityTime,
+            templateName,
+            interaction.channel.id,
+            guildId,
+            activityTitle,
+            [] // Los participantes se actualizarán dinámicamente
+          );
+          
+          // Agregar al creador del evento como usuario interesado
+          addInterestedUser(interaction.id, interaction.user.id);
+          
+          console.log(`[INFO] Recordatorio configurado para ${templateName} en ${reminder}`);
+        } catch (reminderError) {
+          console.error('[ERROR] Error configurando recordatorio:', reminderError);
+        }
+      }
 
       /**
        * Interactuar con el usuario

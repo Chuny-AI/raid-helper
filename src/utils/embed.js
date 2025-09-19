@@ -171,7 +171,218 @@ const setTitleWeapons = (embed) => {
   });
 };
 
+/**
+ * Crea un embed atractivo para mostrar la build de un arma
+ * @param {string} weaponCategory - Categoría del arma (ej: "Maza íncubo")
+ * @param {string} weaponUrl - URL de la build
+ * @param {string} emojiId - ID del emoji del arma
+ * @param {string} templateName - Nombre del template
+ * @returns {EmbedBuilder} - Embed de la build
+ */
+const createBuildEmbed = (weaponCategory, weaponUrl, emojiId, templateName) => {
+  const embed = new EmbedBuilder()
+    .setTitle(`🔗 Build para ${weaponCategory}`)
+    .setDescription(`Aquí tienes la build que debes usar para el rol **${weaponCategory}** en la actividad **${templateName}**.`)
+    .setColor("#00FFFF")
+    .setTimestamp()
+    .setFooter({
+      text: "Creado con ❤️ por Chuny",
+      iconURL: "https://i.imgur.com/AfFp7pu.png",
+    })
+    .setAuthor({
+      name: "Avalon Raid Helper",
+      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      url: "https://github.com/M8-Babbage/avalon-raid-helper",
+    });
+
+  // Agregar el emoji del arma si existe
+  if (emojiId) {
+    embed.setThumbnail(`https://cdn.discordapp.com/emojis/${emojiId}.png`);
+  }
+
+  // Agregar el enlace de la build
+  embed.addFields({
+    name: "🔗 Enlace de la Build",
+    value: `[Ver build en Albion Free Market](${weaponUrl})`,
+    inline: false,
+  });
+
+  // Agregar información adicional
+  embed.addFields({
+    name: "📋 Instrucciones",
+    value: "• Haz clic en el enlace para ver la build completa\n• Equípate con los items mostrados\n• ¡Prepárate para la actividad!",
+    inline: false,
+  });
+
+  return embed;
+};
+
+/**
+ * Crea un embed para cuando no hay build específica configurada
+ * @param {string} weaponCategory - Categoría del arma
+ * @param {string} templateName - Nombre del template
+ * @returns {EmbedBuilder} - Embed informativo
+ */
+const createNoBuildEmbed = (weaponCategory, templateName) => {
+  const embed = new EmbedBuilder()
+    .setTitle(`⚠️ ${weaponCategory}`)
+    .setDescription(`No hay una build específica configurada para el rol **${weaponCategory}** en la actividad **${templateName}**.`)
+    .setColor("#FFA500")
+    .setTimestamp()
+    .setFooter({
+      text: "Creado con ❤️ por Chuny",
+      iconURL: "https://i.imgur.com/AfFp7pu.png",
+    })
+    .setAuthor({
+      name: "Avalon Raid Helper",
+      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      url: "https://github.com/M8-Babbage/avalon-raid-helper",
+    });
+
+  embed.addFields({
+    name: "📋 Instrucciones",
+    value: "• Consulta con el líder de la actividad para más detalles\n• Revisa las reglas del servidor\n• ¡Prepárate para la actividad!",
+    inline: false,
+  });
+
+  return embed;
+};
+
+/**
+ * Crea un embed sutil para notificaciones masivas de actividad
+ * @param {string} activityTitle - Título de la actividad
+ * @param {string} serverName - Nombre del servidor
+ * @param {string} timeRemaining - Tiempo restante formateado
+ * @param {string} leaderName - Nombre del líder
+ * @returns {EmbedBuilder} - Embed de notificación masiva
+ */
+const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, leaderName) => {
+  const embed = new EmbedBuilder()
+    .setTitle(`🔔 Nueva Actividad - ${activityTitle}`)
+    .setDescription(`Se ha creado una nueva actividad en **${serverName}**`)
+    .setColor("#7289DA") // Color sutil de Discord
+    .setTimestamp()
+    .setFooter({
+      text: "Avalon Raid Helper - Notificación",
+      iconURL: "https://i.imgur.com/AfFp7pu.png",
+    })
+    .setAuthor({
+      name: "Avalon Raid Helper",
+      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      url: "https://github.com/M8-Babbage/avalon-raid-helper",
+    });
+
+  // Agregar campos de información
+  embed.addFields({
+    name: "📋 Actividad",
+    value: activityTitle,
+    inline: true,
+  });
+
+  embed.addFields({
+    name: "🏰 Servidor",
+    value: serverName,
+    inline: true,
+  });
+
+  embed.addFields({
+    name: "⏰ Tiempo Restante",
+    value: timeRemaining,
+    inline: true,
+  });
+
+  embed.addFields({
+    name: "👑 Líder",
+    value: leaderName,
+    inline: true,
+  });
+
+  // Agregar instrucciones
+  embed.addFields({
+    name: "🚀 ¿Cómo unirse?",
+    value: "• Ve al canal donde se creó la actividad\n• Usa los menús desplegables para seleccionar tu rol\n• ¡Prepárate para la aventura!",
+    inline: false,
+  });
+
+  return embed;
+};
+
+/**
+ * Crea un embed atractivo para recordatorios de actividad
+ * @param {string} activityTitle - Título de la actividad
+ * @param {string} templateName - Nombre del template
+ * @param {string} timeRemaining - Tiempo restante formateado
+ * @param {Array} participants - Lista de participantes
+ * @returns {EmbedBuilder} - Embed del recordatorio
+ */
+const createReminderEmbed = (activityTitle, templateName, timeRemaining, participants = []) => {
+  const embed = new EmbedBuilder()
+    .setTitle(`🔔 Recordatorio de Actividad`)
+    .setDescription(`¡La actividad comenzará pronto! Prepárate para unirse.`)
+    .setColor("#FFD700") // Color dorado para recordatorios
+    .setTimestamp()
+    .setFooter({
+      text: "Avalon Raid Helper - Recordatorio",
+      iconURL: "https://i.imgur.com/AfFp7pu.png",
+    })
+    .setAuthor({
+      name: "Avalon Raid Helper",
+      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      url: "https://github.com/M8-Babbage/avalon-raid-helper",
+    });
+
+  // Agregar campos de información
+  embed.addFields({
+    name: "📋 Actividad",
+    value: activityTitle,
+    inline: true,
+  });
+
+  embed.addFields({
+    name: "📝 Template",
+    value: templateName,
+    inline: true,
+  });
+
+  embed.addFields({
+    name: "⏰ Tiempo Restante",
+    value: timeRemaining,
+    inline: true,
+  });
+
+  // Agregar lista de participantes
+  if (participants.length > 0) {
+    const participantsList = participants.slice(0, 10).map(p => `• ${p}`).join('\n');
+    const moreText = participants.length > 10 ? `\n... y ${participants.length - 10} más` : '';
+    
+    embed.addFields({
+      name: `👥 Participantes (${participants.length})`,
+      value: participantsList + moreText,
+      inline: false,
+    });
+  } else {
+    embed.addFields({
+      name: "👥 Participantes",
+      value: "• Aún no hay participantes",
+      inline: false,
+    });
+  }
+
+  // Agregar instrucciones
+  embed.addFields({
+    name: "🚀 Instrucciones",
+    value: "• Revisa el mensaje original para unirte\n• Prepárate con el equipo necesario\n• ¡Disfruta de la actividad!",
+    inline: false,
+  });
+
+  return embed;
+};
+
 module.exports = {
   createEmbed,
   embedsMap,
+  createBuildEmbed,
+  createNoBuildEmbed,
+  createReminderEmbed,
+  createMassNotificationEmbed,
 };
