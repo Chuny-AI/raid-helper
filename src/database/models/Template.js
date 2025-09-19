@@ -68,8 +68,8 @@ const templateSchema = new mongoose.Schema({
     type: String
   }],
   weapons: {
-    type: Map,
-    of: weaponSchema
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   },
   serverId: {
     type: String,

@@ -86,6 +86,13 @@ const setCategoriesAndUnitsFromTemplate = (embed, template) => {
     const emojiId = data.defaultEmoji;
     const displayName = data.displayName;
     const initialValue = 0;
+    
+    // Verificar que data.data existe y es un array
+    if (!data.data || !Array.isArray(data.data)) {
+      console.error('Error: data.data no es un array:', data);
+      continue;
+    }
+    
     const units = data.data.reduce(
       (acc, current) => acc + current.units,
       initialValue
