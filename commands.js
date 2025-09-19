@@ -41,11 +41,11 @@ const rest = new REST().setToken(TOKEN);
   try {
     console.log(`[INFO] Iniciando actualizacion de comandos en la aplicación.`);
     await rest
-      .put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
+      .put(Routes.applicationCommands(CLIENT_ID), {
         body: commands,
       })
       .then(() => {
-        console.log(`[INFO] Comandos de la aplicación fueron actualizados.`);
+        console.log(`[INFO] Comandos globales de la aplicación fueron actualizados.`);
       });
   } catch (error) {
     console.error(error);

@@ -1,8 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { getTemplateNames, getTemplateByName } = require("../services/templateService");
 
 /**
- * Obtiene los nombres de los templates disponibles en la carpeta templates
+ * Obtiene los nombres de los templates disponibles en la carpeta templates (para migración)
  * @returns {Array<{name: string, value: string}>}
  */
 const getAllNameTemplates = () => {
@@ -19,7 +20,7 @@ const getAllNameTemplates = () => {
 };
 
 /**
- * Recibe el nombre del template y devuelve el contenido del archivo en un objeto JSON
+ * Recibe el nombre del template y devuelve el contenido del archivo en un objeto JSON (para migración)
  * @param {*} templateName: string - Nombre del template
  * @returns: object - Contenido del archivo JSON
  */
@@ -38,7 +39,38 @@ const getDataFromTemplate = (templateName) => {
   }
 };
 
+/**
+ * Obtiene los nombres de los templates de un servidor desde la base de datos
+ * @param {string} serverId - ID del servidor
+ * @returns {Array<{name: string, value: string}>}
+ */
+const getTemplatesForServer = async (serverId) => {
+  try {
+    return await getTemplateNames(serverId);
+  } catch (error) {
+    console.error('[ERROR] Error obteniendo templates del servidor:', error);
+    return [];
+  }
+};
+
+/**
+ * Obtiene un template específico de un servidor desde la base de datos
+ * @param {string} templateName - Nombre del template
+ * @param {string} serverId - ID del servidor
+ * @returns {object|null} - Contenido del template o null si no existe
+ */
+const getTemplateForServer = async (templateName, serverId) => {
+  try {
+    return await getTemplateByName(templateName, serverId);
+  } catch (error) {
+    console.error('[ERROR] Error obteniendo template del servidor:', error);
+    return null;
+  }
+};
+
 module.exports = {
   getDataFromTemplate,
   getAllNameTemplates,
+  getTemplatesForServer,
+  getTemplateForServer,
 };

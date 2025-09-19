@@ -1,10 +1,32 @@
 const { InteractionType, Events } = require("discord.js");
 const { client } = require("./client");
 const { embedsMap } = require("../utils/embed");
+const { getOrCreateServer } = require("../services/serverService");
 
 const getEvents = () => {
-  client.once(Events.ClientReady, (readyClient) => {
+  client.once(Events.ClientReady, async (readyClient) => {
     console.log(`El bot ${readyClient.user.tag} está listo.`);
+    
+    // Crear registros de servidores existentes (sin migrar templates)
+    try {
+      const guilds = readyClient.guilds.cache;
+      for (const [guildId, guild] of guilds) {
+        await getOrCreateServer(guildId, guild.name);
+      }
+      console.log('[INFO] Servidores registrados en la base de datos');
+    } catch (error) {
+      console.error('[ERROR] Error al registrar servidores:', error);
+    }
+  });
+
+  // Manejar cuando el bot se une a un nuevo servidor
+  client.on(Events.GuildCreate, async (guild) => {
+    try {
+      await getOrCreateServer(guild.id, guild.name);
+      console.log(`[INFO] Bot añadido al servidor: ${guild.name} (${guild.id})`);
+    } catch (error) {
+      console.error('[ERROR] Error al procesar nuevo servidor:', error);
+    }
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -38,6 +60,23 @@ const getEvents = () => {
             ephemeral: true,
           });
         }
+      }
+    }
+
+    if (interaction.isAutocomplete()) {
+      const command = interaction.client.commands.get(interaction.commandName);
+
+      if (!command) {
+        console.error(
+          `No se encontró un comando identificado con ${interaction.commandName}.`
+        );
+        return;
+      }
+
+      try {
+        await command.autocomplete(interaction);
+      } catch (error) {
+        console.error(error);
       }
     }
 
