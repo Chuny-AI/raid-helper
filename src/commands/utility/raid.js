@@ -1,12 +1,14 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { createEmbed, embedsMap, createMassNotificationEmbed } = require("../../utils/embed");
 const { parseTime } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
 const { createSelect } = require("../../utils/select");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
-const { checkPremium } = require("../../middleware/premiumCheck");
+const { checkPremiumAccessWithOwnerBypass } = require("../../middleware/roleCheck");
 const { isUserAuthorized } = require("../../services/authorizedRoleService");
+const { createErrorEmbed, createWarningEmbed, createInfoEmbed, createSuccessEmbed, safeReply } = require("../../utils/errorEmbeds");
+
 
 const pingRoles = (template) => {
   const roles = template.roles;
@@ -15,15 +17,17 @@ const pingRoles = (template) => {
   }
 };
 
+// Función eliminada - no se necesita
+
+// Funciones eliminadas - no se necesitan
+
 /**
  * Comando para crear raids usando templates del servidor
  */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("raid")
-    .setDescription(
-      "Envía una notificación para una actividad basada en una plantilla previamente creada con /add."
-    )
+    .setDescription("Envía una notificación para una actividad usando una plantilla")
     .addStringOption((option) =>
       option
         .setName("template")
@@ -79,11 +83,11 @@ module.exports = {
         )
         .setRequired(false)
     )
-    .addBooleanOption((option) =>
+    .addStringOption((option) =>
       option
-        .setName("notify_all")
+        .setName("roles_to_notify")
         .setDescription(
-          "Enviar notificación a todos los usuarios del servidor (opcional)"
+          "IDs de roles a notificar separados por comas (opcional)"
         )
         .setRequired(false)
     ),
@@ -117,11 +121,14 @@ module.exports = {
 
   async execute(interaction) {
     try {
+      // Diferir la respuesta inmediatamente para evitar timeouts
+      await interaction.deferReply();
+
       /**
-       * Verificar estado premium del servidor
+       * Verificar acceso premium con bypass para el propietario
        */
-      const hasPremium = await checkPremium(interaction);
-      if (!hasPremium) {
+      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      if (!hasAccess) {
         return;
       }
 
@@ -135,7 +142,7 @@ module.exports = {
       const image = interaction.options.getString("image");
       const description = interaction.options.getString("description");
       const reminder = interaction.options.getString("reminder");
-      const notifyAll = interaction.options.getBoolean("notify_all");
+      const rolesToNotifyInput = interaction.options.getString("roles_to_notify");
       const user = interaction.user;
       const guildId = interaction.guild.id;
 
@@ -150,8 +157,17 @@ module.exports = {
       const template = await getTemplateByName(templateName, guildId);
       
       if (!template) {
-        return interaction.reply({
-          content: `No se encontró la plantilla "${templateName}" en este servidor.`,
+        const errorEmbed = createErrorEmbed(
+          "Plantilla No Encontrada",
+          `No se encontró la plantilla "${templateName}" en este servidor.`,
+          [{
+            name: "Solución",
+            value: "Verifica que el nombre de la plantilla sea correcto o crea una nueva plantilla.",
+            inline: false
+          }]
+        );
+        return await safeReply(interaction, {
+          embeds: [errorEmbed],
           ephemeral: true,
         });
       }
@@ -160,8 +176,17 @@ module.exports = {
       try {
         delayTime = parseTime(time ?? template.time);
       } catch (timeError) {
-        return interaction.reply({
-          content: `❌ Error en el tiempo del evento: ${timeError.message}`,
+        const errorEmbed = createErrorEmbed(
+          "Error en el Tiempo del Evento",
+          `Error procesando el tiempo del evento: ${timeError.message}`,
+          [{
+            name: "Formato Correcto",
+            value: "Usa formatos como: `1h 30m`, `45m`, `2h`, `30s`",
+            inline: false
+          }]
+        );
+        return await safeReply(interaction, {
+          embeds: [errorEmbed],
           ephemeral: true,
         });
       }
@@ -169,8 +194,17 @@ module.exports = {
       // Validar que el tiempo del evento no exceda 1 hora
       const maxEventTime = 60 * 60 * 1000; // 1 hora en milisegundos
       if (delayTime > maxEventTime) {
-        return interaction.reply({
-          content: "❌ El tiempo del evento no puede exceder 1 hora. Usa un tiempo menor (ej: 45m, 30m).",
+        const warningEmbed = createWarningEmbed(
+          "Tiempo del Evento Excedido",
+          "El tiempo del evento no puede exceder 1 hora.",
+          [{
+            name: "Tiempos Válidos",
+            value: "Usa tiempos como: `45m`, `30m`, `15m`, `1h`",
+            inline: false
+          }]
+        );
+        return await safeReply(interaction, {
+          embeds: [warningEmbed],
           ephemeral: true,
         });
       }
@@ -181,36 +215,153 @@ module.exports = {
         try {
           reminderTime = parseTime(reminder);
         } catch (reminderError) {
-          return interaction.reply({
-            content: `❌ Error en el tiempo del recordatorio: ${reminderError.message}`,
+          const errorEmbed = createErrorEmbed(
+            "Error en el Tiempo del Recordatorio",
+            `Error procesando el tiempo del recordatorio: ${reminderError.message}`,
+            [{
+              name: "Formato Correcto",
+              value: "Usa formatos como: `10m`, `30m`, `1h`, `15s`",
+              inline: false
+            }]
+          );
+          return await safeReply(interaction, {
+            embeds: [errorEmbed],
             ephemeral: true,
           });
         }
         
         if (reminderTime >= delayTime) {
-          return interaction.reply({
-            content: "❌ El tiempo del recordatorio debe ser menor al tiempo del evento.",
+          const warningEmbed = createWarningEmbed(
+            "Tiempo de Recordatorio Inválido",
+            "El tiempo del recordatorio debe ser menor al tiempo del evento.",
+            [{
+              name: "Ejemplo",
+              value: "Si el evento es de `1h`, el recordatorio puede ser `30m` o `15m`",
+              inline: false
+            }]
+          );
+          return await safeReply(interaction, {
+            embeds: [warningEmbed],
             ephemeral: true,
           });
         }
         if (reminderTime <= 0) {
-          return interaction.reply({
-            content: "❌ El tiempo del recordatorio debe ser mayor a 0.",
+          const warningEmbed = createWarningEmbed(
+            "Tiempo de Recordatorio Inválido",
+            "El tiempo del recordatorio debe ser mayor a 0.",
+            [{
+              name: "Ejemplo",
+              value: "Usa tiempos como: `5m`, `10m`, `30m`",
+              inline: false
+            }]
+          );
+          return await safeReply(interaction, {
+            embeds: [warningEmbed],
             ephemeral: true,
           });
         }
       }
 
       if (color && !isValidHex(color)) {
-        return interaction.reply({
-          content:
-            "El color proporcionado no es válido. Usa el formato hexadecimal (#FFFFFF).",
+        const errorEmbed = createErrorEmbed(
+          "Color Inválido",
+          "El color proporcionado no es válido.",
+          [{
+            name: "Formato Correcto",
+            value: "Usa el formato hexadecimal: `#FFFFFF`, `#FF0000`, `#00FF00`",
+            inline: false
+          }]
+        );
+        return await safeReply(interaction, {
+          embeds: [errorEmbed],
           ephemeral: true,
         });
       }
 
+      // Procesar roles para notificaciones
+      let notificationRoles = [];
+      if (rolesToNotifyInput) {
+        try {
+          // Dividir por comas y limpiar cada ID de rol
+          const roleIds = rolesToNotifyInput.split(',').map(id => id.trim()).filter(id => id);
+          
+          // Buscar roles por ID
+          for (const roleId of roleIds) {
+            const role = interaction.guild.roles.cache.get(roleId);
+            
+            if (!role) {
+              // Mostrar roles disponibles para ayudar al usuario
+              const availableRoles = interaction.guild.roles.cache
+                .filter(r => r.name !== '@everyone' && !r.managed)
+                .map(r => `${r.name} (${r.id})`)
+                .slice(0, 10)
+                .join('\n');
+              
+              const errorEmbed = createErrorEmbed(
+                "Rol No Encontrado",
+                `El rol con ID "${roleId}" no existe en este servidor.`,
+                [{
+                  name: "Solución",
+                  value: "Verifica que el ID del rol sea correcto y que el rol exista en el servidor.",
+                  inline: false
+                }, {
+                  name: "Roles Disponibles",
+                  value: availableRoles || "No hay roles disponibles",
+                  inline: false
+                }, {
+                  name: "Formato Correcto",
+                  value: "Usa el formato: `123456789, 987654321` (IDs de roles separados por comas)",
+                  inline: false
+                }]
+              );
+              return await safeReply(interaction, {
+                embeds: [errorEmbed],
+                ephemeral: true,
+              });
+            }
+            
+            notificationRoles.push(role.id);
+          }
+        } catch (error) {
+          const errorEmbed = createErrorEmbed(
+            "Error Procesando Roles",
+            "Error al procesar los IDs de los roles proporcionados.",
+            [{
+              name: "Formato Correcto",
+              value: "Usa el formato: `123456789, 987654321` (IDs de roles separados por comas)",
+              inline: false
+            }]
+          );
+          return await safeReply(interaction, {
+            embeds: [errorEmbed],
+            ephemeral: true,
+          });
+        }
+      }
+
+      // Determinar roles finales para notificación antes de crear el embed
+      let finalNotificationRoles = [];
+      if (notificationRoles.length > 0) {
+        // Usar roles especificados en el comando
+        finalNotificationRoles = notificationRoles;
+      } else if (template.roles && template.roles.length > 0) {
+        // Usar roles del template si no se especificaron roles en el comando
+        finalNotificationRoles = template.roles;
+      }
+
       const row = createSelect(template, templateName, interaction);
-      const embed = createEmbed({ title, delayTime, template, color, image, description, user });
+      
+      // Crear embed usando la función original con roles finales
+      const embed = createEmbed({ 
+        title, 
+        delayTime, 
+        template, 
+        color, 
+        image, 
+        description, 
+        user, 
+        finalRoles: finalNotificationRoles 
+      });
 
       if (!embedsMap[templateName]) {
         embedsMap[templateName] = [];
@@ -218,57 +369,6 @@ module.exports = {
 
       embedsMap[templateName].push({ id: interaction.id, embed });
 
-      /**
-       * Verificar permisos para enviar notificaciones a todos los usuarios
-       */
-      if (notifyAll || template.notifyAll) {
-        const hasNotificationPermission = await isUserAuthorized(interaction.member, guildId);
-        
-        if (!hasNotificationPermission) {
-          return interaction.reply({
-            content: "❌ No tienes permisos para enviar notificaciones a todos los usuarios. Solo los administradores y usuarios con roles autorizados pueden usar esta función. Usa `/roles list` para ver los roles autorizados.",
-            ephemeral: true,
-          });
-        }
-      }
-
-      /**
-       * Enviar notificación a todos los usuarios si notify_all está habilitado
-       * (ya sea por parámetro del comando o por configuración del template)
-       */
-      if (notifyAll || template.notifyAll) {
-        try {
-          // Obtener todos los miembros del servidor
-          const members = await interaction.guild.members.fetch();
-          const memberList = members.map(member => member.user);
-          
-          // Crear embed de notificación masiva
-          const activityTitle = title || template.title;
-          const timeRemaining = time || template.time;
-          const massNotificationEmbed = createMassNotificationEmbed(
-            activityTitle,
-            interaction.guild.name,
-            timeRemaining,
-            user.toString()
-          );
-          
-          // Enviar DM a cada usuario
-          for (const member of memberList) {
-            try {
-              await member.send({
-                embeds: [massNotificationEmbed]
-              });
-            } catch (dmError) {
-              // Ignorar errores de DM (usuarios con DMs deshabilitados, etc.)
-              console.log(`[INFO] No se pudo enviar DM a ${member.username}: ${dmError.message}`);
-            }
-          }
-          
-          console.log(`[INFO] Notificación masiva enviada a ${memberList.length} usuarios del servidor`);
-        } catch (notifyError) {
-          console.error('[ERROR] Error enviando notificaciones:', notifyError);
-        }
-      }
 
       /**
        * Configurar recordatorio si se especificó
@@ -299,20 +399,76 @@ module.exports = {
         }
       }
 
+      // Crear contenido de notificación basado en los roles finales ya determinados
+      let notificationContent = '';
+      
+      if (finalNotificationRoles.length > 0) {
+        // Crear menciones directas de los roles finales
+        const roleMentions = finalNotificationRoles.map(roleId => `<@&${roleId}>`).join(' ');
+        notificationContent += `${roleMentions}\n`;
+      }
+      
+      // Enviar notificación solo si hay roles especificados
+      if (finalNotificationRoles.length > 0) {
+        try {
+          // Obtener miembros con los roles especificados
+          const members = await interaction.guild.members.fetch();
+          const targetMembers = members.filter(member => 
+            finalNotificationRoles.some(roleId => member.roles.cache.has(roleId))
+          );
+          
+          // Crear embed de notificación
+          const activityTitle = title || template.title;
+          const timeRemaining = time || template.time;
+          const massNotificationEmbed = createMassNotificationEmbed(
+            activityTitle,
+            interaction.guild.name,
+            timeRemaining,
+            user.toString()
+          );
+          
+          // Enviar DM a cada miembro con los roles especificados
+          for (const member of targetMembers.values()) {
+            try {
+              await member.send({
+                embeds: [massNotificationEmbed]
+              });
+            } catch (dmError) {
+              console.log(`[INFO] No se pudo enviar DM a ${member.user.username}: ${dmError.message}`);
+            }
+          }
+          
+          console.log(`[INFO] Notificación enviada a ${targetMembers.size} miembros con roles específicos`);
+        } catch (notifyError) {
+          console.error('[ERROR] Error enviando notificaciones a roles:', notifyError);
+        }
+      }
+
       /**
        * Interactuar con el usuario
        */
-      await interaction.reply({
+      await safeReply(interaction, {
         embeds: [embed],
         components: [row],
-        content: `${pingRoles(template)}`,
+        content: notificationContent || undefined,
       });
     } catch (error) {
       console.error('[ERROR] Error en comando raid:', error);
-      await interaction.reply({
-        content: "Hubo un error ejecutando el comando. Inténtalo de nuevo.",
+      const errorEmbed = createErrorEmbed(
+        "Error del Sistema",
+        "Hubo un error ejecutando el comando de raid.",
+        [{
+          name: "Solución",
+          value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
+          inline: false
+        }]
+      );
+      await safeReply(interaction, {
+        embeds: [errorEmbed],
         ephemeral: true,
       });
     }
   },
+
+  // No se exportan funciones adicionales
 };

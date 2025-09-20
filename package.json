@@ -4,8 +4,13 @@
   "main": "index.js",
   "scripts": {
     "start": "node --watch --env-file=.env index.js",
+    "start:prod": "node --env-file=.env index.js",
     "commands": "node --env-file=.env commands.js",
-    "setup": "node setup.js"
+    "setup": "node setup.js",
+    "register:global": "node --env-file=.env register-commands.js global",
+    "register:guild": "node --env-file=.env register-commands.js guild",
+    "clear:global": "node --env-file=.env register-commands.js clear-global",
+    "clear:guild": "node --env-file=.env register-commands.js clear-guild"
   },
   "keywords": [],
   "author": "Edwin J. Páez",
@@ -15,6 +20,7 @@
     "discord.js": "^14.16.2",
     "install": "^0.13.0",
     "npm": "^10.8.3",
-    "mongoose": "^8.0.3"
+    "mongoose": "^8.0.3",
+    "dotenv": "^16.3.1"
   }
 }

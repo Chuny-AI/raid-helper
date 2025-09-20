@@ -132,11 +132,16 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
     }
     
     // Crear embed de recordatorio
-    const reminderEmbed = createReminderEmbed(activityTitle, templateName, reminderTimeFormatted, updatedParticipants);
+    const reminderEmbed = createReminderEmbed(activityTitle, templateName, reminderTimeFormatted, updatedParticipants, channelId);
+    
+    // Crear componentes (botones) para el recordatorio
+    const { createReminderComponents } = require('./embed');
+    const components = createReminderComponents(channelId, guildId);
     
     // Enviar notificación al canal
     await channel.send({
       embeds: [reminderEmbed],
+      components: components
     });
     
     const interestedUsers = reminder?.interestedUsers || new Set();
@@ -179,6 +184,7 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
         if (user && !user.bot) {
           await user.send({
             embeds: [reminderEmbed],
+            components: components
           });
           successfulDMs++;
         }

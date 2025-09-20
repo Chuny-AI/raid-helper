@@ -1,7 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const { getAuthorizedRoles, addAuthorizedRole, removeAuthorizedRole, clearAuthorizedRoles } = require("../../services/authorizedRoleService");
 const { getOrCreateServer } = require("../../services/serverService");
-const { checkPremium } = require("../../middleware/premiumCheck");
+const { checkOwner } = require("../../middleware/ownerCheck");
+const { checkPremiumAccessWithOwnerBypass } = require("../../middleware/roleCheck");
+const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
  * Comando para gestionar roles autorizados para enviar notificaciones
@@ -10,7 +12,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("roles")
     .setDescription("Gestiona los roles autorizados para enviar notificaciones a todos los usuarios")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand(subcommand =>
       subcommand
         .setName("add")
@@ -47,17 +48,22 @@ module.exports = {
   async execute(interaction) {
     try {
       // Verificar permisos de administrador
-      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({
-          content: "❌ Solo los administradores pueden gestionar roles autorizados.",
-          ephemeral: true,
-        });
+      // Verificar acceso premium con bypass para el propietario
+      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      if (!hasAccess) {
+        return;
       }
 
-      // Verificar estado premium del servidor
-      const hasPremium = await checkPremium(interaction);
-      if (!hasPremium) {
-        return;
+      // Verificar si es el propietario del bot o administrador
+      const isOwner = await checkOwner(interaction);
+      if (!isOwner) {
+        // Si no es propietario, verificar si es administrador
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+          return interaction.reply({
+            content: "❌ Solo el propietario del bot y los administradores pueden gestionar roles autorizados.",
+            ephemeral: true,
+          });
+        }
       }
 
       const guildId = interaction.guild.id;
@@ -78,16 +84,29 @@ module.exports = {
               interaction.user.id
             );
 
-            const embed = new EmbedBuilder()
-              .setTitle("✅ Rol Autorizado")
-              .setDescription(`El rol **${role.name}** ha sido agregado a la lista de roles autorizados para enviar notificaciones.`)
-              .setColor("#00FF00")
-              .setTimestamp();
+            const embed = createSuccessEmbed(
+              "Rol Autorizado",
+              `El rol **${role.name}** ha sido agregado a la lista de roles autorizados para enviar notificaciones.`,
+              [{
+                name: "Funcionalidad",
+                value: "Los usuarios con este rol ahora pueden enviar notificaciones a todos los usuarios del servidor.",
+                inline: false
+              }]
+            );
 
-            await interaction.reply({ embeds: [embed], ephemeral: true });
+            await safeReply(interaction, { embeds: [embed], ephemeral: true });
           } catch (error) {
-            await interaction.reply({
-              content: `❌ Error: ${error.message}`,
+            const errorEmbed = createErrorEmbed(
+              "Error Agregando Rol",
+              `Error al agregar el rol: ${error.message}`,
+              [{
+                name: "Solución",
+                value: "Verifica que el rol existe y que tienes permisos para gestionarlo.",
+                inline: false
+              }]
+            );
+            await safeReply(interaction, {
+              embeds: [errorEmbed],
               ephemeral: true,
             });
           }
@@ -100,16 +119,29 @@ module.exports = {
           try {
             await removeAuthorizedRole(role.id, guildId);
 
-            const embed = new EmbedBuilder()
-              .setTitle("❌ Rol Desautorizado")
-              .setDescription(`El rol **${role.name}** ha sido eliminado de la lista de roles autorizados.`)
-              .setColor("#FF0000")
-              .setTimestamp();
+            const embed = createSuccessEmbed(
+              "Rol Desautorizado",
+              `El rol **${role.name}** ha sido eliminado de la lista de roles autorizados.`,
+              [{
+                name: "Funcionalidad",
+                value: "Los usuarios con este rol ya no pueden enviar notificaciones a todos los usuarios del servidor.",
+                inline: false
+              }]
+            );
 
-            await interaction.reply({ embeds: [embed], ephemeral: true });
+            await safeReply(interaction, { embeds: [embed], ephemeral: true });
           } catch (error) {
-            await interaction.reply({
-              content: `❌ Error: ${error.message}`,
+            const errorEmbed = createErrorEmbed(
+              "Error Eliminando Rol",
+              `Error al eliminar el rol: ${error.message}`,
+              [{
+                name: "Solución",
+                value: "Verifica que el rol existe y que tienes permisos para gestionarlo.",
+                inline: false
+              }]
+            );
+            await safeReply(interaction, {
+              embeds: [errorEmbed],
               ephemeral: true,
             });
           }
@@ -119,22 +151,38 @@ module.exports = {
         case 'list': {
           const authorizedRoles = await getAuthorizedRoles(guildId);
 
-          const embed = new EmbedBuilder()
-            .setTitle("📋 Roles Autorizados")
-            .setColor("#00FFFF")
-            .setTimestamp();
-
+          let embed;
           if (authorizedRoles.length === 0) {
-            embed.setDescription("No hay roles autorizados en este servidor.\n\n**Nota:** Los administradores siempre pueden enviar notificaciones a todos los usuarios.");
+            embed = createInfoEmbed(
+              "Roles Autorizados",
+              "No hay roles autorizados en este servidor.",
+              [{
+                name: "Nota Importante",
+                value: "Los administradores siempre pueden enviar notificaciones a todos los usuarios.",
+                inline: false
+              }]
+            );
           } else {
             const rolesList = authorizedRoles.map((role, index) => 
               `${index + 1}. <@&${role.roleId}> (${role.roleName})`
             ).join('\n');
 
-            embed.setDescription(`**Roles autorizados para enviar notificaciones:**\n\n${rolesList}\n\n**Nota:** Los administradores siempre pueden enviar notificaciones a todos los usuarios.`);
+            embed = createInfoEmbed(
+              "Roles Autorizados",
+              `**Roles autorizados para enviar notificaciones:**\n\n${rolesList}`,
+              [{
+                name: "Nota Importante",
+                value: "Los administradores siempre pueden enviar notificaciones a todos los usuarios.",
+                inline: false
+              }, {
+                name: "Total de Roles",
+                value: authorizedRoles.length.toString(),
+                inline: true
+              }]
+            );
           }
 
-          await interaction.reply({ embeds: [embed], ephemeral: true });
+          await safeReply(interaction, { embeds: [embed], ephemeral: true });
           break;
         }
 
@@ -142,16 +190,29 @@ module.exports = {
           try {
             await clearAuthorizedRoles(guildId);
 
-            const embed = new EmbedBuilder()
-              .setTitle("🗑️ Roles Limpiados")
-              .setDescription("Todos los roles autorizados han sido eliminados del servidor.")
-              .setColor("#FFA500")
-              .setTimestamp();
+            const embed = createSuccessEmbed(
+              "Roles Limpiados",
+              "Todos los roles autorizados han sido eliminados del servidor.",
+              [{
+                name: "Funcionalidad",
+                value: "Solo los administradores podrán enviar notificaciones a todos los usuarios.",
+                inline: false
+              }]
+            );
 
-            await interaction.reply({ embeds: [embed], ephemeral: true });
+            await safeReply(interaction, { embeds: [embed], ephemeral: true });
           } catch (error) {
-            await interaction.reply({
-              content: `❌ Error: ${error.message}`,
+            const errorEmbed = createErrorEmbed(
+              "Error Limpiando Roles",
+              `Error al limpiar los roles: ${error.message}`,
+              [{
+                name: "Solución",
+                value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
+                inline: false
+              }]
+            );
+            await safeReply(interaction, {
+              embeds: [errorEmbed],
               ephemeral: true,
             });
           }
@@ -160,8 +221,17 @@ module.exports = {
       }
     } catch (error) {
       console.error('[ERROR] Error en comando roles:', error);
-      await interaction.reply({
-        content: "Hubo un error ejecutando el comando. Inténtalo de nuevo.",
+      const errorEmbed = createErrorEmbed(
+        "Error del Sistema",
+        "Hubo un error ejecutando el comando de roles.",
+        [{
+          name: "Solución",
+          value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
+          inline: false
+        }]
+      );
+      await safeReply(interaction, {
+        embeds: [errorEmbed],
         ephemeral: true,
       });
     }

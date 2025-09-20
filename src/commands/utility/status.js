@@ -1,17 +1,21 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getTemplateNames, getTemplatesByServer } = require("../../services/templateService");
 const { getServer, isServerPremium } = require("../../services/serverService");
+const { createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
+// El comando status es visible para todos los usuarios
 
 /**
- * Comando de debug para verificar el estado de la base de datos
+ * Comando de status para verificar el estado de la base de datos
  */
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("debug")
-    .setDescription("Información de debug sobre el servidor y templates"),
+    .setName("status")
+    .setDescription("Información de estado del servidor y templates"),
 
   async execute(interaction) {
     try {
+      // El comando status es visible para todos los usuarios
+
       const guildId = interaction.guild.id;
       
       // Obtener información del servidor
@@ -19,10 +23,10 @@ module.exports = {
       const templates = await getTemplatesByServer(guildId);
       const isPremium = await isServerPremium(guildId);
       
-      const embed = new EmbedBuilder()
-        .setTitle("🔧 Debug Information")
-        .setColor("#FFA500")
-        .addFields(
+      const embed = createInfoEmbed(
+        "Status Information",
+        "Información del estado del servidor y templates",
+        [
           {
             name: "Server ID",
             value: guildId,
@@ -58,8 +62,8 @@ module.exports = {
             value: `${Math.floor(interaction.client.uptime / 1000)}s`,
             inline: true
           }
-        )
-        .setTimestamp();
+        ]
+      );
 
       if (templates.length > 0) {
         const templateNames = templates.map(t => t.title).join(", ");
@@ -72,14 +76,23 @@ module.exports = {
         });
       }
 
-      await interaction.reply({
+      await safeReply(interaction, {
         embeds: [embed],
         ephemeral: true,
       });
     } catch (error) {
-      console.error('[ERROR] Error en comando debug:', error);
-      await interaction.reply({
-        content: `Error en debug: ${error.message}`,
+      console.error('[ERROR] Error en comando status:', error);
+      const errorEmbed = createErrorEmbed(
+        "Error del Sistema",
+        "Hubo un error ejecutando el comando de status.",
+        [{
+          name: "Solución",
+          value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
+          inline: false
+        }]
+      );
+      await safeReply(interaction, {
+        embeds: [errorEmbed],
         ephemeral: true,
       });
     }

@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 
 const embedsMap = {};
 
@@ -13,6 +13,7 @@ const createEmbed = ({
   image,
   description,
   user,
+  finalRoles = null,
 }) => {
   const embed = new EmbedBuilder(); // Crear una nueva instancia aquí
 
@@ -26,7 +27,7 @@ const createEmbed = ({
   setTitleWeapons(embed);
   setCategoriesAndUnitsFromTemplate(embed, template);
   setImage(embed, image, template);
-  pingRoles(embed, template);
+  pingRoles(embed, template, finalRoles);
   return embed;
 };
 
@@ -54,6 +55,30 @@ const setFooter = (embed) => {
       iconURL: "https://i.imgur.com/AfFp7pu.png",
     })
     .setTimestamp();
+    
+  // Agregar información de redes sociales al final del embed
+  embed.addFields(
+    {
+      name: "🔗 Mis Redes Sociales",
+      value: "¡Sígueme para estar al día con las últimas actualizaciones!",
+      inline: false
+    },
+    {
+      name: "🎮 Twitch",
+      value: "[@chuny_dev](https://www.twitch.tv/chuny_dev)",
+      inline: true
+    },
+    {
+      name: "💬 Discord",
+      value: "[Mi Canal](https://discord.gg/6fFHsmewSn)",
+      inline: true
+    },
+    {
+      name: "👤 Contacto Directo",
+      value: "<@464241835930419210>",
+      inline: true
+    }
+  );
 };
 
 /**
@@ -124,9 +149,11 @@ const setImage = (embed, url, template) => {
  * Pinear a los roles en el embed
  * @param {*} embed
  * @param {*} template
+ * @param {*} finalRoles - Roles finales a mostrar (opcional)
  */
-const pingRoles = (embed, template) => {
-  const roles = template.roles;
+const pingRoles = (embed, template, finalRoles = null) => {
+  // Usar roles finales si se proporcionan, sino usar los del template
+  const roles = finalRoles || template.roles;
   if (roles && roles.length > 0) {
     const rolesString = roles.map((roleId) => `<@&${roleId}>`).join(", ");
     embed.addFields({ name: "Roles válidos:", value: rolesString });
@@ -254,9 +281,11 @@ const createNoBuildEmbed = (weaponCategory, templateName) => {
  * @param {string} serverName - Nombre del servidor
  * @param {string} timeRemaining - Tiempo restante formateado
  * @param {string} leaderName - Nombre del líder
+ * @param {string} channelId - ID del canal donde se creó la actividad
+ * @param {Array} roles - Lista de roles del template
  * @returns {EmbedBuilder} - Embed de notificación masiva
  */
-const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, leaderName) => {
+const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, leaderName, channelId, roles = []) => {
   const embed = new EmbedBuilder()
     .setTitle(`🔔 Nueva Actividad - ${activityTitle}`)
     .setDescription(`Se ha creado una nueva actividad en **${serverName}**`)
@@ -297,10 +326,20 @@ const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, l
     inline: true,
   });
 
+  // Agregar etiquetas de roles si existen
+  if (roles && roles.length > 0) {
+    const rolesString = roles.map(roleId => `<@&${roleId}>`).join(" ");
+    embed.addFields({
+      name: "🎭 Roles Válidos",
+      value: rolesString,
+      inline: false,
+    });
+  }
+
   // Agregar instrucciones
   embed.addFields({
     name: "🚀 ¿Cómo unirse?",
-    value: "• Ve al canal donde se creó la actividad\n• Usa los menús desplegables para seleccionar tu rol\n• ¡Prepárate para la aventura!",
+    value: "• Haz clic en el botón 'Ir al Evento' para ir al canal\n• Usa los menús desplegables para seleccionar tu rol\n• ¡Prepárate para la aventura!",
     inline: false,
   });
 
@@ -313,9 +352,10 @@ const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, l
  * @param {string} templateName - Nombre del template
  * @param {string} timeRemaining - Tiempo restante formateado
  * @param {Array} participants - Lista de participantes
+ * @param {string} channelId - ID del canal donde se creó la actividad
  * @returns {EmbedBuilder} - Embed del recordatorio
  */
-const createReminderEmbed = (activityTitle, templateName, timeRemaining, participants = []) => {
+const createReminderEmbed = (activityTitle, templateName, timeRemaining, participants = [], channelId = null) => {
   const embed = new EmbedBuilder()
     .setTitle(`🔔 Recordatorio de Actividad`)
     .setDescription(`¡La actividad comenzará pronto! Prepárate para unirse.`)
@@ -371,11 +411,68 @@ const createReminderEmbed = (activityTitle, templateName, timeRemaining, partici
   // Agregar instrucciones
   embed.addFields({
     name: "🚀 Instrucciones",
-    value: "• Revisa el mensaje original para unirte\n• Prepárate con el equipo necesario\n• ¡Disfruta de la actividad!",
+    value: "• Haz clic en el botón 'Ir al Evento' para ir al canal\n• Prepárate con el equipo necesario\n• ¡Disfruta de la actividad!",
     inline: false,
   });
 
   return embed;
+};
+
+/**
+ * Crea un botón "Ir al Evento" que redirige al canal donde se creó la actividad
+ * @param {string} channelId - ID del canal donde se creó la actividad
+ * @param {string} guildId - ID del servidor (opcional, se detectará automáticamente)
+ * @returns {ActionRowBuilder} - Fila de botones
+ */
+const createGoToEventButton = (channelId, guildId = null) => {
+  // Si no se proporciona guildId, intentar obtenerlo del cliente
+  let finalGuildId = guildId;
+  if (!finalGuildId) {
+    try {
+      const { client } = require('./client');
+      const channel = client.channels.cache.get(channelId);
+      if (channel && channel.guild) {
+        finalGuildId = channel.guild.id;
+      }
+    } catch (error) {
+      console.error('[ERROR] No se pudo obtener el guildId:', error);
+    }
+  }
+  
+  // Fallback a GUILD_ID del .env o usar un placeholder
+  if (!finalGuildId) {
+    finalGuildId = process.env.GUILD_ID || 'YOUR_GUILD_ID';
+  }
+  
+  const row = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setLabel('🚀 Ir al Evento')
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://discord.com/channels/${finalGuildId}/${channelId}`)
+    );
+  
+  return row;
+};
+
+/**
+ * Crea componentes (botones) para notificaciones masivas
+ * @param {string} channelId - ID del canal donde se creó la actividad
+ * @param {string} guildId - ID del servidor (opcional)
+ * @returns {Array} - Array de componentes
+ */
+const createMassNotificationComponents = (channelId, guildId = null) => {
+  return [createGoToEventButton(channelId, guildId)];
+};
+
+/**
+ * Crea componentes (botones) para recordatorios
+ * @param {string} channelId - ID del canal donde se creó la actividad
+ * @param {string} guildId - ID del servidor (opcional)
+ * @returns {Array} - Array de componentes
+ */
+const createReminderComponents = (channelId, guildId = null) => {
+  return [createGoToEventButton(channelId, guildId)];
 };
 
 module.exports = {
@@ -385,4 +482,7 @@ module.exports = {
   createNoBuildEmbed,
   createReminderEmbed,
   createMassNotificationEmbed,
+  createGoToEventButton,
+  createMassNotificationComponents,
+  createReminderComponents,
 };

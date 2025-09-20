@@ -80,22 +80,37 @@ Make sure you have the following installed:
    - `Embed Links`
 
 3. Once the bot is online, you can use the following commands:
-   - `/latency` - Check bot latency (visible to all users)
-   - `/raid` - Create a raid notification using templates (premium servers only)
-   - `/templates` - List available templates in the server (premium servers only)
-   - `/roles` - Manage authorized roles for sending notifications (admins only)
-   - `/debug` - Debug information about server and templates (premium servers only)
-   - `/migrate` - Migrate templates from JSON or files (bot owner only)
+   - `/status` - Check server and bot status (visible to all users)
+   - `/raid` - Create a raid notification using templates (owner, admins, authorized roles)
+   - `/templates` - List available templates in the server (owner, admins, authorized roles)
+   - `/weapons` - List available weapons for templates (owner, admins, authorized roles)
+   - `/create_template` - Create new templates interactively (owner, admins, authorized roles)
+   - `/edit_template` - Edit existing templates (owner, admins, authorized roles)
+   - `/roles` - Manage authorized roles for sending notifications (owner, admins)
+   - `/migrate` - Migrate templates from JSON or files (owner, admins, authorized roles)
+   - `/update_weapons` - Update weapons from JSON (bot owner only)
+   - `/migrate_weapons` - Migrate weapons from JSON file (bot owner only)
    - `/premium` - Manage premium status (bot owner only)
 
 ## Command Visibility
 
 The bot implements a command visibility system based on user permissions:
 
-- **All Users**: `/latency` - Basic commands visible to everyone
-- **Premium Servers**: `/raid`, `/templates`, `/debug` - Commands only visible on premium servers
-- **Administrators**: `/roles` - Commands only visible to server administrators
-- **Bot Owner**: `/migrate`, `/premium` - Commands only visible to the bot owner
+- **All Users**: `/status` - Basic commands visible to everyone
+- **Role-Based Access**: `/raid`, `/templates`, `/weapons`, `/create_template`, `/edit_template`, `/migrate` - Visible to:
+  - Bot owner (regardless of server premium status)
+  - Server administrators
+  - Users with authorized roles (managed via `/roles`)
+- **Admin + Owner**: `/roles` - Visible to bot owner and server administrators
+- **Bot Owner Only**: `/update_weapons`, `/migrate_weapons`, `/premium` - Visible only to the bot owner
+
+### Role Management
+
+Administrators can use `/roles` to manage which roles can access premium features:
+- `/roles add <role>` - Add a role to authorized roles
+- `/roles remove <role>` - Remove a role from authorized roles
+- `/roles list` - List all authorized roles
+- `/roles clear` - Remove all authorized roles
 
 Commands that are not visible to a user will not appear in Discord's command autocomplete and will show an error message if attempted to use.
 

@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { updateServerPremium, isServerPremium, getPremiumServers } = require("../../services/serverService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { checkOwner } = require("../../middleware/ownerCheck");
+const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
  * Comando para gestionar el estado premium de servidores
@@ -9,7 +10,7 @@ const { checkOwner } = require("../../middleware/ownerCheck");
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("premium")
-    .setDescription("Gestiona el estado premium del servidor (solo desarrolladores)")
+    .setDescription("Gestiona el estado premium del servidor (solo propietario del bot)")
     .addSubcommand((subcommand) =>
       subcommand
         .setName("set")
@@ -61,8 +62,17 @@ module.exports = {
       if (targetServerId) {
         targetGuild = interaction.client.guilds.cache.get(targetServerId);
         if (!targetGuild) {
-          return interaction.reply({
-            content: `❌ No se encontró el servidor con ID: ${targetServerId}`,
+          const errorEmbed = createErrorEmbed(
+            "Servidor No Encontrado",
+            `No se encontró el servidor con ID: ${targetServerId}`,
+            [{
+              name: "Solución",
+              value: "Verifica que el ID del servidor sea correcto y que el bot esté en ese servidor.",
+              inline: false
+            }]
+          );
+          return await safeReply(interaction, {
+            embeds: [errorEmbed],
             ephemeral: true,
           });
         }
@@ -73,18 +83,17 @@ module.exports = {
       // Asegurar que el servidor existe en la base de datos
       await getOrCreateServer(guildId, targetGuild.name);
 
-      let embed = new EmbedBuilder()
-        .setTitle("💎 Gestión Premium")
-        .setTimestamp();
+      let embed;
 
       if (subcommand === "set") {
         const status = interaction.options.getBoolean("status");
         
         await updateServerPremium(guildId, status);
         
-        embed.setColor(status ? "#FFD700" : "#808080")
-          .setDescription(`Estado premium ${status ? "activado" : "desactivado"} para el servidor.`)
-          .addFields({
+        embed = createSuccessEmbed(
+          "Gestión Premium",
+          `Estado premium ${status ? "activado" : "desactivado"} para el servidor.`,
+          [{
             name: "Servidor",
             value: targetGuild.name,
             inline: true
@@ -96,14 +105,16 @@ module.exports = {
             name: "Estado Premium",
             value: status ? "✅ Activo" : "❌ Inactivo",
             inline: true
-          });
+          }]
+        );
 
       } else if (subcommand === "check") {
         const isPremium = await isServerPremium(guildId);
         
-        embed.setColor(isPremium ? "#FFD700" : "#808080")
-          .setDescription(`Estado premium del servidor: ${isPremium ? "Activo" : "Inactivo"}`)
-          .addFields({
+        embed = createInfoEmbed(
+          "Estado Premium",
+          `Estado premium del servidor: ${isPremium ? "Activo" : "Inactivo"}`,
+          [{
             name: "Servidor",
             value: targetGuild.name,
             inline: true
@@ -115,30 +126,42 @@ module.exports = {
             name: "Estado Premium",
             value: isPremium ? "✅ Activo" : "❌ Inactivo",
             inline: true
-          });
+          }]
+        );
 
       } else if (subcommand === "list") {
         const premiumServers = await getPremiumServers();
         
-        embed.setColor("#FFD700")
-          .setDescription(`Servidores premium: ${premiumServers.length}`)
-          .addFields({
+        embed = createInfoEmbed(
+          "Lista de Servidores Premium",
+          `Servidores premium: ${premiumServers.length}`,
+          [{
             name: "Servidores Premium",
             value: premiumServers.length > 0 
               ? premiumServers.map(server => `• ${server.guildName} (${server.guildId})`).join("\n")
               : "No hay servidores premium",
             inline: false
-          });
+          }]
+        );
       }
 
-      await interaction.reply({
+      await safeReply(interaction, {
         embeds: [embed],
         ephemeral: true,
       });
     } catch (error) {
       console.error('[ERROR] Error en comando premium:', error);
-      await interaction.reply({
-        content: `Error en gestión premium: ${error.message}`,
+      const errorEmbed = createErrorEmbed(
+        "Error del Sistema",
+        "Hubo un error ejecutando el comando de gestión premium.",
+        [{
+          name: "Solución",
+          value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
+          inline: false
+        }]
+      );
+      await safeReply(interaction, {
+        embeds: [errorEmbed],
         ephemeral: true,
       });
     }

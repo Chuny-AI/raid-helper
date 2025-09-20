@@ -1,4 +1,4 @@
-const { InteractionType, Events } = require("discord.js");
+const { InteractionType, Events, EmbedBuilder } = require("discord.js");
 const { client } = require("./client");
 const { embedsMap } = require("../utils/embed");
 const { getOrCreateServer } = require("../services/serverService");
@@ -84,6 +84,210 @@ const getEvents = () => {
         await command.autocomplete(interaction);
       } catch (error) {
         console.error(error);
+      }
+    }
+
+    // Manejar StringSelectMenu
+    if (interaction.isStringSelectMenu()) {
+      // Manejar selección de categorías en create_template
+      // Manejar selección de armas para categorías personalizadas
+      if (interaction.customId.startsWith("template_weapon_select_")) {
+        await createTemplateCommand.handleWeaponSelect(interaction);
+        return;
+      }
+      
+      // Handlers removidos - no existen en la nueva versión
+      
+      if (interaction.customId.startsWith("template_weapon_category_select_")) {
+        console.log('[DEBUG] Eventos: Selección de categoría de armas detectada:', interaction.customId);
+        await createTemplateCommand.handleWeaponCategorySelect(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_change_category_")) {
+        console.log('[DEBUG] Eventos: Cambiar categoría detectado:', interaction.customId);
+        await createTemplateCommand.handleAddWeapons(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_add_more_weapons_")) {
+        console.log('[DEBUG] Eventos: Agregar más armas detectado:', interaction.customId);
+        await createTemplateCommand.handleAddWeapons(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_add_weapons_")) {
+        console.log('[DEBUG] Eventos: Agregar armas detectado:', interaction.customId);
+        await createTemplateCommand.handleAddWeapons(interaction);
+        return;
+      }
+      
+      
+      
+      if (interaction.customId.startsWith("template_categories_prev_") || interaction.customId.startsWith("template_categories_next_")) {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_emoji_category_select_")) {
+        await createTemplateCommand.handleEmojiCategorySelect(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_emoji_select_")) {
+        await createTemplateCommand.handleEmojiSelect(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_edit_emoji_category_select") {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_edit_emoji_select") {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_edit_category_select") {
+        await createTemplateCommand.handleEditCategorySelect(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_remove_category_select") {
+        await createTemplateCommand.handleRemoveCategorySelect(interaction);
+        return;
+      }
+      
+      // Manejar selección de edición en edit_template
+      if (interaction.customId === "edit_template_select") {
+        await editTemplateCommand.handleEditSelect(interaction);
+        return;
+      }
+      
+      // Manejar selección de categorías de armas en edit_template
+      if (interaction.customId === "edit_weapon_category_select") {
+        await editTemplateCommand.handleWeaponsEdit(interaction, interaction.client.templateEditState?.get(interaction.user.id)?.template);
+        return;
+      }
+    }
+
+    // Manejar Button
+    if (interaction.isButton()) {
+      // Manejar botón de continuar en create_template
+      if (interaction.customId === "template_continue") {
+        await interaction.reply({
+          content: "Por favor selecciona al menos una arma para continuar.",
+          ephemeral: true
+        });
+        return;
+      }
+      
+      // Manejar botones de create_template
+      if (interaction.customId === "template_add_category") {
+        await createTemplateCommand.handleAddCategory(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_edit_category") {
+        await createTemplateCommand.handleEditCategory(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_remove_category") {
+        await createTemplateCommand.handleRemoveCategory(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_config_final") {
+        await createTemplateCommand.handleConfigFinal(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_skip_category") {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_continue_category_")) {
+        await createTemplateCommand.handleContinueCategory(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_config_weapon_")) {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_edit_weapons_")) {
+        await createTemplateCommand.handleAddWeapons(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_edit_category_info_")) {
+        await createTemplateCommand.handleEditCategoryInfo(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_back_to_main") {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_back_to_emoji_categories") {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_back_to_emoji_categories_")) {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_back_to_edit_emoji_categories") {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      // Manejar botones de edit_template
+      if (interaction.customId.startsWith("edit_")) {
+        await editTemplateCommand.handleButtonClick(interaction);
+        return;
+      }
+      
+      // Manejadores de botones eliminados
+    }
+
+    // Manejar Modal
+    if (interaction.isModalSubmit()) {
+      if (interaction.customId === "template_new_category_modal") {
+        await createTemplateCommand.handleNewCategoryModal(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_weapon_config_modal_")) {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_weapon_search_modal_")) {
+        await createTemplateCommand.handleBackToMain(interaction);
+        return;
+      }
+      
+      if (interaction.customId === "template_final_config_modal") {
+        await createTemplateCommand.handleFinalConfigModal(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("template_edit_category_info_modal_")) {
+        await createTemplateCommand.handleEditCategoryInfoModal(interaction);
+        return;
+      }
+      
+      if (interaction.customId.startsWith("edit_") && interaction.customId.endsWith("_modal")) {
+        await editTemplateCommand.handleModalSubmit(interaction);
+        return;
       }
     }
 
@@ -240,6 +444,8 @@ const getCustomInfo = (values) => {
   const weaponId = values[4];
   return { templateName, emojiSelected, weaponName, weaponCategory, weaponId };
 };
+
+// Función eliminada - no se necesita
 
 const deleteUserIfExistsOnCurrentField = (
   embed,

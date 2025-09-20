@@ -1,6 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const { getTemplateNames } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
+const { checkPremiumAccessWithOwnerBypass } = require("../../middleware/roleCheck");
+const { createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
  * Comando para listar los templates disponibles en el servidor
@@ -12,6 +14,12 @@ module.exports = {
 
   async execute(interaction) {
     try {
+      // Verificar acceso premium con bypass para el propietario
+      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      if (!hasAccess) {
+        return;
+      }
+
       const guildId = interaction.guild.id;
 
       /**
@@ -25,34 +33,48 @@ module.exports = {
       const templates = await getTemplateNames(guildId);
 
       if (templates.length === 0) {
-        return interaction.reply({
-          content: "No hay templates disponibles en este servidor. Usa `/add` para crear uno.",
+        const infoEmbed = createInfoEmbed(
+          "No Hay Templates",
+          "No hay templates disponibles en este servidor.",
+          [{
+            name: "Solución",
+            value: "Contacta a un administrador para crear templates o activar premium en este servidor.",
+            inline: false
+          }]
+        );
+        return await safeReply(interaction, {
+          embeds: [infoEmbed],
           ephemeral: true,
         });
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle("📋 Templates Disponibles")
-        .setDescription("Lista de templates disponibles en este servidor:")
-        .setColor("#00FFFF")
-        .setTimestamp();
-
-      templates.forEach((template, index) => {
-        embed.addFields({
+      const embed = createInfoEmbed(
+        "Templates Disponibles",
+        "Lista de templates disponibles en este servidor:",
+        templates.map((template, index) => ({
           name: `${index + 1}. ${template.name}`,
           value: `Usa \`/raid template:${template.name}\` para crear una actividad`,
           inline: false
-        });
-      });
+        }))
+      );
 
-      await interaction.reply({
+      await safeReply(interaction, {
         embeds: [embed],
         ephemeral: true,
       });
     } catch (error) {
       console.error('[ERROR] Error en comando templates:', error);
-      await interaction.reply({
-        content: "Hubo un error ejecutando el comando. Inténtalo de nuevo.",
+      const errorEmbed = createErrorEmbed(
+        "Error del Sistema",
+        "Hubo un error ejecutando el comando de templates.",
+        [{
+          name: "Solución",
+          value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
+          inline: false
+        }]
+      );
+      await safeReply(interaction, {
+        embeds: [errorEmbed],
         ephemeral: true,
       });
     }

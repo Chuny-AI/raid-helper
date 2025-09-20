@@ -27,7 +27,7 @@ const createSelect = (template, templateName, interaction) => {
     
     for (const item of weapon.data) {
       const emojiId = item.emoji;
-      const weaponName = item.name;
+      const weaponName = item.name || weaponCategory; // Usar displayName si name está vacío
       const weaponId = item.id;
       select.addOptions(
         new StringSelectMenuOptionBuilder()

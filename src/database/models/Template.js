@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 
 const weaponDataSchema = new mongoose.Schema({
-  id: {
-    type: Number,
+  emojiId: {
+    type: String,
     required: true
   },
   name: {
@@ -16,10 +16,6 @@ const weaponDataSchema = new mongoose.Schema({
   image: {
     type: String,
     default: ""
-  },
-  emoji: {
-    type: String,
-    required: true
   },
   url: {
     type: String,

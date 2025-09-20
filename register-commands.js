@@ -1,7 +1,3 @@
-const { client } = require("./src/utils/client");
-const { getCommands } = require("./src/utils/commands");
-const { getEvents } = require("./src/utils/events");
-const { connectDB } = require("./src/database/connection");
 const { REST, Routes } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -37,7 +33,7 @@ function loadCommands() {
 }
 
 /**
- * Función para registrar comandos globalmente en Discord
+ * Función para registrar comandos globalmente
  */
 async function registerGlobalCommands() {
   try {
@@ -47,7 +43,6 @@ async function registerGlobalCommands() {
 
     console.log(`[INFO] Iniciando registro de ${commands.length} comandos globales...`);
 
-    // Registrar comandos globalmente
     const data = await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands },
@@ -62,7 +57,7 @@ async function registerGlobalCommands() {
 }
 
 /**
- * Función para registrar comandos en un servidor específico (guild)
+ * Función para registrar comandos en un servidor específico
  */
 async function registerGuildCommands() {
   try {
@@ -78,7 +73,6 @@ async function registerGuildCommands() {
 
     console.log(`[INFO] Iniciando registro de ${commands.length} comandos en el servidor ${guildId}...`);
 
-    // Registrar comandos en el servidor específico
     const data = await rest.put(
       Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
       { body: commands },
@@ -93,51 +87,99 @@ async function registerGuildCommands() {
 }
 
 /**
- * Función para registrar comandos según la configuración
+ * Función principal
  */
-async function registerCommands() {
-  const useGuildCommands = process.env.GUILD_COMMANDS === 'true';
-  
-  if (useGuildCommands) {
-    console.log('[INFO] Modo de desarrollo: Registrando comandos en servidor específico');
-    return await registerGuildCommands();
-  } else {
-    console.log('[INFO] Modo de producción: Registrando comandos globalmente');
-    return await registerGlobalCommands();
+async function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  switch (command) {
+    case 'global':
+      console.log('[INFO] Registrando comandos globalmente...');
+      await registerGlobalCommands();
+      break;
+    case 'guild':
+      console.log('[INFO] Registrando comandos en servidor específico...');
+      await registerGuildCommands();
+      break;
+    case 'clear-global':
+      console.log('[INFO] Limpiando comandos globales...');
+      await clearGlobalCommands();
+      break;
+    case 'clear-guild':
+      console.log('[INFO] Limpiando comandos de servidor...');
+      await clearGuildCommands();
+      break;
+    default:
+      console.log(`
+[INFO] Uso: node register-commands.js <comando>
+
+Comandos disponibles:
+  global        - Registrar comandos globalmente
+  guild         - Registrar comandos en servidor específico
+  clear-global  - Limpiar comandos globales
+  clear-guild   - Limpiar comandos de servidor
+
+Variables de entorno requeridas:
+  DISCORD_TOKEN - Token del bot de Discord
+  CLIENT_ID     - ID del cliente de la aplicación
+  GUILD_ID      - ID del servidor (solo para comandos de guild)
+      `);
+      break;
   }
 }
 
 /**
- * Función principal para inicializar el bot
+ * Función para limpiar comandos globales
  */
-async function initializeBot() {
+async function clearGlobalCommands() {
   try {
-    // Conectar a la base de datos
-    connectDB();
-
-    // Obtener los comandos de la aplicación
-    getCommands();
-
-    // Setear los eventos de la aplicación
-    getEvents();
-
-    // Registrar comandos según la configuración (global o guild)
-    const commandsRegistered = await registerCommands();
-    
-    if (commandsRegistered) {
-      console.log('[INFO] Comandos registrados correctamente, iniciando bot...');
-    } else {
-      console.log('[WARNING] Error registrando comandos, pero iniciando bot de todas formas...');
-    }
-
-    // Iniciar el bot
     const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
-    await client.login(token);
+    const rest = new REST().setToken(token);
+
+    console.log('[INFO] Limpiando comandos globales...');
+
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: [] },
+    );
+
+    console.log('[SUCCESS] Comandos globales limpiados exitosamente.');
+    return true;
   } catch (error) {
-    console.error('[ERROR] Error inicializando el bot:', error);
-    process.exit(1);
+    console.error('[ERROR] Error limpiando comandos globales:', error);
+    return false;
   }
 }
 
-// Inicializar el bot
-initializeBot();
+/**
+ * Función para limpiar comandos de servidor
+ */
+async function clearGuildCommands() {
+  try {
+    const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
+    const rest = new REST().setToken(token);
+    const guildId = process.env.GUILD_ID;
+
+    if (!guildId) {
+      console.error('[ERROR] GUILD_ID no está definido en las variables de entorno');
+      return false;
+    }
+
+    console.log(`[INFO] Limpiando comandos del servidor ${guildId}...`);
+
+    await rest.put(
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+      { body: [] },
+    );
+
+    console.log('[SUCCESS] Comandos de servidor limpiados exitosamente.');
+    return true;
+  } catch (error) {
+    console.error('[ERROR] Error limpiando comandos de servidor:', error);
+    return false;
+  }
+}
+
+// Ejecutar función principal
+main().catch(console.error);

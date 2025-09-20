@@ -1,8 +1,9 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const { migrateTemplatesFromFiles, createTemplate, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { checkPremium } = require("../../middleware/premiumCheck");
-const { checkOwner } = require("../../middleware/ownerCheck");
+const { checkPremiumAccessWithOwnerBypass } = require("../../middleware/roleCheck");
+const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
  * Comando para migrar templates manualmente desde JSON o archivos
@@ -26,19 +27,11 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar si es el propietario del bot
-      const isOwner = await checkOwner(interaction);
-      if (!isOwner) {
-        return;
-      }
-
-      /**
-       * Verificar estado premium del servidor
-       */
-      const hasPremium = await checkPremium(interaction);
-      if (!hasPremium) {
-        return;
-      }
+            // Verificar acceso premium con bypass para el propietario
+            const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+            if (!hasAccess) {
+              return;
+            }
 
       const guildId = interaction.guild.id;
       const jsonInput = interaction.options.getString("json");
@@ -48,10 +41,7 @@ module.exports = {
       await getOrCreateServer(guildId, interaction.guild.name);
 
       let migratedTemplates = [];
-      let embed = new EmbedBuilder()
-        .setTitle("🔄 Migración de Templates")
-        .setColor("#00FF00")
-        .setTimestamp();
+      let embed;
 
       if (jsonInput) {
         // Migrar desde JSON proporcionado
@@ -61,8 +51,17 @@ module.exports = {
           // Verificar si el template ya existe
           const existingTemplate = await getTemplateByName(templateData.title, guildId);
           if (existingTemplate) {
-            return interaction.reply({
-              content: `❌ Ya existe un template con el título "${templateData.title}".`,
+            const errorEmbed = createErrorEmbed(
+              "Template Duplicado",
+              `Ya existe un template con el título "${templateData.title}".`,
+              [{
+                name: "Solución",
+                value: "Usa un título diferente o elimina el template existente primero.",
+                inline: false
+              }]
+            );
+            return await safeReply(interaction, {
+              embeds: [errorEmbed],
               ephemeral: true,
             });
           }
@@ -88,16 +87,28 @@ module.exports = {
           const template = await createTemplate(templateData, guildId);
           migratedTemplates = [template];
 
-          embed.setDescription(`✅ Template "${templateData.title}" migrado exitosamente desde JSON.`)
-            .addFields({
+          embed = createSuccessEmbed(
+            "Template Migrado Exitosamente",
+            `Template "${templateData.title}" migrado exitosamente desde JSON.`,
+            [{
               name: "Template Migrado",
               value: templateData.title,
               inline: false
-            });
+            }]
+          );
 
         } catch (parseError) {
-          return interaction.reply({
-            content: `❌ Error al parsear JSON: ${parseError.message}`,
+          const errorEmbed = createErrorEmbed(
+            "Error Parseando JSON",
+            `Error al parsear el JSON proporcionado: ${parseError.message}`,
+            [{
+              name: "Solución",
+              value: "Verifica que el JSON tenga la estructura correcta y vuelve a intentar.",
+              inline: false
+            }]
+          );
+          return await safeReply(interaction, {
+            embeds: [errorEmbed],
             ephemeral: true,
           });
         }
@@ -105,29 +116,50 @@ module.exports = {
         // Migrar desde archivos
         migratedTemplates = await migrateTemplatesFromFiles(guildId);
         
-        embed.setDescription(`Se migraron ${migratedTemplates.length} templates desde archivos JSON.`)
-          .addFields({
+        embed = createSuccessEmbed(
+          "Templates Migrados desde Archivos",
+          `Se migraron ${migratedTemplates.length} templates desde archivos JSON.`,
+          [{
             name: "Templates Migrados",
             value: migratedTemplates.length > 0 
               ? migratedTemplates.map(t => t.title).join(", ")
               : "No se encontraron templates para migrar",
             inline: false
-          });
+          }]
+        );
       } else {
-        return interaction.reply({
-          content: "❌ Debes proporcionar JSON o usar la opción from_files.",
+        const errorEmbed = createErrorEmbed(
+          "Parámetros Faltantes",
+          "Debes proporcionar JSON o usar la opción from_files.",
+          [{
+            name: "Opciones Disponibles",
+            value: "• Usa `json:` para migrar un template específico\n• Usa `from_files: true` para migrar desde archivos JSON",
+            inline: false
+          }]
+        );
+        return await safeReply(interaction, {
+          embeds: [errorEmbed],
           ephemeral: true,
         });
       }
 
-      await interaction.reply({
+      await safeReply(interaction, {
         embeds: [embed],
         ephemeral: true,
       });
     } catch (error) {
       console.error('[ERROR] Error en comando migrate:', error);
-      await interaction.reply({
-        content: `Error en migración: ${error.message}`,
+      const errorEmbed = createErrorEmbed(
+        "Error del Sistema",
+        "Hubo un error ejecutando el comando de migración.",
+        [{
+          name: "Solución",
+          value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
+          inline: false
+        }]
+      );
+      await safeReply(interaction, {
+        embeds: [errorEmbed],
         ephemeral: true,
       });
     }

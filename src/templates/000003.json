@@ -1,39 +1,100 @@
 {
-  "title": "Actividad sin builds privadas",
-  "time": "30m",
-  "description": "**Reglas**\n\n**Comidas:** Todos deben llevar 3 comidas de cada tipo que sean requeridas.\n**Builds:** No se envían builds por privado, consultar en el canal.\n**Escape:** Todos deben ir con su set de escape, van bajo su propio riesgo.\n**Desconexión:** Si están haciendo avas con nosotros, por favor guardar el loot en su debido cofre si se tienen que desconectar para poder hacer el split loot y después no tener confusiones.\n**Mapa:** HO del gremio definido por el caller.\n**Loot:** Solo personas asignadas.",
-  "color": "#FF6B6B",
+  "title": "Ava",
+  "time": "1h",
+  "description": "**Reglas**\n\n**Comidas:** Todos deben llevar 6 comidas de cada tipo que sean requeridas.\n**Builds:** Revisar las builds en su respectivo canal creadas por CharlesBabbage o Chuny.\n**Escape:** Todos deben ir con su set de escape, van bajo su propio riesgo.\n**Desconexión:** Si están haciendo avas con nosotros, por favor guardar el loot en su debido cofre si se tienen que desconectar para poder hacer el split loot y después no tener confusiones.\n**Mapa:** HO del gremio definido por el caller.\n**Loot:** Solo personas asignadas.",
+  "color": "#00FFFF",
   "image": "https://media.discordapp.net/attachments/1289065983071223864/1330703272297627799/love_2.png?ex=68c2c7bf&is=68c1763f&hm=9e958511cd8eaaddd2975c1e6608b45342629536c497c2befa3df8052f1a82ad&=&format=webp&quality=lossless",
-  "url": "",
-  "roles": ["1236607272780693514", "1294008782069694464"],
+  "url": "chuny.co",
+  "roles": ["1418683842608369684"],
+  "notifyAll": true,
   "weapons": {
-    "tank": {
-      "displayName": "Martillo relámpago",
-      "defaultEmoji": "1286454020675862549",
+    "offtank": {
+      "displayName": "Maza íncubo",
+      "defaultEmoji": "1286453835937746964",
       "data": [
-       {
-         "id": 126,
-         "name": "",
-         "units": 1,
-         "image": "",
-         "emoji": "1415437240846258237",
-         "url": "https://albionfreemarket.com/builds/details/68c0f165b43c26a4dc1738a7",
-         "sendBuildToPrivate": false
-       }
+        {
+          "id": 41,
+          "name": "Maza íncubo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453835937746964",
+          "url": "https://albionfreemarket.com/builds/details/68c0f165b43c26a4dc1738a7",
+          "sendBuildToPrivate": true
+        }
       ]
     },
-    "dps": {
-      "displayName": "DPS Genérico",
+    "falce": {
+     "displayName": "Falce de cristal",
+     "defaultEmoji": "1286454785108873267",
+     "data": [
+       {
+         "id": 119,
+         "name": "Falce de cristal",
+         "units": 5,
+         "image": "",
+         "emoji": "1286454785108873267",
+         "url": "",
+         "sendBuildToPrivate": true
+       }
+     ]
+   },
+    "silencio": {
+      "displayName": "Bastón arcano",
+      "defaultEmoji": "1286454717525921812",
+      "data": [
+        {
+          "id": 110,
+          "name": "Bastón arcano",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454717525921812",
+          "url": "",
+          "sendBuildToPrivate": true
+        }
+      ]
+    },
+    "raiz": {
+      "displayName": "Bastón caído",
+      "defaultEmoji": "1286453946659115090",
+      "data": [
+        {
+          "id": 55,
+          "name": "Bastón caído",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453946659115090",
+          "url": "",
+          "sendBuildToPrivate": true
+        }
+      ]
+    },
+    "shadow": {
+      "displayName": "Invocador oscuro",
+      "defaultEmoji": "1286454278868832256",
+      "data": [
+        {
+          "id": 89,
+          "name": "Invocador oscuro",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454278868832256",
+          "url": "",
+          "sendBuildToPrivate": true
+        }
+      ]
+    },
+    "hola": {
+      "displayName": "Raíz DPS",
       "defaultEmoji": "1286453795236085770",
       "data": [
         {
           "id": 32,
-          "name": "",
-          "units": 5,
+          "name": "Bastón de raíz férrea",
+          "units": 1,
           "image": "",
           "emoji": "1286453795236085770",
           "url": "",
-          "sendBuildToPrivate": false
+          "sendBuildToPrivate": true
         }
       ]
     },
@@ -43,7 +104,7 @@
       "data": [
         {
           "id": 999,
-          "name": "",
+          "name": "Lista de espera",
           "units": 10,
           "image": "",
           "emoji": "1290446199706484736",
@@ -58,7 +119,7 @@
       "data": [
         {
           "id": 999,
-          "name": "",
+          "name": "No puedo ir",
           "units": 10,
           "image": "",
           "emoji": "1288146526698344550",
