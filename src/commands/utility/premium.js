@@ -1,8 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { updateServerPremium, isServerPremium, getPremiumServers } = require("../../services/serverService");
 const { getOrCreateServer } = require("../../services/serverService");
-const { checkOwner } = require("../../middleware/ownerCheck");
-const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
+const { isOwner } = require("../../middleware/ownerCheck");
+const { createErrorEmbed, createSuccessEmbed, createInfoEmbed } = require("../../utils/errorEmbeds");
 
 /**
  * Comando para gestionar el estado premium de servidores
@@ -47,9 +47,24 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar si es el propietario del bot
-      const isOwner = await checkOwner(interaction);
-      if (!isOwner) {
+      // Defer temprano para evitar timeouts y manejar todo con editReply
+      try {
+        await interaction.deferReply({ flags: 64 });
+      } catch (e) {
+        // Si ya fue reconocida o expirada, salimos silenciosamente
+        if (e?.code === 40060 || e?.code === 10062) return;
+        throw e;
+      }
+
+      // Verificar si es el propietario del bot (silencioso)
+      const owner = await isOwner(interaction);
+      if (!owner) {
+        const embed = createErrorEmbed(
+          "Acceso Denegado",
+          "Solo el propietario del bot puede usar este comando.",
+          []
+        );
+        await interaction.editReply({ embeds: [embed] });
         return;
       }
 
@@ -71,10 +86,8 @@ module.exports = {
               inline: false
             }]
           );
-          return await safeReply(interaction, {
-            embeds: [errorEmbed],
-            ephemeral: true,
-          });
+          await interaction.editReply({ embeds: [errorEmbed] });
+          return;
         }
       } else {
         targetGuild = interaction.guild;
@@ -87,9 +100,9 @@ module.exports = {
 
       if (subcommand === "set") {
         const status = interaction.options.getBoolean("status");
-        
+
         await updateServerPremium(guildId, status);
-        
+
         embed = createSuccessEmbed(
           "Gestión Premium",
           `Estado premium ${status ? "activado" : "desactivado"} para el servidor.`,
@@ -110,7 +123,7 @@ module.exports = {
 
       } else if (subcommand === "check") {
         const isPremium = await isServerPremium(guildId);
-        
+
         embed = createInfoEmbed(
           "Estado Premium",
           `Estado premium del servidor: ${isPremium ? "Activo" : "Inactivo"}`,
@@ -131,13 +144,13 @@ module.exports = {
 
       } else if (subcommand === "list") {
         const premiumServers = await getPremiumServers();
-        
+
         embed = createInfoEmbed(
           "Lista de Servidores Premium",
           `Servidores premium: ${premiumServers.length}`,
           [{
             name: "Servidores Premium",
-            value: premiumServers.length > 0 
+            value: premiumServers.length > 0
               ? premiumServers.map(server => `• ${server.guildName} (${server.guildId})`).join("\n")
               : "No hay servidores premium",
             inline: false
@@ -145,10 +158,7 @@ module.exports = {
         );
       }
 
-      await safeReply(interaction, {
-        embeds: [embed],
-        ephemeral: true,
-      });
+      await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.error('[ERROR] Error en comando premium:', error);
       const errorEmbed = createErrorEmbed(
@@ -160,10 +170,13 @@ module.exports = {
           inline: false
         }]
       );
-      await safeReply(interaction, {
-        embeds: [errorEmbed],
-        ephemeral: true,
-      });
+      try {
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply({ embeds: [errorEmbed] });
+        } else {
+          await interaction.reply({ embeds: [errorEmbed], flags: 64 });
+        }
+      } catch (_) { }
     }
   },
 };

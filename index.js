@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const { client } = require("./src/utils/client");
 const { getCommands } = require("./src/utils/commands");
 const { getEvents } = require("./src/utils/events");
@@ -5,6 +7,9 @@ const { connectDB } = require("./src/database/connection");
 const { REST, Routes } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
+
+// Hacer el cliente disponible globalmente para los servicios
+global.discordClient = client;
 
 /**
  * Función para cargar todos los comandos desde los archivos
@@ -19,11 +24,11 @@ function loadCommands() {
     const commandFiles = fs
       .readdirSync(commandsPath)
       .filter((file) => file.endsWith('.js'));
-    
+
     for (const file of commandFiles) {
       const filePath = path.join(commandsPath, file);
       const command = require(filePath);
-      
+
       if ('data' in command && 'execute' in command) {
         commands.push(command.data.toJSON());
         console.log(`[INFO] Comando cargado: ${command.data.name}`);
@@ -97,7 +102,7 @@ async function registerGuildCommands() {
  */
 async function registerCommands() {
   const useGuildCommands = process.env.GUILD_COMMANDS === 'true';
-  
+
   if (useGuildCommands) {
     console.log('[INFO] Modo de desarrollo: Registrando comandos en servidor específico');
     return await registerGuildCommands();
@@ -123,12 +128,15 @@ async function initializeBot() {
 
     // Registrar comandos según la configuración (global o guild)
     const commandsRegistered = await registerCommands();
-    
+
     if (commandsRegistered) {
       console.log('[INFO] Comandos registrados correctamente, iniciando bot...');
     } else {
       console.log('[WARNING] Error registrando comandos, pero iniciando bot de todas formas...');
     }
+
+    // Hacer el cliente disponible globalmente para servicios
+    global.discordClient = client;
 
     // Iniciar el bot
     const token = process.env.DISCORD_TOKEN || process.env.TOKEN;

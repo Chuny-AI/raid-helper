@@ -40,6 +40,11 @@ const checkAuthorizedRole = async (interaction) => {
  */
 const checkPremiumAccess = async (interaction) => {
   try {
+    // Verificar que la interacción sea en un servidor
+    if (!interaction.guild || !interaction.member) {
+      return false;
+    }
+
     // Verificar si es el propietario del bot
     let botOwnerId;
     const application = interaction.client.application;
@@ -54,7 +59,7 @@ const checkPremiumAccess = async (interaction) => {
     }
 
     // Verificar si es administrador del servidor
-    if (interaction.member && interaction.member.permissions.has('Administrator')) {
+    if (interaction.member.permissions.has('Administrator')) {
       return true;
     }
 
@@ -80,6 +85,11 @@ const checkPremiumAccess = async (interaction) => {
  */
 const checkPremiumAccessWithOwnerBypass = async (interaction) => {
   try {
+    // Verificar que la interacción sea en un servidor
+    if (!interaction.guild) {
+      return false; // No permitir comandos premium en DMs
+    }
+
     // Verificar si es el propietario del bot
     let botOwnerId;
     const application = interaction.client.application;
@@ -142,10 +152,7 @@ const checkPremiumAccessWithOwnerBypass = async (interaction) => {
             }
           );
 
-        await interaction.reply({
-          embeds: [premiumEmbed],
-          ephemeral: true,
-        });
+        // No hacer reply aquí, el comando principal manejará la respuesta
         return false;
       }
     }

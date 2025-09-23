@@ -251,6 +251,13 @@ const createSuccessEmbed = (title, description, fields = []) => {
  */
 const safeReply = async (interaction, options) => {
   try {
+    // Map deprecated ephemeral option to flags:64
+    if (options && 'ephemeral' in options) {
+      if (options.ephemeral) {
+        options.flags = 64;
+      }
+      delete options.ephemeral;
+    }
     if (interaction.replied || interaction.deferred) {
       await interaction.editReply(options);
     } else {
@@ -259,10 +266,17 @@ const safeReply = async (interaction, options) => {
   } catch (error) {
     console.error('[ERROR] Error en safeReply:', error);
     try {
-      if (interaction.replied || interaction.deferred) {
+      if (options && 'ephemeral' in options) {
+        if (options.ephemeral) {
+          options.flags = 64;
+        }
+        delete options.ephemeral;
+      }
+      // Si ya fue reconocida la interacción (40060), intenta followUp; si es desconocida (10062), ignora silenciosamente
+      if ((interaction.replied || interaction.deferred) && error.code !== 10062) {
         await interaction.followUp({
           content: "⚠️ Error procesando la respuesta, pero el comando continúa.",
-          ephemeral: true
+          flags: 64
         });
       }
     } catch (followUpError) {

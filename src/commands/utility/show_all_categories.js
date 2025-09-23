@@ -13,15 +13,61 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar acceso premium con bypass para el propietario
-      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
-      if (!hasAccess) {
-        return;
+      // Verificar acceso premium - SIN BYPASS PARA EL DUEÑO
+      const { isServerPremium } = require('../../services/serverService');
+      const isPremium = await isServerPremium(interaction.guild.id);
+
+      if (!isPremium) {
+        const { EmbedBuilder } = require('discord.js');
+        const premiumEmbed = new EmbedBuilder()
+          .setTitle("💎 Servidor Premium Requerido")
+          .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
+          .setColor("#FFD700")
+          .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+          .setTimestamp()
+          .setFooter({
+            text: "Avalon Raid Helper - Premium",
+            iconURL: "https://i.imgur.com/AfFp7pu.png",
+          })
+          .setAuthor({
+            name: "Chuny Dev",
+            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            url: "https://www.twitch.tv/chuny_dev",
+          })
+          .addFields(
+            {
+              name: "🔗 Mis Redes Sociales",
+              value: "¡Sígueme para estar al día con las últimas actualizaciones!",
+              inline: false
+            },
+            {
+              name: "🎮 Twitch",
+              value: "[@chuny_dev](https://www.twitch.tv/chuny_dev)",
+              inline: true
+            },
+            {
+              name: "💬 Discord",
+              value: "[Mi Canal](https://discord.gg/6fFHsmewSn)",
+              inline: true
+            },
+            {
+              name: "👤 Contacto Directo",
+              value: "<@464241835930419210>",
+              inline: true
+            },
+            {
+              name: "💡 ¿Cómo obtener Premium?",
+              value: "Contacta directamente a <@464241835930419210> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para más información.",
+              inline: false
+            }
+          );
+
+        return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
       }
 
       try {
         const categories = await getWeaponCategories();
-        
+
         let embed;
         if (categories.length === 0) {
           embed = createInfoEmbed(
@@ -34,10 +80,10 @@ module.exports = {
             }]
           );
         } else {
-          const categoryList = categories.map(cat => 
+          const categoryList = categories.map(cat =>
             `• ${cat.displayName} (${cat.key})`
           ).join('\n');
-          
+
           embed = createInfoEmbed(
             "Categorías de Armas",
             `**Categorías disponibles:**\n\n${categoryList}`,
@@ -60,7 +106,7 @@ module.exports = {
             inline: false
           }]
         );
-        
+
         await safeReply(interaction, {
           embeds: [errorEmbed],
           ephemeral: true,
@@ -77,7 +123,7 @@ module.exports = {
           inline: false
         }]
       );
-      
+
       await safeReply(interaction, {
         embeds: [errorEmbed],
         ephemeral: true,

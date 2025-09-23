@@ -10,27 +10,30 @@ const parseTime = (timeString) => {
 
   // Limpiar el string y convertir a minúsculas
   const cleanTime = timeString.trim().toLowerCase();
-  
-  // Regex mejorado para capturar horas y minutos
-  const regex = /^(\d+)h?\s*(\d+)?m?$/;
-  const matches = cleanTime.match(regex);
-
-  if (!matches) {
-    throw new Error(`Formato de tiempo inválido: "${timeString}". Usa formato como "1h", "30m", "1h 30m"`);
-  }
 
   let hours = 0;
   let minutes = 0;
-  
-  // Si tiene 'h' o es un número grande, asumir horas
-  if (cleanTime.includes('h') || (matches[1] && parseInt(matches[1]) > 12)) {
-    hours = parseInt(matches[1], 10);
-    if (matches[2]) {
-      minutes = parseInt(matches[2], 10);
+
+  // Regex para capturar horas
+  const hoursMatch = cleanTime.match(/(\d+)h/);
+  if (hoursMatch) {
+    hours = parseInt(hoursMatch[1], 10);
+  }
+
+  // Regex para capturar minutos
+  const minutesMatch = cleanTime.match(/(\d+)m/);
+  if (minutesMatch) {
+    minutes = parseInt(minutesMatch[1], 10);
+  }
+
+  // Si no hay 'h' ni 'm', asumir que es solo un número en minutos
+  if (!hoursMatch && !minutesMatch) {
+    const numberMatch = cleanTime.match(/^(\d+)$/);
+    if (numberMatch) {
+      minutes = parseInt(numberMatch[1], 10);
+    } else {
+      throw new Error(`Formato de tiempo inválido: "${timeString}". Usa formato como "1h", "30m", "1h 30m", o "15"`);
     }
-  } else {
-    // Si no tiene 'h' y es un número pequeño, asumir minutos
-    minutes = parseInt(matches[1], 10);
   }
 
   // Validar valores
@@ -47,7 +50,7 @@ const parseTime = (timeString) => {
    * Los minutos se multiplican por 60 segundos y 1000 milisegundos
    */
   const totalMs = hours * 60 * 60 * 1000 + minutes * 60 * 1000;
-  
+
   if (totalMs <= 0) {
     throw new Error('El tiempo debe ser mayor a 0');
   }
@@ -64,7 +67,7 @@ const formatTime = (milliseconds) => {
   const totalMinutes = Math.floor(milliseconds / (60 * 1000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  
+
   if (hours > 0) {
     return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   } else {

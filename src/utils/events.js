@@ -3,11 +3,12 @@ const { client } = require("./client");
 const { embedsMap } = require("../utils/embed");
 const { getOrCreateServer } = require("../services/serverService");
 const { filterCommand } = require("./commandFilter");
+const ClaimService = require("../services/claimService");
 
 const getEvents = () => {
   client.once(Events.ClientReady, async (readyClient) => {
     console.log(`El bot ${readyClient.user.tag} está listo.`);
-    
+
     // Crear registros de servidores existentes (sin migrar templates)
     try {
       const guilds = readyClient.guilds.cache;
@@ -17,6 +18,13 @@ const getEvents = () => {
       console.log('[INFO] Servidores registrados en la base de datos');
     } catch (error) {
       console.error('[ERROR] Error al registrar servidores:', error);
+    }
+
+    // Ejecutar limpieza de recordatorios huérfanos al iniciar
+    try {
+      await ClaimService.cleanupOrphanReminders();
+    } catch (error) {
+      console.error('[ERROR] Error en limpieza de recordatorios huérfanos:', error);
     }
   });
 
@@ -95,76 +103,76 @@ const getEvents = () => {
         await createTemplateCommand.handleWeaponSelect(interaction);
         return;
       }
-      
+
       // Handlers removidos - no existen en la nueva versión
-      
+
       if (interaction.customId.startsWith("template_weapon_category_select_")) {
         console.log('[DEBUG] Eventos: Selección de categoría de armas detectada:', interaction.customId);
         await createTemplateCommand.handleWeaponCategorySelect(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_change_category_")) {
         console.log('[DEBUG] Eventos: Cambiar categoría detectado:', interaction.customId);
         await createTemplateCommand.handleAddWeapons(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_add_more_weapons_")) {
         console.log('[DEBUG] Eventos: Agregar más armas detectado:', interaction.customId);
         await createTemplateCommand.handleAddWeapons(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_add_weapons_")) {
         console.log('[DEBUG] Eventos: Agregar armas detectado:', interaction.customId);
         await createTemplateCommand.handleAddWeapons(interaction);
         return;
       }
-      
-      
-      
+
+
+
       if (interaction.customId.startsWith("template_categories_prev_") || interaction.customId.startsWith("template_categories_next_")) {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_emoji_category_select_")) {
         await createTemplateCommand.handleEmojiCategorySelect(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_emoji_select_")) {
         await createTemplateCommand.handleEmojiSelect(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_edit_emoji_category_select") {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_edit_emoji_select") {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_edit_category_select") {
         await createTemplateCommand.handleEditCategorySelect(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_remove_category_select") {
         await createTemplateCommand.handleRemoveCategorySelect(interaction);
         return;
       }
-      
+
       // Manejar selección de edición en edit_template
       if (interaction.customId === "edit_template_select") {
         await editTemplateCommand.handleEditSelect(interaction);
         return;
       }
-      
+
       // Manejar selección de categorías de armas en edit_template
       if (interaction.customId === "edit_weapon_category_select") {
         await editTemplateCommand.handleWeaponsEdit(interaction, interaction.client.templateEditState?.get(interaction.user.id)?.template);
@@ -182,79 +190,79 @@ const getEvents = () => {
         });
         return;
       }
-      
+
       // Manejar botones de create_template
       if (interaction.customId === "template_add_category") {
         await createTemplateCommand.handleAddCategory(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_edit_category") {
         await createTemplateCommand.handleEditCategory(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_remove_category") {
         await createTemplateCommand.handleRemoveCategory(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_config_final") {
         await createTemplateCommand.handleConfigFinal(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_skip_category") {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_continue_category_")) {
         await createTemplateCommand.handleContinueCategory(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_config_weapon_")) {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_edit_weapons_")) {
         await createTemplateCommand.handleAddWeapons(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_edit_category_info_")) {
         await createTemplateCommand.handleEditCategoryInfo(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_back_to_main") {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_back_to_emoji_categories") {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_back_to_emoji_categories_")) {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_back_to_edit_emoji_categories") {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       // Manejar botones de edit_template
       if (interaction.customId.startsWith("edit_")) {
         await editTemplateCommand.handleButtonClick(interaction);
         return;
       }
-      
+
       // Manejadores de botones eliminados
     }
 
@@ -264,27 +272,27 @@ const getEvents = () => {
         await createTemplateCommand.handleNewCategoryModal(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_weapon_config_modal_")) {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_weapon_search_modal_")) {
         await createTemplateCommand.handleBackToMain(interaction);
         return;
       }
-      
+
       if (interaction.customId === "template_final_config_modal") {
         await createTemplateCommand.handleFinalConfigModal(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("template_edit_category_info_modal_")) {
         await createTemplateCommand.handleEditCategoryInfoModal(interaction);
         return;
       }
-      
+
       if (interaction.customId.startsWith("edit_") && interaction.customId.endsWith("_modal")) {
         await editTemplateCommand.handleModalSubmit(interaction);
         return;
@@ -334,7 +342,7 @@ const getEvents = () => {
             field.value += `\n<:${emojiSelected}:${emojiSelected}> ${interaction.user}`;
           }
         });
-        
+
         // Actualizar participantes del recordatorio
         try {
           const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
@@ -345,19 +353,19 @@ const getEvents = () => {
         } catch (reminderError) {
           console.error('[ERROR] Error actualizando participantes del recordatorio:', reminderError);
         }
-        
+
         // Obtener la URL de la build del arma seleccionada
         try {
           const { getTemplateByName } = require('../services/templateService');
           const { createBuildEmbed, createNoBuildEmbed } = require('./embed');
           const template = await getTemplateByName(templateName, interaction.guild.id);
-          
+
           if (template && template.weapons) {
             // Buscar el arma específica por weaponId
             let weaponUrl = null;
             let weaponEmoji = null;
             let shouldSendBuild = true; // Por defecto true si no se especifica
-            
+
             for (const [key, weapon] of Object.entries(template.weapons)) {
               if (weapon.data && Array.isArray(weapon.data)) {
                 const weaponItem = weapon.data.find(item => item.id.toString() === weaponId);
@@ -370,7 +378,7 @@ const getEvents = () => {
                 }
               }
             }
-            
+
             // Solo enviar si la arma específica tiene sendBuildToPrivate habilitado
             if (shouldSendBuild) {
               // Crear y enviar embed con la build
@@ -380,7 +388,7 @@ const getEvents = () => {
               } else {
                 buildEmbed = createNoBuildEmbed(weaponCategory, templateName);
               }
-              
+
               try {
                 await interaction.user.send({
                   embeds: [buildEmbed],
@@ -398,7 +406,7 @@ const getEvents = () => {
         } catch (error) {
           console.error('Error obteniendo URL del arma:', error);
         }
-        
+
         await interaction.update({
           embeds: [embed],
         });
@@ -480,7 +488,7 @@ const deleteUserIfExistsOnCurrentField = (
  */
 const extractParticipantsFromEmbed = (embed) => {
   const participants = new Set();
-  
+
   try {
     // Verificar si el embed tiene la estructura correcta
     if (embed && embed.data && embed.data.fields) {
@@ -498,7 +506,7 @@ const extractParticipantsFromEmbed = (embed) => {
         }
       });
     }
-    
+
     console.log(`[DEBUG] Participantes extraídos: ${Array.from(participants).length} usuarios`);
     return Array.from(participants);
   } catch (error) {

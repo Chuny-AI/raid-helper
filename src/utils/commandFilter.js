@@ -8,7 +8,7 @@ const { createErrorEmbed, safeReply } = require('./errorEmbeds');
  */
 const commandVisibilityMap = {
   'raid': 'role_based',
-  'templates': 'role_based', 
+  'templates': 'role_based',
   'create_template': 'role_based',
   'edit_template': 'role_based',
   'upload_weapons': 'owner',
@@ -17,7 +17,9 @@ const commandVisibilityMap = {
   'roles': 'admin_owner',
   'premium': 'owner',
   'status': 'all',
-  'migrate': 'role_based'
+  'migrate': 'role_based',
+  'claim': 'premium_only',
+  'claim-config': 'admin_owner'
 };
 
 /**
@@ -48,6 +50,11 @@ const filterCommand = async (interaction) => {
       case 'role_based':
         shouldShow = await checkPremiumAccess(interaction);
         break;
+      case 'premium_only':
+        // Para claim: permitir si el servidor es premium (sin verificar roles de usuario)
+        const { isServerPremium } = require('../services/serverService');
+        shouldShow = await isServerPremium(interaction.guild.id);
+        break;
       case 'admin_owner':
         // Verificar si es propietario del bot
         let botOwnerId;
@@ -57,7 +64,7 @@ const filterCommand = async (interaction) => {
         } else {
           botOwnerId = process.env.BOT_OWNER_ID;
         }
-        
+
         if (interaction.user.id === botOwnerId) {
           shouldShow = true;
         } else {
@@ -74,7 +81,7 @@ const filterCommand = async (interaction) => {
     if (!shouldShow) {
       // Crear embed de error según el tipo de comando
       let embed;
-      
+
       if (commandType === 'role_based') {
         embed = createErrorEmbed(
           "Acceso Denegado",
@@ -86,6 +93,16 @@ const filterCommand = async (interaction) => {
           }, {
             name: "Comandos Disponibles",
             value: "• `/show_all_weapons` - Ver armas disponibles\n• `/show_all_categories` - Ver categorías\n• `/roles list` - Ver roles autorizados",
+            inline: false
+          }]
+        );
+      } else if (commandType === 'premium_only') {
+        embed = createErrorEmbed(
+          "Servidor Premium Requerido",
+          "Este comando solo está disponible en servidores premium.",
+          [{
+            name: "💡 ¿Cómo obtener Premium?",
+            value: "Contacta directamente a <@464241835930419210> para activar premium en este servidor.",
             inline: false
           }]
         );
@@ -120,7 +137,7 @@ const filterCommand = async (interaction) => {
           }]
         );
       }
-      
+
       await safeReply(interaction, {
         embeds: [embed],
         ephemeral: true,

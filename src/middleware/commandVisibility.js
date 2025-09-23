@@ -20,6 +20,10 @@ const shouldShowCommand = async (interaction, commandType) => {
       
       case 'admin':
         // Solo mostrar comandos de admin si el usuario es administrador
+        // Verificar que la interacción sea en un servidor y que member exista
+        if (!interaction.guild || !interaction.member) {
+          return false;
+        }
         return interaction.member.permissions.has('Administrator');
       
       default:

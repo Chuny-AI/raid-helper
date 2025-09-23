@@ -3,14 +3,13 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node --watch --env-file=.env index.js",
-    "start:prod": "node --env-file=.env index.js",
-    "commands": "node --env-file=.env commands.js",
-    "setup": "node setup.js",
-    "register:global": "node --env-file=.env register-commands.js global",
-    "register:guild": "node --env-file=.env register-commands.js guild",
-    "clear:global": "node --env-file=.env register-commands.js clear-global",
-    "clear:guild": "node --env-file=.env register-commands.js clear-guild"
+    "start": "node --env-file=.env index.js",
+    "dev": "nodemon --env-file=.env index.js",
+    "register": "node --env-file=.env register-commands.js",
+    "cleanup-db": "node --env-file=.env cleanup-database.js",
+    "check-roles": "node --env-file=.env check-authorized-roles.js",
+    "delete-global": "node --env-file=.env delete-global-commands.js",
+    "check-commands": "node --env-file=.env check-commands.js"
   },
   "keywords": [],
   "author": "Edwin J. Páez",
@@ -18,9 +17,10 @@
   "description": "Discord bot",
   "dependencies": {
     "discord.js": "^14.16.2",
+    "dotenv": "^16.3.1",
     "install": "^0.13.0",
-    "npm": "^10.8.3",
     "mongoose": "^8.0.3",
-    "dotenv": "^16.3.1"
+    "node-schedule": "^2.1.1",
+    "npm": "^10.8.3"
   }
 }

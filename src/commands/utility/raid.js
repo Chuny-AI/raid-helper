@@ -94,18 +94,18 @@ module.exports = {
 
   async autocomplete(interaction) {
     const focusedOption = interaction.options.getFocused(true);
-    
+
     if (focusedOption.name === 'template') {
       try {
         const guildId = interaction.guild.id;
         const templates = await getTemplateNames(guildId);
-        
+
         const filtered = templates
-          .filter(template => 
+          .filter(template =>
             template.name.toLowerCase().includes(focusedOption.value.toLowerCase())
           )
           .slice(0, 25); // Discord limita a 25 opciones
-        
+
         await interaction.respond(
           filtered.map(template => ({
             name: template.name,
@@ -125,10 +125,56 @@ module.exports = {
       await interaction.deferReply();
 
       /**
-       * Verificar acceso premium con bypass para el propietario
+       * Verificar acceso premium - SIN BYPASS PARA EL DUEÑO
        */
-      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
-      if (!hasAccess) {
+      const { isServerPremium } = require('../../services/serverService');
+      const isPremium = await isServerPremium(interaction.guild.id);
+
+      if (!isPremium) {
+        const premiumEmbed = new EmbedBuilder()
+          .setTitle("💎 Servidor Premium Requerido")
+          .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
+          .setColor("#FFD700")
+          .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+          .setTimestamp()
+          .setFooter({
+            text: "Avalon Raid Helper - Premium",
+            iconURL: "https://i.imgur.com/AfFp7pu.png",
+          })
+          .setAuthor({
+            name: "Chuny Dev",
+            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            url: "https://www.twitch.tv/chuny_dev",
+          })
+          .addFields(
+            {
+              name: "🔗 Mis Redes Sociales",
+              value: "¡Sígueme para estar al día con las últimas actualizaciones!",
+              inline: false
+            },
+            {
+              name: "🎮 Twitch",
+              value: "[@chuny_dev](https://www.twitch.tv/chuny_dev)",
+              inline: true
+            },
+            {
+              name: "💬 Discord",
+              value: "[Mi Canal](https://discord.gg/6fFHsmewSn)",
+              inline: true
+            },
+            {
+              name: "👤 Contacto Directo",
+              value: "<@464241835930419210>",
+              inline: true
+            },
+            {
+              name: "💡 ¿Cómo obtener Premium?",
+              value: "Contacta directamente a <@464241835930419210> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para más información.",
+              inline: false
+            }
+          );
+
+        await interaction.editReply({ embeds: [premiumEmbed] });
         return;
       }
 
@@ -155,7 +201,7 @@ module.exports = {
        * Obtener la plantilla de la base de datos
        */
       const template = await getTemplateByName(templateName, guildId);
-      
+
       if (!template) {
         const errorEmbed = createErrorEmbed(
           "Plantilla No Encontrada",
@@ -209,18 +255,23 @@ module.exports = {
         });
       }
 
-      // Validar reminder si se proporcionó
-      if (reminder) {
+      // Validar reminder o usar el del template
+      let finalReminder = reminder;
+      if (!reminder && template.reminder) {
+        finalReminder = template.reminder;
+      }
+
+      if (finalReminder) {
         let reminderTime;
         try {
-          reminderTime = parseTime(reminder);
+          reminderTime = parseTime(finalReminder);
         } catch (reminderError) {
           const errorEmbed = createErrorEmbed(
             "Error en el Tiempo del Recordatorio",
             `Error procesando el tiempo del recordatorio: ${reminderError.message}`,
             [{
               name: "Formato Correcto",
-              value: "Usa formatos como: `10m`, `30m`, `1h`, `15s`",
+              value: "Usa formatos como: `10m`, `30m`, `1h`",
               inline: false
             }]
           );
@@ -229,7 +280,7 @@ module.exports = {
             ephemeral: true,
           });
         }
-        
+
         if (reminderTime >= delayTime) {
           const warningEmbed = createWarningEmbed(
             "Tiempo de Recordatorio Inválido",
@@ -284,11 +335,11 @@ module.exports = {
         try {
           // Dividir por comas y limpiar cada ID de rol
           const roleIds = rolesToNotifyInput.split(',').map(id => id.trim()).filter(id => id);
-          
+
           // Buscar roles por ID
           for (const roleId of roleIds) {
             const role = interaction.guild.roles.cache.get(roleId);
-            
+
             if (!role) {
               // Mostrar roles disponibles para ayudar al usuario
               const availableRoles = interaction.guild.roles.cache
@@ -296,7 +347,7 @@ module.exports = {
                 .map(r => `${r.name} (${r.id})`)
                 .slice(0, 10)
                 .join('\n');
-              
+
               const errorEmbed = createErrorEmbed(
                 "Rol No Encontrado",
                 `El rol con ID "${roleId}" no existe en este servidor.`,
@@ -319,7 +370,7 @@ module.exports = {
                 ephemeral: true,
               });
             }
-            
+
             notificationRoles.push(role.id);
           }
         } catch (error) {
@@ -350,17 +401,17 @@ module.exports = {
       }
 
       const row = createSelect(template, templateName, interaction);
-      
+
       // Crear embed usando la función original con roles finales
-      const embed = createEmbed({ 
-        title, 
-        delayTime, 
-        template, 
-        color, 
-        image, 
-        description, 
-        user, 
-        finalRoles: finalNotificationRoles 
+      const embed = createEmbed({
+        title,
+        delayTime,
+        template,
+        color,
+        image,
+        description,
+        user,
+        finalRoles: finalNotificationRoles
       });
 
       if (!embedsMap[templateName]) {
@@ -371,17 +422,17 @@ module.exports = {
 
 
       /**
-       * Configurar recordatorio si se especificó
+       * Configurar recordatorio si se especificó o si el template tiene uno
        */
-      if (reminder) {
+      if (finalReminder) {
         try {
           const { createReminder, addInterestedUser } = require('../../utils/reminderManager');
           const activityTitle = title || template.title;
           const activityTime = time || template.time;
-          
+
           createReminder(
             interaction.id,
-            reminder,
+            finalReminder,
             activityTime,
             templateName,
             interaction.channel.id,
@@ -389,11 +440,11 @@ module.exports = {
             activityTitle,
             [] // Los participantes se actualizarán dinámicamente
           );
-          
+
           // Agregar al creador del evento como usuario interesado
           addInterestedUser(interaction.id, interaction.user.id);
-          
-          console.log(`[INFO] Recordatorio configurado para ${templateName} en ${reminder}`);
+
+          console.log(`[INFO] Recordatorio configurado para ${templateName} en ${finalReminder}`);
         } catch (reminderError) {
           console.error('[ERROR] Error configurando recordatorio:', reminderError);
         }
@@ -401,22 +452,22 @@ module.exports = {
 
       // Crear contenido de notificación basado en los roles finales ya determinados
       let notificationContent = '';
-      
+
       if (finalNotificationRoles.length > 0) {
         // Crear menciones directas de los roles finales
         const roleMentions = finalNotificationRoles.map(roleId => `<@&${roleId}>`).join(' ');
         notificationContent += `${roleMentions}\n`;
       }
-      
+
       // Enviar notificación solo si hay roles especificados
       if (finalNotificationRoles.length > 0) {
         try {
           // Obtener miembros con los roles especificados
           const members = await interaction.guild.members.fetch();
-          const targetMembers = members.filter(member => 
+          const targetMembers = members.filter(member =>
             finalNotificationRoles.some(roleId => member.roles.cache.has(roleId))
           );
-          
+
           // Crear embed de notificación
           const activityTitle = title || template.title;
           const timeRemaining = time || template.time;
@@ -426,7 +477,7 @@ module.exports = {
             timeRemaining,
             user.toString()
           );
-          
+
           // Enviar DM a cada miembro con los roles especificados
           for (const member of targetMembers.values()) {
             try {
@@ -437,7 +488,7 @@ module.exports = {
               console.log(`[INFO] No se pudo enviar DM a ${member.user.username}: ${dmError.message}`);
             }
           }
-          
+
           console.log(`[INFO] Notificación enviada a ${targetMembers.size} miembros con roles específicos`);
         } catch (notifyError) {
           console.error('[ERROR] Error enviando notificaciones a roles:', notifyError);
