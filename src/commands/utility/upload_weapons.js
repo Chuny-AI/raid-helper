@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getAllWeapons, createWeapon, deleteWeapon } = require("../../services/weaponService");
 const { checkOwner } = require("../../middleware/ownerCheck");
-const { createErrorEmbed, createSuccessEmbed, createPremiumEmbed } = require("../../utils/errorEmbeds");
+const { createErrorEmbed, createSuccessEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
 const Weapon = require("../../database/models/Weapon");
 const fs = require('fs');
 const path = require('path');
