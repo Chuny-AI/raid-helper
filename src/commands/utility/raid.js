@@ -1,22 +1,11 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { createEmbed, embedsMap, createMassNotificationEmbed } = require("../../utils/embed");
 const { parseTime } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
 const { createSelect } = require("../../utils/select");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
-const { checkPremiumAccessWithOwnerBypass } = require("../../middleware/roleCheck");
-const { isUserAuthorized } = require("../../services/authorizedRoleService");
-const { createErrorEmbed, createWarningEmbed, createInfoEmbed, createSuccessEmbed, safeReply } = require("../../utils/errorEmbeds");
-
-
-const pingRoles = (template) => {
-  const roles = template.roles;
-  if (roles && roles.length > 0) {
-    return roles.map((roleId) => `<@&${roleId}>`).join(", ");
-  }
-};
-
+const { createErrorEmbed, createWarningEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 
 /**
@@ -128,50 +117,8 @@ module.exports = {
       const isPremium = await isServerPremium(interaction.guild.id);
 
       if (!isPremium) {
-        const premiumEmbed = new EmbedBuilder()
-          .setTitle("💎 Servidor Premium Requerido")
-          .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
-          .setColor("#FFD700")
-          .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
-          .setTimestamp()
-          .setFooter({
-            text: "Chuny BOT - Premium",
-            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
-          })
-          .setAuthor({
-            name: "Chuny Dev",
-            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
-            url: "https://www.twitch.tv/chuny_dev",
-          })
-          .addFields(
-            {
-              name: "🔗 Mis Redes Sociales",
-              value: "¡Sígueme para estar al día con las últimas actualizaciones!",
-              inline: false
-            },
-            {
-              name: "🎮 Twitch",
-              value: "[@chuny_dev](https://www.twitch.tv/chuny_dev)",
-              inline: true
-            },
-            {
-              name: "💬 Discord",
-              value: "[Mi Canal](https://discord.gg/6fFHsmewSn)",
-              inline: true
-            },
-            {
-              name: "👤 Contacto Directo",
-              value: "<@464241835930419210>",
-              inline: true
-            },
-            {
-              name: "💡 ¿Cómo obtener Premium?",
-              value: "Contacta directamente a <@464241835930419210> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para más información.",
-              inline: false
-            }
-          );
-
-        await interaction.editReply({ embeds: [premiumEmbed] });
+        const premiumEmbed = createPremiumEmbed();
+        await interaction.editReply({ embeds: [premiumEmbed], ephemeral: true });
         return;
       }
 
@@ -502,3 +449,4 @@ module.exports = {
   },
 
 };
+

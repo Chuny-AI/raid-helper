@@ -46,12 +46,12 @@ const createErrorEmbed = (title, description, fields = []) => {
     },
     {
       name: "👤 Contacto Directo",
-      value: "<@464241835930419210>",
+      value: `<@${process.env.BOT_OWNER_ID}>`,
       inline: true
     },
     {
       name: "💡 ¿Necesitas Ayuda?",
-      value: "Contacta directamente a <@464241835930419210> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para soporte.",
+      value: `Contacta directamente a <@${process.env.BOT_OWNER_ID}> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para soporte.`,
       inline: false
     }
   );
@@ -105,12 +105,12 @@ const createWarningEmbed = (title, description, fields = []) => {
     },
     {
       name: "👤 Contacto Directo",
-      value: "<@464241835930419210>",
+      value: `<@${process.env.BOT_OWNER_ID}>`,
       inline: true
     },
     {
       name: "💡 ¿Necesitas Ayuda?",
-      value: "Contacta directamente a <@464241835930419210> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para soporte.",
+      value: `Contacta directamente a <@${process.env.BOT_OWNER_ID}> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para soporte.`,
       inline: false
     }
   );
@@ -164,12 +164,12 @@ const createInfoEmbed = (title, description, fields = []) => {
     },
     {
       name: "👤 Contacto Directo",
-      value: "<@464241835930419210>",
+      value: `<@${process.env.BOT_OWNER_ID}>`,
       inline: true
     },
     {
       name: "💡 ¿Necesitas Ayuda?",
-      value: "Contacta directamente a <@464241835930419210> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para soporte.",
+      value: `Contacta directamente a <@${process.env.BOT_OWNER_ID}> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para soporte.`,
       inline: false
     }
   );
@@ -223,12 +223,12 @@ const createSuccessEmbed = (title, description, fields = []) => {
     },
     {
       name: "👤 Contacto Directo",
-      value: "<@464241835930419210>",
+      value: `<@${process.env.BOT_OWNER_ID}>`,
       inline: true
     },
     {
       name: "💡 ¿Necesitas Ayuda?",
-      value: "Contacta directamente a <@464241835930419210> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para soporte.",
+      value: `Contacta directamente a <@${process.env.BOT_OWNER_ID}> o únete a mi [servidor de Discord](https://discord.gg/6fFHsmewSn) para soporte.`,
       inline: false
     }
   );
@@ -243,36 +243,85 @@ const createSuccessEmbed = (title, description, fields = []) => {
  */
 const safeReply = async (interaction, options) => {
   try {
+    // Verificar si la interacción ya fue respondida o diferida
+    if (interaction.replied) {
+      console.log('[WARN] Interacción ya respondida, usando editReply');
+      return await interaction.editReply(options);
+    }
+
+    if (interaction.deferred) {
+      console.log('[WARN] Interacción diferida, usando editReply');
+      return await interaction.editReply(options);
+    }
+
+    // Manejar ephemeral flag
     if (options && 'ephemeral' in options) {
       if (options.ephemeral) {
         options.flags = 64;
       }
       delete options.ephemeral;
     }
-    if (interaction.replied || interaction.deferred) {
-      await interaction.editReply(options);
-    } else {
-      await interaction.reply(options);
-    }
+
+    // Respuesta normal
+    console.log('[SAFE_REPLY] Enviando respuesta normal');
+    return await interaction.reply(options);
+
   } catch (error) {
     console.error('[ERROR] Error en safeReply:', error);
-    try {
-      if (options && 'ephemeral' in options) {
-        if (options.ephemeral) {
-          options.flags = 64;
-        }
-        delete options.ephemeral;
-      }
-      if ((interaction.replied || interaction.deferred) && error.code !== 10062) {
-        await interaction.followUp({
-          content: "⚠️ Error procesando la respuesta, pero el comando continúa.",
-          flags: 64
-        });
-      }
-    } catch (followUpError) {
-      console.error('[ERROR] Error en followUp:', followUpError);
+
+    // Si es error de interacción desconocida o ya reconocida, no intentar más respuestas
+    if (error.code === 10062 || error.code === 40060) {
+      console.error('[ERROR] Interacción expirada, desconocida o ya reconocida, no se puede responder');
+      return;
     }
+
+    // Para otros errores, NO intentar respuesta de emergencia para evitar conflictos
+    console.error('[ERROR] Error inesperado en safeReply, no intentando respuesta de emergencia');
   }
+};
+
+/**
+ * Crea un embed premium estándar para toda la aplicación
+ * @returns {EmbedBuilder} - Embed premium estandarizado
+ */
+const createPremiumEmbed = () => {
+  return new EmbedBuilder()
+    .setTitle("✨ ¡Acceso Premium Requerido!")
+    .setDescription("Este comando requiere acceso **Premium**. ¡Mejora tu experiencia con Chuny BOT!")
+    .setColor("#FFD700")
+    .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
+    .addFields([
+      {
+        name: "🔗 Mis Redes Sociales",
+        value: "¡Sígueme para estar al día con las últimas actualizaciones!",
+        inline: false
+      },
+      {
+        name: "🎮 Twitch",
+        value: "[@chuny_dev](https://www.twitch.tv/chuny_dev)",
+        inline: true
+      },
+      {
+        name: "💬 Discord",
+        value: "[Mi Canal](https://discord.gg/6fFHsmewSn)",
+        inline: true
+      },
+      {
+        name: "👤 Contacto Directo",
+        value: `<@${process.env.BOT_OWNER_ID}>`,
+        inline: true
+      },
+      {
+        name: "💡 ¿Cómo obtener Premium?",
+        value: `Contacta directamente a <@${process.env.BOT_OWNER_ID}> o únete a mi servidor de Discord para más información.`,
+        inline: false
+      }
+    ])
+    .setFooter({
+      text: "Chuny BOT - Premium",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless"
+    })
+    .setTimestamp();
 };
 
 module.exports = {
@@ -280,5 +329,6 @@ module.exports = {
   createWarningEmbed,
   createInfoEmbed,
   createSuccessEmbed,
+  createPremiumEmbed,
   safeReply
 };

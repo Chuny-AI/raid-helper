@@ -5,15 +5,16 @@
  */
 
 const mongoose = require('mongoose');
-require('dotenv').config();
 
 const Claim = require('./src/database/models/Claim');
 const ClaimChannelConfig = require('./src/database/models/ClaimChannelConfig');
 const AuthorizedRole = require('./src/database/models/AuthorizedRole');
+const AuthorizedUser = require('./src/database/models/AuthorizedUser');
 const RaidEvent = require('./src/database/models/RaidEvent');
 const Server = require('./src/database/models/Server');
 const Template = require('./src/database/models/Template');
 const UserCategory = require('./src/database/models/UserCategory');
+const UserBalance = require('./src/database/models/UserBalance');
 const Weapon = require('./src/database/models/Weapon');
 
 const { scheduleJob, cancelJob } = require('node-schedule');
@@ -23,8 +24,9 @@ async function cleanupDatabase() {
     console.log('🔄 Conectando a MongoDB...');
 
     await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 30000,
     });
 
     console.log('✅ Conectado a MongoDB');
@@ -44,10 +46,12 @@ async function cleanupDatabase() {
       { model: Claim, name: 'Claims' },
       { model: ClaimChannelConfig, name: 'Configuraciones de Canales de Claims' },
       { model: AuthorizedRole, name: 'Roles Autorizados' },
+      { model: AuthorizedUser, name: 'Usuarios Autorizados' },
       { model: RaidEvent, name: 'Eventos de Raid' },
       { model: Server, name: 'Servidores' },
       { model: Template, name: 'Templates' },
       { model: UserCategory, name: 'Categorías de Usuario' },
+      { model: UserBalance, name: 'Balances de Usuario (Economía)' },
       { model: Weapon, name: 'Armas' }
     ];
 
@@ -186,10 +190,12 @@ async function cleanupDatabase() {
     console.log('   - Todos los claims eliminados');
     console.log('   - Todas las configuraciones de canales eliminadas');
     console.log('   - Todos los roles autorizados eliminados');
+    console.log('   - Todos los usuarios autorizados eliminados');
     console.log('   - Todos los eventos de raid eliminados');
     console.log('   - Todos los servidores eliminados');
     console.log('   - Todos los templates eliminados');
     console.log('   - Todas las categorías de usuario eliminadas');
+    console.log('   - Todos los balances de usuario (economía) eliminados');
     console.log('   - Todas las armas eliminadas');
     console.log('   - Todos los jobs programados cancelados');
     console.log('');
@@ -218,8 +224,9 @@ function confirmCleanup() {
   console.log('Este script eliminará TODA la información de la base de datos:');
   console.log('• Todos los claims y configuraciones');
   console.log('• Todos los servidores y templates');
-  console.log('• Todos los roles autorizados');
+  console.log('• Todos los roles y usuarios autorizados');
   console.log('• Todos los eventos y categorías');
+  console.log('• Todos los balances de usuario (sistema de economía)');
   console.log('• TODA la información será PERMANENTEMENTE eliminada');
   console.log('');
   console.log('Base de datos:', process.env.MONGODB_URI || 'No configurada');

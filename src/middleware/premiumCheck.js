@@ -1,4 +1,5 @@
 const { isServerPremium } = require('../services/serverService');
+const { createPremiumEmbed, createErrorEmbed, safeReply } = require('../utils/errorEmbeds');
 
 /**
  * Middleware para verificar si un servidor tiene premium
@@ -9,22 +10,21 @@ const checkPremium = async (interaction) => {
   try {
     const guildId = interaction.guild.id;
     const isPremium = await isServerPremium(guildId);
-    
+
     if (!isPremium) {
-      await interaction.reply({
-        content: "❌ Este servidor no tiene acceso premium. Contacta al administrador para activar el bot.",
-        ephemeral: true,
-      });
+      const embed = createPremiumEmbed();
+      await safeReply(interaction, { embeds: [embed], ephemeral: true });
       return false;
     }
-    
+
     return true;
   } catch (error) {
     console.error('[ERROR] Error en checkPremium:', error);
-    await interaction.reply({
-      content: "❌ Error verificando el estado premium del servidor.",
-      ephemeral: true,
-    });
+    const embed = createErrorEmbed(
+      'Error del Sistema',
+      'Error verificando el estado premium del servidor.'
+    );
+    await safeReply(interaction, { embeds: [embed], ephemeral: true });
     return false;
   }
 };

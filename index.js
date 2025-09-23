@@ -1,5 +1,3 @@
-require('dotenv').config();
-
 const { client } = require("./src/utils/client");
 const { getCommands } = require("./src/utils/commands");
 const { getEvents } = require("./src/utils/events");
@@ -7,6 +5,32 @@ const { connectDB } = require("./src/database/connection");
 const { REST, Routes } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
+
+const express = require("express");
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.json({
+    status: "✅ Chuny BOT está funcionando correctamente",
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    timestamp: new Date().toISOString(),
+    version: "1.0.0"
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    status: "healthy",
+    bot: global.discordClient?.isReady() ? "connected" : "disconnected",
+    uptime: process.uptime()
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`[INFO] Servidor HTTP corriendo en puerto ${PORT}`);
+});
 
 global.discordClient = client;
 

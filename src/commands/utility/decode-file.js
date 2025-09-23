@@ -5,17 +5,17 @@ const { createErrorEmbed } = require('../../utils/errorEmbeds');
 const AuthorizedUserService = require('../../services/authorizedUserService');
 
 /**
- * Comando para decodificar información de calabozos de Avalon desde archivos
+ * Comando para decodificar información usando la herramienta misteriosa desde archivos
  * SOLO para usuarios autorizados en la base de datos (owner siempre autorizado)
  */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('decode-file')
-    .setDescription('Decodifica calabozos de Avalon desde un archivo con datos hexadecimales')
+    .setDescription('Decodifica con la herramienta misteriosa desde un archivo con datos hexadecimales')
     .addAttachmentOption(option =>
       option
         .setName('archivo')
-        .setDescription('Archivo .txt/.dat con los datos hexadecimales del Cheat Engine')
+        .setDescription('Archivo .txt/.dat con los datos hexadecimales de la herramienta misteriosa')
         .setRequired(true)
     ),
 
@@ -127,7 +127,7 @@ module.exports = {
           'El contenido del archivo no parece contener datos hexadecimales válidos.',
           [{
             name: '📋 Formato Esperado',
-            value: 'Datos hexadecimales obtenidos del Cheat Engine usando:\n• **Primer piso:** `AVA_TEMPLE_START_First_Level_01`\n• **Segundo piso:** `AVA_TEMPLE_START`',
+            value: 'Datos hexadecimales obtenidos usando la herramienta misteriosa:\n• **Primer piso:** `AVA_TEMPLE_START_First_Level_01`\n• **Segundo piso:** `AVA_TEMPLE_START`',
             inline: false
           }, {
             name: '🔍 Contenido Encontrado',
@@ -168,7 +168,7 @@ module.exports = {
       const randomBackground = albionBackgrounds[Math.floor(Math.random() * albionBackgrounds.length)];
 
       const dungeonEmbed = new EmbedBuilder()
-        .setTitle('🏰 Calabozo de Avalon Decodificado')
+        .setTitle('🔍 Decodificación con Herramienta Misteriosa')
         .setDescription(`Encontrados **${bosses.length} jefes** • Analizados por **${interaction.user.displayName}**`)
         .setColor(embedColor)
         .setImage(randomBackground)
@@ -203,7 +203,7 @@ module.exports = {
 
       const errorEmbed = createErrorEmbed(
         'Error de Decodificación',
-        'Hubo un error al procesar el archivo del calabozo.',
+        'Hubo un error al procesar el archivo con la herramienta misteriosa.',
         [{
           name: '🔧 Solución',
           value: 'Verifica que el archivo contenga datos válidos y vuelve a intentarlo.',

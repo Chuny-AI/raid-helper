@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const ClaimService = require('../../services/claimService');
-const { checkPremiumAccessWithOwnerBypass } = require('../../middleware/roleCheck');
 const { createErrorEmbed, createSuccessEmbed } = require('../../utils/errorEmbeds');
 
 /**

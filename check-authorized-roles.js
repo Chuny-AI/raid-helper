@@ -3,7 +3,6 @@
  */
 
 const mongoose = require('mongoose');
-require('dotenv').config();
 
 const AuthorizedRole = require('./src/database/models/AuthorizedRole');
 
