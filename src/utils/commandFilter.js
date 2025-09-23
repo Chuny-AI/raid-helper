@@ -19,7 +19,9 @@ const commandVisibilityMap = {
   'status': 'all',
   'migrate': 'role_based',
   'claim': 'premium_only',
-  'claim-config': 'admin_owner'
+  'claim-config': 'admin_owner',
+  'decode-file': 'all',
+  'decode-users': 'owner'
 };
 
 /**

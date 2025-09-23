@@ -38,6 +38,27 @@ const getEvents = () => {
     }
   });
 
+  // Manejar mensajes para detección automática de datos hex
+  client.on(Events.MessageCreate, async (message) => {
+    // Ignorar mensajes del bot
+    if (message.author.bot) return;
+
+    // Solo procesar en canales de texto de servidores
+    if (!message.guild) return;
+
+    // Buscar patrones de datos hexadecimales del Cheat Engine
+    const hexPattern = /(?:41[\s]?56[\s]?41[\s]?5F|AVA_TEMPLE)/i;
+
+    if (hexPattern.test(message.content)) {
+      try {
+        console.log(`[AUTO-DECODE] Datos hex detectados en mensaje de ${message.author.tag}`);
+        await processHexMessage(message);
+      } catch (error) {
+        console.error('[ERROR] Error procesando mensaje hex automático:', error);
+      }
+    }
+  });
+
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
       // Filtrar comandos basado en permisos
@@ -514,6 +535,146 @@ const extractParticipantsFromEmbed = (embed) => {
     return [];
   }
 };
+
+/**
+ * Procesa un mensaje que contiene datos hexadecimales automáticamente
+ * @param {Message} message - El mensaje de Discord
+ */
+async function processHexMessage(message) {
+  const DungeonDecoder = require('../services/dungeonDecoder');
+  const { colorMap, chestEmojis } = require('../utils/dungeonConfig');
+  const { createErrorEmbed } = require('../utils/errorEmbeds');
+
+  try {
+    // Extraer datos hexadecimales del mensaje
+    let hexData = message.content;
+
+    // Limpiar el contenido
+    hexData = hexData
+      .replace(/\`\`\`[\s\S]*?\`\`\`/g, '') // Remover bloques de código
+      .replace(/\`[^`]*\`/g, '') // Remover código inline
+      .replace(/\s+/g, ' ') // Normalizar espacios
+      .trim();
+
+    // Validar que los datos parezcan ser hexadecimales válidos
+    if (!DungeonDecoder.isValidHexData(hexData)) {
+      // Solo responder con emoji si claramente son datos de Avalon
+      if (hexData.includes('AVA_TEMPLE')) {
+        await message.react('❌');
+      }
+      return;
+    }
+
+    // Decodificar los datos
+    console.log(`[AUTO-DECODE] Procesando ${hexData.length} caracteres de ${message.author.tag}`);
+    const bosses = DungeonDecoder.decode(hexData);
+
+    if (bosses.length === 0) {
+      await message.react('🔍');
+      return;
+    }
+
+    // Reaccionar con éxito
+    await message.react('✅');
+
+    // Crear embed principal con resumen
+    const mainEmbed = new EmbedBuilder()
+      .setTitle('🤖 Calabozo Detectado Automáticamente')
+      .setDescription(`Se encontraron **${bosses.length}** jefe(s) en tu mensaje`)
+      .setColor('#00D166')
+      .addFields({
+        name: '📊 Resumen de Cofres',
+        value: generateChestSummary(bosses),
+        inline: false
+      }, {
+        name: '🗺️ Orden de Jefes',
+        value: bosses.map((boss, index) =>
+          `**${index + 1}.** ${boss.name} (Capa ${boss.layer})`
+        ).join('\n'),
+        inline: false
+      }, {
+        name: '👤 Detectado de',
+        value: `${message.author.toString()}`,
+        inline: false
+      })
+      .setFooter({
+        text: 'Avalon Raid Helper - Auto Decoder • Hecho con ❤️ por @chuny-dev',
+        iconURL: 'https://i.imgur.com/AfFp7pu.png'
+      })
+      .setTimestamp();
+
+    // Crear embeds individuales para cada jefe (máximo 4 para evitar spam)
+    const maxEmbeds = Math.min(bosses.length, 4);
+    const bossEmbeds = bosses.slice(0, maxEmbeds).map((boss, index) => {
+      const color = colorMap[boss.color] || '#FFFFFF';
+      const emoji = chestEmojis[boss.color] || '📦';
+
+      return new EmbedBuilder()
+        .setTitle(`${emoji} ${boss.name}`)
+        .setDescription(`**Cofre:** ${boss.color}`)
+        .setColor(color)
+        .addFields(
+          {
+            name: '🗂️ Posición',
+            value: `#${index + 1}`,
+            inline: true
+          },
+          {
+            name: '🏗️ Capa',
+            value: `Nivel ${boss.layer}`,
+            inline: true
+          },
+          {
+            name: '📍 Índice',
+            value: `${boss.position}`,
+            inline: true
+          }
+        )
+        .setFooter({
+          text: `Jefe ${index + 1} de ${bosses.length} • Auto-detectado`,
+          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+        })
+        .setTimestamp();
+    });
+
+    // Responder en el canal
+    await message.reply({
+      embeds: [mainEmbed, ...bossEmbeds],
+      allowedMentions: { repliedUser: false }
+    });
+
+    console.log(`[AUTO-DECODE] Respuesta enviada: ${bosses.length} jefes detectados para ${message.author.tag}`);
+
+  } catch (error) {
+    console.error('[ERROR] Error en auto-decode:', error);
+    await message.react('⚠️');
+  }
+}
+
+/**
+ * Genera un resumen de los tipos de cofres encontrados
+ * @param {Array} bosses - Lista de jefes
+ * @returns {string} Resumen formateado
+ */
+function generateChestSummary(bosses) {
+  const { chestEmojis } = require('../utils/dungeonConfig');
+  const chestCounts = {};
+
+  bosses.forEach(boss => {
+    if (boss.color) {
+      chestCounts[boss.color] = (chestCounts[boss.color] || 0) + 1;
+    }
+  });
+
+  const summary = Object.entries(chestCounts)
+    .map(([color, count]) => {
+      const emoji = chestEmojis[color] || '📦';
+      return `${emoji} **${color}**: ${count}`;
+    })
+    .join('\n');
+
+  return summary || 'Sin información de cofres';
+}
 
 module.exports = {
   getEvents,
