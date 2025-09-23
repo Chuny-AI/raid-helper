@@ -9,23 +9,50 @@ const { createErrorEmbed, createSuccessEmbed, safeReply } = require("../../utils
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("migrate")
-    .setDescription("Migra un template desde JSON a la base de datos (solo administradores)")
-    .addStringOption((option) =>
+    .setDescription("Migra un template desde un archivo JSON adjunto (solo administradores)")
+    .addAttachmentOption(option =>
       option
-        .setName("json")
-        .setDescription("JSON del template a migrar")
+        .setName('file')
+        .setDescription('Archivo .json con la definición del template')
         .setRequired(true)
     ),
 
   async execute(interaction) {
     try {
       const guildId = interaction.guild.id;
-      const jsonInput = interaction.options.getString("json");
+      const attachment = interaction.options.getAttachment('file');
 
       await getOrCreateServer(guildId, interaction.guild.name);
 
       try {
-        const templateData = JSON.parse(jsonInput);
+        // Validar extensión y tamaño
+        if (!attachment.name.match(/\.json$/i)) {
+          const errorEmbed = createErrorEmbed(
+            'Archivo Inválido',
+            'Debes adjuntar un archivo con extensión .json',
+            [{ name: '📁 Archivo recibido', value: `Nombre: \`${attachment.name}\``, inline: false }]
+          );
+          return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+        }
+
+        if (attachment.size > 2 * 1024 * 1024) { // 2MB límite razonable
+          const errorEmbed = createErrorEmbed(
+            'Archivo Muy Grande',
+            'El archivo excede el tamaño máximo permitido (2MB).',
+            [{ name: '📏 Tamaño', value: `${Math.round(attachment.size / 1024)} KB`, inline: true }]
+          );
+          return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+        }
+
+        // Descargar contenido
+        const response = await fetch(attachment.url);
+        if (!response.ok) {
+          throw new Error(`No se pudo descargar el archivo (${response.status})`);
+        }
+        const jsonText = await response.text();
+
+        // Parsear JSON
+        const templateData = JSON.parse(jsonText);
 
         // Verificar si el template ya existe
         const existingTemplate = await getTemplateByName(templateData.title, guildId);
@@ -45,19 +72,14 @@ module.exports = {
           });
         }
 
-        // Asegurar que tenga URL
-        if (!templateData.url) {
-          templateData.url = "";
-        }
-
-        // Asegurar que las armas tengan URLs
+        // Defaults de URL
+        if (!templateData.url) templateData.url = "";
         if (templateData.weapons) {
           Object.keys(templateData.weapons).forEach(weaponKey => {
-            if (templateData.weapons[weaponKey].data) {
-              templateData.weapons[weaponKey].data.forEach(weapon => {
-                if (!weapon.url) {
-                  weapon.url = "";
-                }
+            const w = templateData.weapons[weaponKey];
+            if (w && Array.isArray(w.data)) {
+              w.data.forEach(weapon => {
+                if (!weapon.url) weapon.url = "";
               });
             }
           });
@@ -91,22 +113,14 @@ module.exports = {
 
       } catch (parseError) {
         const errorEmbed = createErrorEmbed(
-          "Error Parseando JSON",
-          `Error al parsear el JSON proporcionado: ${parseError.message}`,
-          [{
-            name: "💡 Solución",
-            value: "Verifica que el JSON tenga la estructura correcta y vuelve a intentarlo.",
-            inline: false
-          }, {
-            name: "📋 Estructura Esperada",
-            value: "```json\n{\n  \"title\": \"Nombre del template\",\n  \"description\": \"Descripción\",\n  \"time\": \"30m\",\n  \"weapons\": {...}\n}\n```",
-            inline: false
-          }]
+          'Error Parseando JSON',
+          `Error al procesar el archivo: ${parseError.message}`,
+          [
+            { name: '💡 Solución', value: 'Asegúrate de que el archivo contenga JSON válido.', inline: false },
+            { name: '� Archivo', value: attachment ? `\`${attachment.name}\`` : 'N/D', inline: true }
+          ]
         );
-        await safeReply(interaction, {
-          embeds: [errorEmbed],
-          ephemeral: true,
-        });
+        await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
       }
 
     } catch (error) {
