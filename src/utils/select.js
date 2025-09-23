@@ -19,7 +19,6 @@ const createSelect = (template, templateName, interaction) => {
   for (const [, weapon] of entries) {
     const weaponCategory = weapon.displayName;
     
-    // Verificar que weapon.data existe y es iterable
     if (!weapon.data || !Array.isArray(weapon.data)) {
       console.error('Error: weapon.data no es un array:', weapon);
       continue;

@@ -90,7 +90,6 @@ const templateSchema = new mongoose.Schema({
   }
 });
 
-// Middleware para actualizar updatedAt
 templateSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

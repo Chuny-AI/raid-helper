@@ -8,7 +8,6 @@ const { REST, Routes } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
 
-// Hacer el cliente disponible globalmente para los servicios
 global.discordClient = client;
 
 /**
@@ -52,7 +51,6 @@ async function registerGlobalCommands() {
 
     console.log(`[INFO] Iniciando registro de ${commands.length} comandos globales...`);
 
-    // Registrar comandos globalmente
     const data = await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands },
@@ -83,7 +81,6 @@ async function registerGuildCommands() {
 
     console.log(`[INFO] Iniciando registro de ${commands.length} comandos en el servidor ${guildId}...`);
 
-    // Registrar comandos en el servidor específico
     const data = await rest.put(
       Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
       { body: commands },
@@ -117,16 +114,12 @@ async function registerCommands() {
  */
 async function initializeBot() {
   try {
-    // Conectar a la base de datos
     connectDB();
 
-    // Obtener los comandos de la aplicación
     getCommands();
 
-    // Setear los eventos de la aplicación
     getEvents();
 
-    // Registrar comandos según la configuración (global o guild)
     const commandsRegistered = await registerCommands();
 
     if (commandsRegistered) {
@@ -135,10 +128,8 @@ async function initializeBot() {
       console.log('[WARNING] Error registrando comandos, pero iniciando bot de todas formas...');
     }
 
-    // Hacer el cliente disponible globalmente para servicios
     global.discordClient = client;
 
-    // Iniciar el bot
     const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
     await client.login(token);
   } catch (error) {
@@ -147,5 +138,4 @@ async function initializeBot() {
   }
 }
 
-// Inicializar el bot
 initializeBot();

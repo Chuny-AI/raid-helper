@@ -20,11 +20,9 @@ const activeReminders = new Map();
  */
 const createReminder = (interactionId, reminderTime, activityTime, templateName, channelId, guildId, activityTitle, participants = []) => {
   try {
-    // Parsear el tiempo del recordatorio
     const reminderDelay = parseTime(reminderTime);
     const totalActivityTime = parseTime(activityTime);
     
-    // Calcular cuándo enviar el recordatorio
     const reminderTimeMs = totalActivityTime - reminderDelay;
     
     if (reminderTimeMs <= 0) {
@@ -32,14 +30,11 @@ const createReminder = (interactionId, reminderTime, activityTime, templateName,
       return null;
     }
     
-    // Crear el timeout para el recordatorio
     const timeoutId = setTimeout(async () => {
       await sendReminderNotification(interactionId, templateName, channelId, guildId, activityTitle, participants);
-      // Limpiar el recordatorio después de enviarlo
       activeReminders.delete(interactionId);
     }, reminderTimeMs);
     
-    // Guardar el recordatorio
     activeReminders.set(interactionId, {
       timeoutId,
       participants,
@@ -105,11 +100,9 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
       return;
     }
     
-    // Obtener el tiempo restante del recordatorio
     const reminder = activeReminders.get(interactionId);
     const reminderTimeFormatted = reminder ? formatTime(parseTime(reminder.reminderTime)) : 'pronto';
     
-    // Intentar obtener participantes actualizados del mensaje original
     let updatedParticipants = participants || [];
     try {
       const messages = await channel.messages.fetch({ limit: 20 });
@@ -131,14 +124,11 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
       console.error('[ERROR] Error obteniendo participantes del mensaje:', fetchError);
     }
     
-    // Crear embed de recordatorio
     const reminderEmbed = createReminderEmbed(activityTitle, templateName, reminderTimeFormatted, updatedParticipants, channelId);
     
-    // Crear componentes (botones) para el recordatorio
     const { createReminderComponents } = require('./embed');
     const components = createReminderComponents(channelId, guildId);
     
-    // Enviar notificación al canal
     await channel.send({
       embeds: [reminderEmbed],
       components: components
@@ -146,7 +136,6 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
     
     const interestedUsers = reminder?.interestedUsers || new Set();
     
-    // Agregar participantes conocidos
     updatedParticipants.forEach(participant => {
       const userId = participant.replace(/[<@!>]/g, '');
       if (userId && userId.length > 0) {
@@ -154,10 +143,8 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
       }
     });
     
-    // Si no hay usuarios interesados, al menos enviar al creador del evento
     if (interestedUsers.size === 0) {
       try {
-        // Intentar obtener el creador del evento desde el canal
         const messages = await channel.messages.fetch({ limit: 10 });
         const eventMessage = messages.find(msg => 
           msg.embeds.length > 0 && 
@@ -173,7 +160,6 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
       }
     }
     
-    // Enviar notificación privada a cada usuario interesado
     let successfulDMs = 0;
     let failedDMs = 0;
     

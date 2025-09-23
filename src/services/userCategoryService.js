@@ -108,7 +108,6 @@ const addWeaponsToUserCategory = async (userId, categoryKey, weapons) => {
       return null;
     }
 
-    // Agregar nuevas armas sin duplicar
     const existingWeaponIds = new Set(category.weapons.map(w => w.emojiId));
     const newWeapons = weapons.filter(weapon => !existingWeaponIds.has(weapon.emojiId));
     

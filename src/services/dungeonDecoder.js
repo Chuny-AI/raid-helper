@@ -47,11 +47,9 @@ class DungeonDecoder {
   static isValidHexData(text) {
     if (!text || typeof text !== 'string') return false;
 
-    // Limpiar espacios y verificar que solo contenga caracteres hex
     const cleanHex = text.replace(/\s/g, '');
     const hexPattern = /^[0-9a-fA-F]+$/;
 
-    // Debe tener longitud par y al menos algunos caracteres
     return hexPattern.test(cleanHex) && cleanHex.length >= 10 && cleanHex.length % 2 === 0;
   }
 }

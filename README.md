@@ -1,99 +1,194 @@
-# Avalon Raid Helper
+# 🤖 Chuny BOT# Avalon Raid Helper
 
-A powerful multi-server Discord bot designed for generating Discord embeds via templates. This project allows users to interact and select roles, providing custom information such as embed images, colors, data, date and time, template selection, and more. Perfect for enhancing your Discord server's raid management experience across multiple servers.
 
-## Features
 
-- **Multi-Server Support**: Each Discord server has its own isolated templates and data
-- **MongoDB Integration**: Persistent storage for templates and server configurations
-- **Global Commands**: Bot can be invited to any server with global slash commands
-- **Customizable Discord Embeds**: Generate embeds with dynamic content such as images, colors, and text
-- **Template Management**: Create, manage, and use custom templates per server
-- **Role Selection**: Let users interact and select their roles directly from the embed
+**Discord bot para gestión de actividades y decodificación de calabozos de Albion Online**A powerful multi-server Discord bot designed for generating Discord embeds via templates. This project allows users to interact and select roles, providing custom information such as embed images, colors, data, date and time, template selection, and more. Perfect for enhancing your Discord server's raid management experience across multiple servers.
+
+
+
+## ✨ Características Principales## Features
+
+
+
+- 🔓 **Decodificación de Calabozos**: Decodifica información de calabozos de Avalon desde archivos hexadecimales- **Multi-Server Support**: Each Discord server has its own isolated templates and data
+
+- 📋 **Sistema de Claims**: Gestiona reservas de actividades y recursos- **MongoDB Integration**: Persistent storage for templates and server configurations
+
+- 🎯 **Gestión de Raids**: Organiza y notifica actividades del guild- **Global Commands**: Bot can be invited to any server with global slash commands
+
+- ⚔️ **Build Manager**: Gestiona builds de armas para diferentes actividades- **Customizable Discord Embeds**: Generate embeds with dynamic content such as images, colors, and text
+
+- 🔐 **Sistema de Autorización**: Control de acceso por usuarios y roles- **Template Management**: Create, manage, and use custom templates per server
+
+- 💎 **Sistema Premium**: Funcionalidades avanzadas para servidores premium- **Role Selection**: Let users interact and select their roles directly from the embed
+
 - **Dynamic Content**: Embed information such as the event's date, time, and any personalized data you require
-- **Interactive**: Engage users through easy-to-use selections in the embed, improving the overall user experience
+
+## 🚀 Comandos Principales- **Interactive**: Engage users through easy-to-use selections in the embed, improving the overall user experience
+
 - **URL Support**: All embed fields support URL properties for enhanced interactivity
 
-## Installation
+### 📁 Decodificación
+
+- `/decode-file` - Decodifica calabozos desde archivos (.txt/.dat)## Installation
+
+- `/decode-users` - Gestiona usuarios autorizados (admin)
 
 ### Prerequisites
 
-Make sure you have the following installed:
+### 📋 Sistema de Claims
+
+- `/claim` - Crear claim para apartar recursos/actividadesMake sure you have the following installed:
+
+- `/claim-config` - Configurar canales para claims (admin)
 
 - [Node.js](https://nodejs.org/) (LTS version recommended)
-- [MongoDB](https://www.mongodb.com/) (local installation or MongoDB Atlas)
-- A Discord Application with Bot permissions
 
-### Steps
+### 🎯 Gestión de Raids- [MongoDB](https://www.mongodb.com/) (local installation or MongoDB Atlas)
 
-1. Clone the repository:
+- `/raid` - Enviar notificación de actividad usando plantillas- A Discord Application with Bot permissions
 
-    ```bash
-    git clone https://github.com/M8-Babbage/avalon-raid-helper.git
+- `/templates` - Listar plantillas disponibles
+
+- `/status` - Estado del servidor y estadísticas### Steps
+
+
+
+### ⚔️ Gestión de Armas1. Clone the repository:
+
+- `/show_all_weapons` - Listar todas las armas
+
+- `/show_all_categories` - Mostrar categorías de armas    ```bash
+
+- `/upload_weapons` - Subir armas desde JSON (owner)    git clone https://github.com/M8-Babbage/avalon-raid-helper.git
+
     ```
 
-2. Navigate to the project directory:
+### 🔐 Administración
 
-    ```bash
+- `/roles` - Gestionar roles autorizados2. Navigate to the project directory:
+
+- `/premium` - Gestionar estado premium (owner)
+
+- `/migrate` - Migrar plantillas (admin)    ```bash
+
     cd avalon-raid-helper
+
+## ⚙️ Instalación    ```
+
+
+
+1. **Clona el repositorio**3. Install the dependencies:
+
+   ```bash
+
+   git clone https://github.com/M8-Babbage/avalon-raid-helper.git    ```bash
+
+   cd avalon-raid-helper    npm install
+
+   ```    ```
+
+
+
+2. **Instala dependencias**4. Set up environment variables:
+
+   ```bash
+
+   npm install    ```bash
+
+   ```    cp env.example .env
+
     ```
 
-3. Install the dependencies:
+3. **Configura variables de entorno**
 
-    ```bash
-    npm install
-    ```
+   ```bash5. Edit the `.env` file with your configuration:
 
-4. Set up environment variables:
+   cp env.example .env
 
-    ```bash
-    cp env.example .env
-    ```
+   ```    ```env
 
-5. Edit the `.env` file with your configuration:
+       TOKEN=your_discord_bot_token_here
 
-    ```env
-    TOKEN=your_discord_bot_token_here
-    CLIENT_ID=your_discord_application_id_here
-    BOT_OWNER_ID=464241835930419210
-    MONGODB_URI=mongodb://localhost:27017/avalon-raid-helper
-    ```
+   Edita `.env` con tus valores:    CLIENT_ID=your_discord_application_id_here
 
-6. Set up global commands:
+   ```env    BOT_OWNER_ID=464241835930419210
 
-    ```bash
-    npm run commands
-    ```
+   BOT_TOKEN=tu_token_del_bot    MONGODB_URI=mongodb://localhost:27017/avalon-raid-helper
+
+   BOT_OWNER_ID=tu_user_id    ```
+
+   MONGODB_URI=tu_uri_de_mongodb
+
+   ```6. Set up global commands:
+
+
+
+4. **Inicia el bot**    ```bash
+
+   ```bash    npm run commands
+
+   npm start    ```
+
+   ```
 
 ## Usage
 
+## 📊 Scripts Disponibles
+
 1. Start the server:
 
-    ```bash
-    npm start
-    ```
+- `npm start` - Inicia el bot
+
+- `npm run dev` - Modo desarrollo con nodemon    ```bash
+
+- `npm run register` - Registra comandos slash    npm start
+
+- `npm run check-commands` - Verifica comandos registrados    ```
+
+- `npm run delete-global` - Elimina comandos globales
 
 2. Invite the bot to your Discord server using the OAuth2 URL with the following permissions:
-   - `applications.commands` (for slash commands)
-   - `Send Messages`
-   - `Use Slash Commands`
-   - `Embed Links`
 
-3. Once the bot is online, you can use the following commands:
+## 🔧 Tecnologías   - `applications.commands` (for slash commands)
+
+   - `Send Messages`
+
+- **Node.js** - Runtime de JavaScript   - `Use Slash Commands`
+
+- **Discord.js v14** - Librería para Discord API   - `Embed Links`
+
+- **MongoDB** - Base de datos NoSQL
+
+- **Mongoose** - ODM para MongoDB3. Once the bot is online, you can use the following commands:
+
    - `/status` - Check server and bot status (visible to all users)
-   - `/raid` - Create a raid notification using templates (owner, admins, authorized roles)
+
+## 👨‍💻 Autor   - `/raid` - Create a raid notification using templates (owner, admins, authorized roles)
+
    - `/templates` - List available templates in the server (owner, admins, authorized roles)
-   - `/weapons` - List available weapons for templates (owner, admins, authorized roles)
+
+**Edwin J. Páez** - [@chuny-dev](https://github.com/M8-Babbage)   - `/weapons` - List available weapons for templates (owner, admins, authorized roles)
+
    - `/create_template` - Create new templates interactively (owner, admins, authorized roles)
-   - `/edit_template` - Edit existing templates (owner, admins, authorized roles)
+
+---   - `/edit_template` - Edit existing templates (owner, admins, authorized roles)
+
    - `/roles` - Manage authorized roles for sending notifications (owner, admins)
-   - `/migrate` - Migrate templates from JSON or files (owner, admins, authorized roles)
+
+## 📝 Licencia   - `/migrate` - Migrate templates from JSON or files (owner, admins, authorized roles)
+
    - `/update_weapons` - Update weapons from JSON (bot owner only)
-   - `/migrate_weapons` - Migrate weapons from JSON file (bot owner only)
+
+Este proyecto está bajo la Licencia ISC.   - `/migrate_weapons` - Migrate weapons from JSON file (bot owner only)
+
    - `/premium` - Manage premium status (bot owner only)
+
+---
 
 ## Command Visibility
 
+*Bot desarrollado con ❤️ para la comunidad de Albion Online*
 The bot implements a command visibility system based on user permissions:
 
 - **All Users**: `/status` - Basic commands visible to everyone

@@ -181,5 +181,4 @@ async function clearGuildCommands() {
   }
 }
 
-// Ejecutar función principal
 main().catch(console.error);

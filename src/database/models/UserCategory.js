@@ -61,10 +61,8 @@ const userCategorySchema = new mongoose.Schema({
   }
 });
 
-// Índice compuesto para búsquedas eficientes
 userCategorySchema.index({ userId: 1, categoryKey: 1 }, { unique: true });
 
-// Middleware para actualizar updatedAt
 userCategorySchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

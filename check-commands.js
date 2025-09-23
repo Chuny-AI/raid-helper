@@ -6,7 +6,6 @@
 const { REST, Routes } = require('discord.js');
 require('dotenv').config();
 
-// Compatibilidad con diferentes nombres de variables de entorno
 const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
@@ -18,7 +17,6 @@ async function checkCommands() {
     console.log('🔍 Verificando comandos del bot...');
     console.log('='.repeat(50));
 
-    // Obtener comandos globales
     console.log('\n📡 COMANDOS GLOBALES:');
     const globalCommands = await rest.get(
       Routes.applicationCommands(clientId)
@@ -33,7 +31,6 @@ async function checkCommands() {
       });
     }
 
-    // Obtener comandos del servidor específico (si está configurado)
     if (guildId) {
       console.log('\n🏠 COMANDOS DEL SERVIDOR ESPECÍFICO:');
       const guildCommands = await rest.get(
@@ -85,7 +82,6 @@ async function checkCommands() {
   }
 }
 
-// Verificar variables de entorno
 if (!token) {
   console.error('❌ Error: Variable DISCORD_TOKEN o TOKEN no encontrada');
   console.error('💡 Asegúrate de tener un archivo .env con DISCORD_TOKEN configurado');

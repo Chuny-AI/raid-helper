@@ -40,7 +40,6 @@ const createTemplate = async (templateData, serverId) => {
     
     const savedTemplate = await template.save();
     
-    // Agregar el template al servidor
     await Server.findOneAndUpdate(
       { guildId: serverId },
       { $push: { templates: savedTemplate._id } }
@@ -77,7 +76,6 @@ const deleteTemplate = async (templateId, serverId) => {
     const deletedTemplate = await Template.findByIdAndDelete(templateId);
     
     if (deletedTemplate) {
-      // Remover el template del servidor
       await Server.findOneAndUpdate(
         { guildId: serverId },
         { $pull: { templates: templateId } }
@@ -124,19 +122,16 @@ const migrateTemplatesFromFiles = async (serverId) => {
       const filePath = path.join(templatesPath, file);
       const templateData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       
-      // Verificar si el template ya existe
       const existingTemplate = await Template.findOne({
         title: templateData.title,
         serverId
       });
       
       if (!existingTemplate) {
-        // Añadir URL vacía si no existe
         if (!templateData.url) {
           templateData.url = "";
         }
         
-        // Añadir URL y sendBuildToPrivate a cada arma si no existen
         if (templateData.weapons) {
           Object.keys(templateData.weapons).forEach(weaponKey => {
             if (templateData.weapons[weaponKey].data) {
@@ -144,7 +139,6 @@ const migrateTemplatesFromFiles = async (serverId) => {
                 if (!weapon.url) {
                   weapon.url = "";
                 }
-                // Añadir sendBuildToPrivate si no existe (por defecto true)
                 if (weapon.sendBuildToPrivate === undefined) {
                   weapon.sendBuildToPrivate = true;
                 }

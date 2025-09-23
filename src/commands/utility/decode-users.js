@@ -62,7 +62,6 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // Solo el owner puede usar este comando
     const ownerId = process.env.BOT_OWNER_ID;
 
     console.log(`[DECODE-USERS] Usuario: ${interaction.user.id}, Owner configurado: ${ownerId}`);
@@ -214,7 +213,6 @@ module.exports = {
       .setColor('#00D166')
       .setTimestamp();
 
-    // Dividir en grupos de 10 para evitar límites de campo
     const chunkSize = 10;
     for (let i = 0; i < users.length; i += chunkSize) {
       const chunk = users.slice(i, i + chunkSize);
@@ -238,7 +236,6 @@ module.exports = {
     const userIdsString = interaction.options.getString('userids');
     const reason = interaction.options.getString('reason') || 'Importación masiva';
 
-    // Parsear IDs
     const userIds = userIdsString
       .split(',')
       .map(id => id.trim())
@@ -259,7 +256,6 @@ module.exports = {
       return;
     }
 
-    // Importar usuarios
     const result = await AuthorizedUserService.importUsers(userIds, interaction.user.id, reason);
 
     const resultEmbed = new EmbedBuilder()

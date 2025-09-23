@@ -17,9 +17,7 @@ const pingRoles = (template) => {
   }
 };
 
-// Función eliminada - no se necesita
 
-// Funciones eliminadas - no se necesitan
 
 /**
  * Comando para crear raids usando templates del servidor
@@ -121,7 +119,6 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Diferir la respuesta inmediatamente para evitar timeouts
       await interaction.deferReply();
 
       /**
@@ -135,15 +132,15 @@ module.exports = {
           .setTitle("💎 Servidor Premium Requerido")
           .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
           .setColor("#FFD700")
-          .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+          .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
           .setTimestamp()
           .setFooter({
-            text: "Avalon Raid Helper - Premium",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            text: "Chuny BOT - Premium",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
           })
           .setAuthor({
             name: "Chuny Dev",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
             url: "https://www.twitch.tv/chuny_dev",
           })
           .addFields(
@@ -237,7 +234,6 @@ module.exports = {
         });
       }
 
-      // Validar que el tiempo del evento no exceda 1 hora
       const maxEventTime = 60 * 60 * 1000; // 1 hora en milisegundos
       if (delayTime > maxEventTime) {
         const warningEmbed = createWarningEmbed(
@@ -255,7 +251,6 @@ module.exports = {
         });
       }
 
-      // Validar reminder o usar el del template
       let finalReminder = reminder;
       if (!reminder && template.reminder) {
         finalReminder = template.reminder;
@@ -329,19 +324,15 @@ module.exports = {
         });
       }
 
-      // Procesar roles para notificaciones
       let notificationRoles = [];
       if (rolesToNotifyInput) {
         try {
-          // Dividir por comas y limpiar cada ID de rol
           const roleIds = rolesToNotifyInput.split(',').map(id => id.trim()).filter(id => id);
 
-          // Buscar roles por ID
           for (const roleId of roleIds) {
             const role = interaction.guild.roles.cache.get(roleId);
 
             if (!role) {
-              // Mostrar roles disponibles para ayudar al usuario
               const availableRoles = interaction.guild.roles.cache
                 .filter(r => r.name !== '@everyone' && !r.managed)
                 .map(r => `${r.name} (${r.id})`)
@@ -390,19 +381,15 @@ module.exports = {
         }
       }
 
-      // Determinar roles finales para notificación antes de crear el embed
       let finalNotificationRoles = [];
       if (notificationRoles.length > 0) {
-        // Usar roles especificados en el comando
         finalNotificationRoles = notificationRoles;
       } else if (template.roles && template.roles.length > 0) {
-        // Usar roles del template si no se especificaron roles en el comando
         finalNotificationRoles = template.roles;
       }
 
       const row = createSelect(template, templateName, interaction);
 
-      // Crear embed usando la función original con roles finales
       const embed = createEmbed({
         title,
         delayTime,
@@ -441,7 +428,6 @@ module.exports = {
             [] // Los participantes se actualizarán dinámicamente
           );
 
-          // Agregar al creador del evento como usuario interesado
           addInterestedUser(interaction.id, interaction.user.id);
 
           console.log(`[INFO] Recordatorio configurado para ${templateName} en ${finalReminder}`);
@@ -450,25 +436,20 @@ module.exports = {
         }
       }
 
-      // Crear contenido de notificación basado en los roles finales ya determinados
       let notificationContent = '';
 
       if (finalNotificationRoles.length > 0) {
-        // Crear menciones directas de los roles finales
         const roleMentions = finalNotificationRoles.map(roleId => `<@&${roleId}>`).join(' ');
         notificationContent += `${roleMentions}\n`;
       }
 
-      // Enviar notificación solo si hay roles especificados
       if (finalNotificationRoles.length > 0) {
         try {
-          // Obtener miembros con los roles especificados
           const members = await interaction.guild.members.fetch();
           const targetMembers = members.filter(member =>
             finalNotificationRoles.some(roleId => member.roles.cache.has(roleId))
           );
 
-          // Crear embed de notificación
           const activityTitle = title || template.title;
           const timeRemaining = time || template.time;
           const massNotificationEmbed = createMassNotificationEmbed(
@@ -478,7 +459,6 @@ module.exports = {
             user.toString()
           );
 
-          // Enviar DM a cada miembro con los roles especificados
           for (const member of targetMembers.values()) {
             try {
               await member.send({
@@ -521,5 +501,4 @@ module.exports = {
     }
   },
 
-  // No se exportan funciones adicionales
 };

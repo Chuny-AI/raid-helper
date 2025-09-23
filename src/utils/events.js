@@ -9,7 +9,6 @@ const getEvents = () => {
   client.once(Events.ClientReady, async (readyClient) => {
     console.log(`El bot ${readyClient.user.tag} está listo.`);
 
-    // Crear registros de servidores existentes (sin migrar templates)
     try {
       const guilds = readyClient.guilds.cache;
       for (const [guildId, guild] of guilds) {
@@ -20,7 +19,6 @@ const getEvents = () => {
       console.error('[ERROR] Error al registrar servidores:', error);
     }
 
-    // Ejecutar limpieza de recordatorios huérfanos al iniciar
     try {
       await ClaimService.cleanupOrphanReminders();
     } catch (error) {
@@ -28,7 +26,6 @@ const getEvents = () => {
     }
   });
 
-  // Manejar cuando el bot se une a un nuevo servidor
   client.on(Events.GuildCreate, async (guild) => {
     try {
       await getOrCreateServer(guild.id, guild.name);
@@ -38,15 +35,11 @@ const getEvents = () => {
     }
   });
 
-  // Manejar mensajes para detección automática de datos hex
   client.on(Events.MessageCreate, async (message) => {
-    // Ignorar mensajes del bot
     if (message.author.bot) return;
 
-    // Solo procesar en canales de texto de servidores
     if (!message.guild) return;
 
-    // Buscar patrones de datos hexadecimales del Cheat Engine
     const hexPattern = /(?:41[\s]?56[\s]?41[\s]?5F|AVA_TEMPLE)/i;
 
     if (hexPattern.test(message.content)) {
@@ -61,7 +54,6 @@ const getEvents = () => {
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
-      // Filtrar comandos basado en permisos
       const shouldExecute = await filterCommand(interaction);
       if (!shouldExecute) {
         return;
@@ -116,16 +108,12 @@ const getEvents = () => {
       }
     }
 
-    // Manejar StringSelectMenu
     if (interaction.isStringSelectMenu()) {
-      // Manejar selección de categorías en create_template
-      // Manejar selección de armas para categorías personalizadas
       if (interaction.customId.startsWith("template_weapon_select_")) {
         await createTemplateCommand.handleWeaponSelect(interaction);
         return;
       }
 
-      // Handlers removidos - no existen en la nueva versión
 
       if (interaction.customId.startsWith("template_weapon_category_select_")) {
         console.log('[DEBUG] Eventos: Selección de categoría de armas detectada:', interaction.customId);
@@ -188,22 +176,18 @@ const getEvents = () => {
         return;
       }
 
-      // Manejar selección de edición en edit_template
       if (interaction.customId === "edit_template_select") {
         await editTemplateCommand.handleEditSelect(interaction);
         return;
       }
 
-      // Manejar selección de categorías de armas en edit_template
       if (interaction.customId === "edit_weapon_category_select") {
         await editTemplateCommand.handleWeaponsEdit(interaction, interaction.client.templateEditState?.get(interaction.user.id)?.template);
         return;
       }
     }
 
-    // Manejar Button
     if (interaction.isButton()) {
-      // Manejar botón de continuar en create_template
       if (interaction.customId === "template_continue") {
         await interaction.reply({
           content: "Por favor selecciona al menos una arma para continuar.",
@@ -212,7 +196,6 @@ const getEvents = () => {
         return;
       }
 
-      // Manejar botones de create_template
       if (interaction.customId === "template_add_category") {
         await createTemplateCommand.handleAddCategory(interaction);
         return;
@@ -278,16 +261,13 @@ const getEvents = () => {
         return;
       }
 
-      // Manejar botones de edit_template
       if (interaction.customId.startsWith("edit_")) {
         await editTemplateCommand.handleButtonClick(interaction);
         return;
       }
 
-      // Manejadores de botones eliminados
     }
 
-    // Manejar Modal
     if (interaction.isModalSubmit()) {
       if (interaction.customId === "template_new_category_modal") {
         await createTemplateCommand.handleNewCategoryModal(interaction);
@@ -364,25 +344,21 @@ const getEvents = () => {
           }
         });
 
-        // Actualizar participantes del recordatorio
         try {
           const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
           const participants = extractParticipantsFromEmbed(embed);
           updateReminderParticipants(interaction.id, participants);
-          // Agregar al usuario que hizo clic como interesado
           addInterestedUser(interaction.id, interaction.user.id);
         } catch (reminderError) {
           console.error('[ERROR] Error actualizando participantes del recordatorio:', reminderError);
         }
 
-        // Obtener la URL de la build del arma seleccionada
         try {
           const { getTemplateByName } = require('../services/templateService');
           const { createBuildEmbed, createNoBuildEmbed } = require('./embed');
           const template = await getTemplateByName(templateName, interaction.guild.id);
 
           if (template && template.weapons) {
-            // Buscar el arma específica por weaponId
             let weaponUrl = null;
             let weaponEmoji = null;
             let shouldSendBuild = true; // Por defecto true si no se especifica
@@ -393,16 +369,13 @@ const getEvents = () => {
                 if (weaponItem) {
                   weaponUrl = weaponItem.url;
                   weaponEmoji = weaponItem.emoji;
-                  // Verificar si esta arma específica debe enviar build al privado
                   shouldSendBuild = weaponItem.sendBuildToPrivate !== false;
                   break;
                 }
               }
             }
 
-            // Solo enviar si la arma específica tiene sendBuildToPrivate habilitado
             if (shouldSendBuild) {
-              // Crear y enviar embed con la build
               let buildEmbed;
               if (weaponUrl && weaponUrl.trim() !== '') {
                 buildEmbed = createBuildEmbed(weaponCategory, weaponUrl, weaponEmoji, templateName);
@@ -416,7 +389,6 @@ const getEvents = () => {
                 });
               } catch (dmError) {
                 console.error('Error enviando mensaje privado:', dmError);
-                // Si no se puede enviar DM, responder en el canal
                 await interaction.followUp({
                   embeds: [buildEmbed],
                   ephemeral: true,
@@ -474,7 +446,6 @@ const getCustomInfo = (values) => {
   return { templateName, emojiSelected, weaponName, weaponCategory, weaponId };
 };
 
-// Función eliminada - no se necesita
 
 const deleteUserIfExistsOnCurrentField = (
   embed,
@@ -511,15 +482,12 @@ const extractParticipantsFromEmbed = (embed) => {
   const participants = new Set();
 
   try {
-    // Verificar si el embed tiene la estructura correcta
     if (embed && embed.data && embed.data.fields) {
       embed.data.fields.forEach((field) => {
         if (field.value && typeof field.value === 'string') {
-          // Buscar menciones de usuarios en el formato <@userId> o <@!userId>
           const userMatches = field.value.match(/<@!?(\d+)>/g);
           if (userMatches) {
             userMatches.forEach(match => {
-              // Extraer el ID del usuario
               const userId = match.replace(/<@!?(\d+)>/, '$1');
               participants.add(`<@${userId}>`);
             });
@@ -546,26 +514,21 @@ async function processHexMessage(message) {
   const { createErrorEmbed } = require('../utils/errorEmbeds');
 
   try {
-    // Extraer datos hexadecimales del mensaje
     let hexData = message.content;
 
-    // Limpiar el contenido
     hexData = hexData
       .replace(/\`\`\`[\s\S]*?\`\`\`/g, '') // Remover bloques de código
       .replace(/\`[^`]*\`/g, '') // Remover código inline
       .replace(/\s+/g, ' ') // Normalizar espacios
       .trim();
 
-    // Validar que los datos parezcan ser hexadecimales válidos
     if (!DungeonDecoder.isValidHexData(hexData)) {
-      // Solo responder con emoji si claramente son datos de Avalon
       if (hexData.includes('AVA_TEMPLE')) {
         await message.react('❌');
       }
       return;
     }
 
-    // Decodificar los datos
     console.log(`[AUTO-DECODE] Procesando ${hexData.length} caracteres de ${message.author.tag}`);
     const bosses = DungeonDecoder.decode(hexData);
 
@@ -574,10 +537,8 @@ async function processHexMessage(message) {
       return;
     }
 
-    // Reaccionar con éxito
     await message.react('✅');
 
-    // Crear embed principal con resumen
     const mainEmbed = new EmbedBuilder()
       .setTitle('🤖 Calabozo Detectado Automáticamente')
       .setDescription(`Se encontraron **${bosses.length}** jefe(s) en tu mensaje`)
@@ -598,12 +559,11 @@ async function processHexMessage(message) {
         inline: false
       })
       .setFooter({
-        text: 'Avalon Raid Helper - Auto Decoder • Hecho con ❤️ por @chuny-dev',
-        iconURL: 'https://i.imgur.com/AfFp7pu.png'
+        text: 'Chuny BOT - Auto Decoder • Hecho con ❤️ por @chuny-dev',
+        iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
       })
       .setTimestamp();
 
-    // Crear embeds individuales para cada jefe (máximo 4 para evitar spam)
     const maxEmbeds = Math.min(bosses.length, 4);
     const bossEmbeds = bosses.slice(0, maxEmbeds).map((boss, index) => {
       const color = colorMap[boss.color] || '#FFFFFF';
@@ -632,12 +592,11 @@ async function processHexMessage(message) {
         )
         .setFooter({
           text: `Jefe ${index + 1} de ${bosses.length} • Auto-detectado`,
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
     });
 
-    // Responder en el canal
     await message.reply({
       embeds: [mainEmbed, ...bossEmbeds],
       allowedMentions: { repliedUser: false }

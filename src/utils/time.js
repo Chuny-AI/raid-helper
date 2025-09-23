@@ -8,25 +8,21 @@ const parseTime = (timeString) => {
     throw new Error('Tiempo inválido: debe ser una cadena de texto');
   }
 
-  // Limpiar el string y convertir a minúsculas
   const cleanTime = timeString.trim().toLowerCase();
 
   let hours = 0;
   let minutes = 0;
 
-  // Regex para capturar horas
   const hoursMatch = cleanTime.match(/(\d+)h/);
   if (hoursMatch) {
     hours = parseInt(hoursMatch[1], 10);
   }
 
-  // Regex para capturar minutos
   const minutesMatch = cleanTime.match(/(\d+)m/);
   if (minutesMatch) {
     minutes = parseInt(minutesMatch[1], 10);
   }
 
-  // Si no hay 'h' ni 'm', asumir que es solo un número en minutos
   if (!hoursMatch && !minutesMatch) {
     const numberMatch = cleanTime.match(/^(\d+)$/);
     if (numberMatch) {
@@ -36,7 +32,6 @@ const parseTime = (timeString) => {
     }
   }
 
-  // Validar valores
   if (isNaN(hours) || isNaN(minutes) || hours < 0 || minutes < 0) {
     throw new Error(`Valores de tiempo inválidos: horas=${hours}, minutos=${minutes}`);
   }

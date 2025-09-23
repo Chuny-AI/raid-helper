@@ -158,7 +158,6 @@ const migrateWeaponsFromJSON = async () => {
     let errorCount = 0;
     
     for (const [categoryKey, categoryData] of Object.entries(weapons)) {
-      // Validar datos de la categoría
       if (!categoryData.displayName || !categoryData.defaultEmoji) {
         console.warn(`[WARNING] Categoría ${categoryKey} tiene datos incompletos, omitiendo...`);
         continue;
@@ -166,21 +165,18 @@ const migrateWeaponsFromJSON = async () => {
       
       for (const weaponData of categoryData.data) {
         try {
-          // Validar datos del arma
           if (!weaponData.emoji || !weaponData.name) {
             console.warn(`[WARNING] Arma con datos incompletos, omitiendo:`, weaponData);
             skippedCount++;
             continue;
           }
           
-          // Verificar si el arma ya existe
           const existingWeapon = await Weapon.findOne({ emojiId: weaponData.emoji });
           if (existingWeapon) {
             skippedCount++;
             continue;
           }
           
-          // Crear nueva arma con validación de longitud
           const weapon = new Weapon({
             emojiId: weaponData.emoji.substring(0, 50), // Limitar a 50 caracteres
             name: weaponData.name.substring(0, 100), // Limitar a 100 caracteres

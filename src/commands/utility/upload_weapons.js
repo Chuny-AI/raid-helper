@@ -17,7 +17,6 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar acceso premium - SIN BYPASS PARA EL DUEÑO
       const { isServerPremium } = require('../../services/serverService');
       const isPremium = await isServerPremium(interaction.guild.id);
 
@@ -27,15 +26,15 @@ module.exports = {
           .setTitle("💎 Servidor Premium Requerido")
           .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
           .setColor("#FFD700")
-          .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+          .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
           .setTimestamp()
           .setFooter({
-            text: "Avalon Raid Helper - Premium",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            text: "Chuny BOT - Premium",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
           })
           .setAuthor({
             name: "Chuny Dev",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
             url: "https://www.twitch.tv/chuny_dev",
           })
           .addFields(
@@ -69,7 +68,6 @@ module.exports = {
         return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
       }
 
-      // Verificar si es el propietario del bot
       const isOwner = await checkOwner(interaction);
       if (!isOwner) {
         return;
@@ -78,7 +76,6 @@ module.exports = {
       await interaction.deferReply({ ephemeral: true });
 
       try {
-        // Leer el archivo weapons.json
         const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
 
         if (!fs.existsSync(weaponsFilePath)) {
@@ -113,11 +110,9 @@ module.exports = {
         let deletedCount = 0;
         let failedCount = 0;
 
-        // Eliminar TODAS las armas existentes (físicamente de la base de datos)
         const deleteResult = await Weapon.deleteMany({});
         deletedCount = deleteResult.deletedCount;
 
-        // Procesar cada categoría de armas
         for (const categoryKey in weaponsData.weapons) {
           const categoryData = weaponsData.weapons[categoryKey];
           const categoryDisplayName = categoryData.displayName;

@@ -6,7 +6,6 @@
 const { REST, Routes } = require('discord.js');
 require('dotenv').config();
 
-// Compatibilidad con diferentes nombres de variables de entorno
 const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
 const clientId = process.env.CLIENT_ID;
 
@@ -16,7 +15,6 @@ async function deleteGlobalCommands() {
   try {
     console.log('🔄 Obteniendo comandos globales actuales...');
 
-    // Obtener todos los comandos globales
     const globalCommands = await rest.get(
       Routes.applicationCommands(clientId)
     );
@@ -28,7 +26,6 @@ async function deleteGlobalCommands() {
       return;
     }
 
-    // Mostrar comandos que se van a eliminar
     console.log('\n📝 Comandos que serán eliminados:');
     globalCommands.forEach((command, index) => {
       console.log(`   ${index + 1}. ${command.name} - ${command.description}`);
@@ -37,7 +34,6 @@ async function deleteGlobalCommands() {
     console.log('\n⚠️  ADVERTENCIA: Esto eliminará TODOS los comandos globales del bot');
     console.log('🔄 Iniciando eliminación...');
 
-    // Eliminar todos los comandos globales enviando un array vacío
     await rest.put(
       Routes.applicationCommands(clientId),
       { body: [] }
@@ -60,7 +56,6 @@ async function deleteGlobalCommands() {
   }
 }
 
-// Verificar variables de entorno
 if (!token) {
   console.error('❌ Error: Variable DISCORD_TOKEN o TOKEN no encontrada');
   console.error('💡 Asegúrate de tener un archivo .env con DISCORD_TOKEN configurado');
@@ -73,5 +68,4 @@ if (!clientId) {
   process.exit(1);
 }
 
-// Ejecutar eliminación
 deleteGlobalCommands();

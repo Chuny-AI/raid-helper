@@ -73,7 +73,6 @@ const RaidEventSchema = new mongoose.Schema({
   }
 });
 
-// Actualizar updatedAt antes de guardar
 RaidEventSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

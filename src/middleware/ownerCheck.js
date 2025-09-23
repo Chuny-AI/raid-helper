@@ -7,12 +7,10 @@ const checkOwner = async (interaction) => {
   try {
     let botOwnerId;
     
-    // Intentar obtener el ID del propietario desde la aplicación
     const application = interaction.client.application;
     if (application && application.owner) {
       botOwnerId = application.owner.id;
     } else {
-      // Fallback: usar variable de entorno
       botOwnerId = process.env.BOT_OWNER_ID;
       if (!botOwnerId) {
         console.error('[ERROR] No se pudo obtener el ID del propietario del bot');
@@ -50,12 +48,10 @@ const isOwner = async (interaction) => {
   try {
     let botOwnerId;
     
-    // Intentar obtener el ID del propietario desde la aplicación
     const application = interaction.client.application;
     if (application && application.owner) {
       botOwnerId = application.owner.id;
     } else {
-      // Fallback: usar variable de entorno
       botOwnerId = process.env.BOT_OWNER_ID;
       if (!botOwnerId) {
         console.error('[ERROR] No se pudo obtener el ID del propietario del bot');

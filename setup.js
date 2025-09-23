@@ -3,9 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 
-console.log('🚀 Configurando Avalon Raid Helper...\n');
+console.log('🚀 Configurando Chuny BOT...\n');
 
-// Verificar si existe .env
 const envPath = path.join(__dirname, '.env');
 if (!fs.existsSync(envPath)) {
   console.log('📝 Creando archivo .env...');
@@ -16,7 +15,6 @@ if (!fs.existsSync(envPath)) {
   console.log('✅ Archivo .env ya existe.');
 }
 
-// Verificar dependencias
 console.log('\n📦 Verificando dependencias...');
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 const requiredDeps = ['discord.js', 'mongoose'];

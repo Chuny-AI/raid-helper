@@ -12,24 +12,22 @@ const createErrorEmbed = (title, description, fields = []) => {
     .setTitle(`❌ ${title}`)
     .setDescription(description)
     .setColor("#FF0000")
-    .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+    .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
     .setTimestamp()
     .setFooter({
-      text: "Avalon Raid Helper - Error",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      text: "Chuny BOT - Error",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setAuthor({
       name: "Chuny Dev",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
       url: "https://www.twitch.tv/chuny_dev",
     });
 
-  // Agregar campos adicionales si se proporcionan
   fields.forEach(field => {
     embed.addFields(field);
   });
 
-  // Agregar sección de redes sociales
   embed.addFields(
     {
       name: "🔗 Mis Redes Sociales",
@@ -73,24 +71,22 @@ const createWarningEmbed = (title, description, fields = []) => {
     .setTitle(`⚠️ ${title}`)
     .setDescription(description)
     .setColor("#FFA500")
-    .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+    .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
     .setTimestamp()
     .setFooter({
-      text: "Avalon Raid Helper - Warning",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      text: "Chuny BOT - Warning",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setAuthor({
       name: "Chuny Dev",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
       url: "https://www.twitch.tv/chuny_dev",
     });
 
-  // Agregar campos adicionales si se proporcionan
   fields.forEach(field => {
     embed.addFields(field);
   });
 
-  // Agregar sección de redes sociales
   embed.addFields(
     {
       name: "🔗 Mis Redes Sociales",
@@ -134,24 +130,22 @@ const createInfoEmbed = (title, description, fields = []) => {
     .setTitle(`ℹ️ ${title}`)
     .setDescription(description)
     .setColor("#00BFFF")
-    .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+    .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
     .setTimestamp()
     .setFooter({
-      text: "Avalon Raid Helper - Información",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      text: "Chuny BOT - Información",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setAuthor({
       name: "Chuny Dev",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
       url: "https://www.twitch.tv/chuny_dev",
     });
 
-  // Agregar campos adicionales si se proporcionan
   fields.forEach(field => {
     embed.addFields(field);
   });
 
-  // Agregar sección de redes sociales
   embed.addFields(
     {
       name: "🔗 Mis Redes Sociales",
@@ -195,24 +189,22 @@ const createSuccessEmbed = (title, description, fields = []) => {
     .setTitle(`✅ ${title}`)
     .setDescription(description)
     .setColor("#00FF00")
-    .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+    .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
     .setTimestamp()
     .setFooter({
-      text: "Avalon Raid Helper - Éxito",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      text: "Chuny BOT - Éxito",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setAuthor({
       name: "Chuny Dev",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
       url: "https://www.twitch.tv/chuny_dev",
     });
 
-  // Agregar campos adicionales si se proporcionan
   fields.forEach(field => {
     embed.addFields(field);
   });
 
-  // Agregar sección de redes sociales
   embed.addFields(
     {
       name: "🔗 Mis Redes Sociales",
@@ -251,7 +243,6 @@ const createSuccessEmbed = (title, description, fields = []) => {
  */
 const safeReply = async (interaction, options) => {
   try {
-    // Map deprecated ephemeral option to flags:64
     if (options && 'ephemeral' in options) {
       if (options.ephemeral) {
         options.flags = 64;
@@ -272,7 +263,6 @@ const safeReply = async (interaction, options) => {
         }
         delete options.ephemeral;
       }
-      // Si ya fue reconocida la interacción (40060), intenta followUp; si es desconocida (10062), ignora silenciosamente
       if ((interaction.replied || interaction.deferred) && error.code !== 10062) {
         await interaction.followUp({
           content: "⚠️ Error procesando la respuesta, pero el comando continúa.",

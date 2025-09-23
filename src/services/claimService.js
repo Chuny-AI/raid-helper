@@ -34,10 +34,8 @@ class ClaimService {
 
       await claim.save();
 
-      // Programar recordatorios automáticos (10min y 5min)
       await this.scheduleReminders(claim);
 
-      // Enviar al canal de claims si está configurado
       console.log(`[DEBUG] Enviando claim ${claim.claimId} al canal de claims`);
       await this.sendClaimToChannel(claim, 'created');
 
@@ -60,17 +58,14 @@ class ClaimService {
       const userId = interaction.user.id;
       const guildId = interaction.guild.id;
 
-      // 1. Verificar si es el dueño del claim
       if (claim.userId === userId) {
         return true;
       }
 
-      // 2. Verificar si es administrador del servidor
       if (interaction.member && interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return true;
       }
 
-      // 3. Verificar si tiene roles autorizados
       const authorizedRoles = await getAuthorizedRoles(guildId);
       if (authorizedRoles.length > 0) {
         const authorizedRoleIds = authorizedRoles.map(role => role.roleId);
@@ -150,7 +145,6 @@ class ClaimService {
         throw new Error('Este claim ya no está activo');
       }
 
-      // Verificar permisos para gestionar el claim
       const canManage = await this.canManageClaim(interaction, claim);
       if (!canManage) {
         throw new Error('No tienes permisos para completar este claim. Solo el dueño, administradores o usuarios con roles autorizados pueden hacerlo.');
@@ -159,10 +153,8 @@ class ClaimService {
       claim.status = 'completed';
       await claim.save();
 
-      // Cancelar recordatorios si existen
       await this.cancelReminders(claim);
 
-      // Eliminar del canal de claims y enviar al canal de closed
       await this.removeClaimFromChannel(claim);
       await this.sendClaimToChannel(claim, 'completed');
 
@@ -192,7 +184,6 @@ class ClaimService {
         throw new Error('Este claim ya no está activo');
       }
 
-      // Verificar permisos para gestionar el claim
       const canManage = await this.canManageClaim(interaction, claim);
       if (!canManage) {
         throw new Error('No tienes permisos para cancelar este claim. Solo el dueño, administradores o usuarios con roles autorizados pueden hacerlo.');
@@ -201,10 +192,8 @@ class ClaimService {
       claim.status = 'cancelled';
       await claim.save();
 
-      // Cancelar recordatorios si existen
       await this.cancelReminders(claim);
 
-      // Eliminar del canal de claims y enviar al canal de closed
       await this.removeClaimFromChannel(claim);
       await this.sendClaimToChannel(claim, 'cancelled');
 
@@ -225,7 +214,6 @@ class ClaimService {
       const now = new Date();
       const claimEndTime = new Date(claim.claimTime);
 
-      // Programar recordatorio 10 minutos antes del fin del claim
       const tenMinutesBeforeEnd = new Date(claimEndTime.getTime() - 10 * 60 * 1000);
       if (tenMinutesBeforeEnd > now) {
         const jobId10 = `claim_reminder_10min_${claim.claimId}`;
@@ -241,7 +229,6 @@ class ClaimService {
         console.log(`[DEBUG] Recordatorio de 10min no programado para claim ${claim.claimId} - tiempo ya pasado`);
       }
 
-      // Programar recordatorio 5 minutos antes del fin del claim
       const fiveMinutesBeforeEnd = new Date(claimEndTime.getTime() - 5 * 60 * 1000);
       if (fiveMinutesBeforeEnd > now) {
         const jobId5 = `claim_reminder_5min_${claim.claimId}`;
@@ -257,7 +244,6 @@ class ClaimService {
         console.log(`[DEBUG] Recordatorio de 5min no programado para claim ${claim.claimId} - tiempo ya pasado`);
       }
 
-      // Programar auto-expiración cuando llegue el tiempo del claim
       const expirationJobId = `claim_expiration_${claim.claimId}`;
       scheduleJob(expirationJobId, claimEndTime, async () => {
         console.log(`[DEBUG] Ejecutando auto-expiración para claim ${claim.claimId}`);
@@ -293,11 +279,9 @@ class ClaimService {
       claim.status = 'expired';
       await claim.save();
 
-      // Cancelar recordatorios pendientes ANTES de mover al canal
       console.log(`[DEBUG] Cancelando recordatorios para claim ${claimId} antes de mover a success`);
       await this.cancelReminders(claim);
 
-      // Eliminar del canal de claims y enviar al canal de success con mensaje especial
       await this.removeClaimFromChannel(claim);
       await this.sendClaimToChannel(claim, 'expired');
 
@@ -314,7 +298,6 @@ class ClaimService {
    */
   static async sendReminder(claimObj, timeRemaining) {
     try {
-      // Obtener el claim actualizado de la base de datos
       const claim = await Claim.findOne({ claimId: claimObj.claimId, status: 'active' });
 
       if (!claim) {
@@ -322,7 +305,6 @@ class ClaimService {
         return;
       }
 
-      // Verificar si el claim ya expiró (prevenir recordatorios después de la expiración)
       const now = new Date();
       if (claim.claimTime <= now) {
         console.log(`[DEBUG] Claim ${claim.claimId} ya expiró, no enviando recordatorio`);
@@ -337,7 +319,6 @@ class ClaimService {
         return;
       }
 
-      // Obtener canal de recordatorios configurado, si no existe usar el canal original
       let channelId = await ClaimChannelService.getRemindersChannelId(claim.guildId);
       if (!channelId) {
         channelId = claim.channelId; // Fallback al canal original
@@ -381,8 +362,8 @@ class ClaimService {
           }
         )
         .setFooter({
-          text: 'Avalon Raid Helper - Sistema de Claims',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Sistema de Claims',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -391,7 +372,6 @@ class ClaimService {
         embeds: [embed]
       });
 
-      // Marcar recordatorio como enviado y guardar messageId según el tiempo
       if (timeRemaining === '10 minutos') {
         claim.reminders.tenMinutes.sent = true;
         claim.reminders.tenMinutes.messageId = reminderMessage.id;
@@ -423,7 +403,6 @@ class ClaimService {
         return;
       }
 
-      // Obtener canal de recordatorios configurado
       let remindersChannelId = await ClaimChannelService.getRemindersChannelId(claim.guildId);
       if (!remindersChannelId) {
         remindersChannelId = claim.channelId; // Fallback al canal original
@@ -435,7 +414,6 @@ class ClaimService {
         return;
       }
 
-      // Eliminar mensaje de recordatorio de 10 minutos
       if (claim.reminders.tenMinutes.messageId) {
         try {
           const message10 = await channel.messages.fetch(claim.reminders.tenMinutes.messageId);
@@ -451,7 +429,6 @@ class ClaimService {
         }
       }
 
-      // Eliminar mensaje de recordatorio de 5 minutos
       if (claim.reminders.fiveMinutes.messageId) {
         try {
           const message5 = await channel.messages.fetch(claim.reminders.fiveMinutes.messageId);
@@ -467,7 +444,6 @@ class ClaimService {
         }
       }
 
-      // Guardar cambios en la base de datos
       await claim.save();
       console.log(`[DEBUG] Mensajes de recordatorios eliminados para claim ${claim.claimId}`);
 
@@ -484,31 +460,26 @@ class ClaimService {
     try {
       console.log(`[DEBUG] Cancelando recordatorios para claim ${claim.claimId}`);
 
-      // Cancelar recordatorio de 10 minutos
       if (claim.reminders.tenMinutes.jobId) {
         const cancelled = cancelJob(claim.reminders.tenMinutes.jobId);
         console.log(`[INFO] Recordatorio de 10min ${cancelled ? 'cancelado' : 'no encontrado'} para claim ${claim.claimId}`);
         claim.reminders.tenMinutes.jobId = null;
       }
 
-      // Cancelar recordatorio de 5 minutos
       if (claim.reminders.fiveMinutes.jobId) {
         const cancelled = cancelJob(claim.reminders.fiveMinutes.jobId);
         console.log(`[INFO] Recordatorio de 5min ${cancelled ? 'cancelado' : 'no encontrado'} para claim ${claim.claimId}`);
         claim.reminders.fiveMinutes.jobId = null;
       }
 
-      // Cancelar job de auto-expiración
       if (claim.expirationJobId) {
         const cancelled = cancelJob(claim.expirationJobId);
         console.log(`[INFO] Job de auto-expiración ${cancelled ? 'cancelado' : 'no encontrado'} para claim ${claim.claimId}`);
         claim.expirationJobId = null;
       }
 
-      // Eliminar mensajes de recordatorios del canal
       await this.deleteReminderMessages(claim);
 
-      // Guardar los cambios en la base de datos
       await claim.save();
       console.log(`[DEBUG] IDs de jobs limpiados y mensajes eliminados para claim ${claim.claimId}`);
 
@@ -526,13 +497,11 @@ class ClaimService {
       const activeClaims = await Claim.find({ status: 'active' });
 
       for (const claim of activeClaims) {
-        // Si el claim tiene recordatorios enviados pero no tiene messageId, intentar limpiar
         if ((claim.reminders.tenMinutes.sent && !claim.reminders.tenMinutes.messageId) ||
           (claim.reminders.fiveMinutes.sent && !claim.reminders.fiveMinutes.messageId)) {
 
           console.log(`[INFO] Limpiando recordatorios huérfanos para claim ${claim.claimId}`);
 
-          // Marcar como no enviados para evitar confusión
           if (claim.reminders.tenMinutes.sent && !claim.reminders.tenMinutes.messageId) {
             claim.reminders.tenMinutes.sent = false;
           }
@@ -567,10 +536,8 @@ class ClaimService {
         claim.status = 'expired';
         await claim.save();
 
-        // Cancelar recordatorios si existen
         await this.cancelReminders(claim);
 
-        // Eliminar del canal de claims y enviar al canal de success
         await this.removeClaimFromChannel(claim);
         await this.sendClaimToChannel(claim, 'expired');
 
@@ -649,7 +616,6 @@ class ClaimService {
         await message.delete();
         console.log(`[INFO] Mensaje del claim ${claim.claimId} eliminado del canal de claims`);
 
-        // Limpiar messageId del claim
         claim.messageId = null;
         await claim.save();
       } catch (error) {
@@ -674,7 +640,6 @@ class ClaimService {
     try {
       console.log(`[DEBUG] Intentando enviar claim ${claim.claimId} con acción ${action}`);
 
-      // Determinar el canal según la acción
       let channelId;
       switch (action) {
         case 'created':
@@ -897,8 +862,8 @@ class ClaimService {
       }
 
       embed.setFooter({
-        text: 'Avalon Raid Helper - Sistema de Claims',
-        iconURL: 'https://i.imgur.com/AfFp7pu.png'
+        text: 'Chuny BOT - Sistema de Claims',
+        iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
       }).setTimestamp();
 
       console.log(`[DEBUG] Enviando embed al canal ${channel.name}...`);
@@ -907,7 +872,6 @@ class ClaimService {
 
       console.log(`[INFO] Claim ${action} enviado al canal: ${claim.claimId}`);
 
-      // Guardar messageId solo para claims creados (para poder eliminarlos después)
       if (action === 'created') {
         claim.messageId = message.id;
         await claim.save();
@@ -920,7 +884,6 @@ class ClaimService {
   }
 }
 
-// Ejecutar limpieza de respaldo cada 30 minutos para claims huérfanos
 setInterval(() => {
   console.log('[INFO] Ejecutando limpieza de respaldo para claims huérfanos');
   ClaimService.cleanupExpiredClaims();

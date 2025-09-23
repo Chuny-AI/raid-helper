@@ -34,7 +34,6 @@ const authorizedUserSchema = new mongoose.Schema({
   timestamps: true // Agrega createdAt y updatedAt automáticamente
 });
 
-// Índices para optimizar búsquedas
 authorizedUserSchema.index({ userId: 1, active: 1 });
 
 const AuthorizedUser = mongoose.model('AuthorizedUser', authorizedUserSchema);

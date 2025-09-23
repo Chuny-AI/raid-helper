@@ -37,8 +37,8 @@ async function testChannelEmbed(channel, title, description) {
       .setColor('#00D166')
       .setTimestamp()
       .setFooter({
-        text: 'Avalon Raid Helper - Prueba de Canal',
-        iconURL: 'https://i.imgur.com/AfFp7pu.png'
+        text: 'Chuny BOT - Prueba de Canal',
+        iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
       });
 
     await channel.send({ embeds: [testEmbed] });

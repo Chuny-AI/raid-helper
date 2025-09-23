@@ -1,5 +1,5 @@
 {
-  "name": "discord",
+  "name": "chuny-bot",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -11,10 +11,15 @@
     "delete-global": "node --env-file=.env delete-global-commands.js",
     "check-commands": "node --env-file=.env check-commands.js"
   },
-  "keywords": [],
+  "keywords": [
+    "discord",
+    "bot",
+    "chuny",
+    "albion-online"
+  ],
   "author": "Edwin J. Páez",
   "license": "ISC",
-  "description": "Discord bot",
+  "description": "Chuny BOT - Discord bot para gestión de actividades y decodificación de calabozos",
   "dependencies": {
     "discord.js": "^14.16.2",
     "dotenv": "^16.3.1",

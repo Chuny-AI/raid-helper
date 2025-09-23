@@ -15,12 +15,10 @@ async function canConfigureClaims(interaction) {
     const userId = interaction.user.id;
     const guildId = interaction.guild.id;
 
-    // 1. Verificar si es administrador del servidor
     if (interaction.member && interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return true;
     }
 
-    // 2. Verificar si tiene roles autorizados
     const authorizedRoles = await getAuthorizedRoles(guildId);
     if (authorizedRoles.length > 0) {
       const authorizedRoleIds = authorizedRoles.map(role => role.roleId);
@@ -120,13 +118,11 @@ module.exports = {
   async execute(interaction) {
     console.log('[CLAIM-CONFIG] Comando claim-config ejecutado');
 
-    // Verificar estado de la interacción inmediatamente
     if (interaction.replied || interaction.deferred) {
       console.log('[WARNING] Interacción ya procesada, saltando...');
       return;
     }
 
-    // Verificar timing de la interacción
     const timeElapsed = Date.now() - interaction.createdTimestamp;
     if (timeElapsed > 2500) {
       console.log('[WARNING] Interacción demasiado antigua:', timeElapsed, 'ms');
@@ -144,7 +140,6 @@ module.exports = {
     let isDeferred = false;
 
     try {
-      // Defer reply inmediatamente con flags efímeros
       try {
         await interaction.deferReply({ flags: 64 });
         isDeferred = true;
@@ -162,29 +157,26 @@ module.exports = {
           return;
         }
 
-        // Para otros errores, intentar respuesta directa
         isDeferred = false;
       }
 
-      // Verificar acceso premium - SIN BYPASS PARA EL DUEÑO
       const { isServerPremium } = require('../../services/serverService');
       const isPremium = await isServerPremium(interaction.guild.id);
 
       if (!isPremium) {
-        // Servidor no premium - mostrar embed de premium
         const premiumEmbed = new EmbedBuilder()
           .setTitle("💎 Servidor Premium Requerido")
           .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
           .setColor("#FFD700")
-          .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+          .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
           .setTimestamp()
           .setFooter({
-            text: "Avalon Raid Helper - Premium",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            text: "Chuny BOT - Premium",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
           })
           .setAuthor({
             name: "Chuny Dev",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
             url: "https://www.twitch.tv/chuny_dev",
           })
           .addFields(
@@ -219,7 +211,6 @@ module.exports = {
         return;
       }
 
-      // Verificar permisos de administrador/roles
       const canConfigure = await canConfigureClaims(interaction);
       if (!canConfigure) {
         const errorEmbed = createErrorEmbed(
@@ -235,12 +226,9 @@ module.exports = {
         return;
       }
 
-      // Verificar si es el propietario del bot o administrador
-      // Usar verificación silenciosa de propietario para evitar respuestas dobles
       const { isOwner } = require('../../middleware/ownerCheck');
       const owner = await isOwner(interaction);
       if (!owner) {
-        // Si no es propietario, verificar si es administrador
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
           const errorEmbed = createErrorEmbed(
             'Sin Permisos',
@@ -286,7 +274,6 @@ module.exports = {
     } catch (error) {
       console.error('[ERROR] Error en comando claim-config:', error);
 
-      // Si la interacción ya fue procesada, no intentar responder
       if (interaction.replied || interaction.deferred) {
         console.log('[WARNING] No se puede responder, interacción ya procesada');
         return;
@@ -310,7 +297,6 @@ module.exports = {
         }
       } catch (replyError) {
         console.error('[ERROR] Error enviando respuesta de error:', replyError);
-        // No hacer nada más si no se puede responder
       }
     }
   },
@@ -319,7 +305,6 @@ module.exports = {
     const channel = interaction.options.getChannel('canal');
 
     try {
-      // Verificar que sea un canal de texto
       if (channel.type !== 0) { // 0 = GUILD_TEXT
         const errorEmbed = createErrorEmbed(
           'Tipo de Canal Inválido',
@@ -335,7 +320,6 @@ module.exports = {
         });
       }
 
-      // Verificar permisos del bot en el canal
       const botPermissions = channel.permissionsFor(interaction.guild.members.me);
       if (!botPermissions.has(['ViewChannel', 'SendMessages', 'EmbedLinks'])) {
         const errorEmbed = createErrorEmbed(
@@ -360,7 +344,6 @@ module.exports = {
         interaction.user.id
       );
 
-      // Responder con embed al usuario (ephemeral por el defer)
       const successEmbed = new EmbedBuilder()
         .setTitle('✅ Canal de Claims Configurado')
         .setDescription(`El canal de claims ha sido configurado exitosamente.`)
@@ -371,8 +354,8 @@ module.exports = {
           inline: false
         })
         .setFooter({
-          text: 'Avalon Raid Helper - Configuración',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Configuración',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -398,7 +381,6 @@ module.exports = {
     const channel = interaction.options.getChannel('canal');
 
     try {
-      // Verificar que sea un canal de texto
       if (channel.type !== 0) { // 0 = GUILD_TEXT
         const errorEmbed = createErrorEmbed(
           'Tipo de Canal Inválido',
@@ -414,7 +396,6 @@ module.exports = {
         });
       }
 
-      // Verificar permisos del bot en el canal
       const botPermissions = channel.permissionsFor(interaction.guild.members.me);
       if (!botPermissions.has(['ViewChannel', 'SendMessages', 'EmbedLinks'])) {
         const errorEmbed = createErrorEmbed(
@@ -439,7 +420,6 @@ module.exports = {
         interaction.user.id
       );
 
-      // Responder con embed al usuario (ephemeral por el defer)
       const successEmbed = new EmbedBuilder()
         .setTitle('✅ Canal de Recordatorios Configurado')
         .setDescription(`El canal de recordatorios ha sido configurado exitosamente.`)
@@ -450,8 +430,8 @@ module.exports = {
           inline: false
         })
         .setFooter({
-          text: 'Avalon Raid Helper - Configuración',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Configuración',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -488,8 +468,8 @@ module.exports = {
           inline: false
         })
         .setFooter({
-          text: 'Avalon Raid Helper - Configuración',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Configuración',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -526,8 +506,8 @@ module.exports = {
           inline: false
         })
         .setFooter({
-          text: 'Avalon Raid Helper - Configuración',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Configuración',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -558,8 +538,8 @@ module.exports = {
         .setTitle('📊 Estado de Configuración de Claims')
         .setColor('#4A90E2')
         .setFooter({
-          text: 'Avalon Raid Helper - Sistema de Claims',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Sistema de Claims',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -573,7 +553,6 @@ module.exports = {
       } else {
         const fields = [];
 
-        // Canal de claims
         if (config.claimsChannelId) {
           fields.push({
             name: '📋 Canal de Claims',
@@ -588,7 +567,6 @@ module.exports = {
           });
         }
 
-        // Canal de recordatorios
         if (config.remindersChannelId) {
           fields.push({
             name: '⏰ Canal de Recordatorios',
@@ -603,7 +581,6 @@ module.exports = {
           });
         }
 
-        // Canal de claims exitosos
         if (config.successChannelId) {
           fields.push({
             name: '✅ Canal de Claims Exitosos',
@@ -618,7 +595,6 @@ module.exports = {
           });
         }
 
-        // Canal de claims cerrados
         if (config.closedChannelId) {
           fields.push({
             name: '❌ Canal de Claims Cerrados',
@@ -633,7 +609,6 @@ module.exports = {
           });
         }
 
-        // Información adicional
         fields.push({
           name: '👤 Configurado por',
           value: `<@${config.configuredBy}>`,
@@ -715,8 +690,8 @@ module.exports = {
           inline: false
         })
         .setFooter({
-          text: 'Avalon Raid Helper - Configuración',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Configuración',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -779,8 +754,8 @@ module.exports = {
           inline: false
         })
         .setFooter({
-          text: 'Avalon Raid Helper - Configuración',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Configuración',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -822,8 +797,8 @@ module.exports = {
           inline: false
         })
         .setFooter({
-          text: 'Avalon Raid Helper - Configuración',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Configuración',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -865,8 +840,8 @@ module.exports = {
           inline: false
         })
         .setFooter({
-          text: 'Avalon Raid Helper - Configuración',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Configuración',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 

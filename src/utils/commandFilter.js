@@ -38,7 +38,6 @@ const filterCommand = async (interaction) => {
     const commandName = interaction.commandName;
     const commandType = commandVisibilityMap[commandName];
 
-    // Si el comando no está en el mapa, permitir ejecución
     if (!commandType) {
       return true;
     }
@@ -53,12 +52,10 @@ const filterCommand = async (interaction) => {
         shouldShow = await checkPremiumAccess(interaction);
         break;
       case 'premium_only':
-        // Para claim: permitir si el servidor es premium (sin verificar roles de usuario)
         const { isServerPremium } = require('../services/serverService');
         shouldShow = await isServerPremium(interaction.guild.id);
         break;
       case 'admin_owner':
-        // Verificar si es propietario del bot
         let botOwnerId;
         const application = interaction.client.application;
         if (application && application.owner) {
@@ -81,7 +78,6 @@ const filterCommand = async (interaction) => {
     }
 
     if (!shouldShow) {
-      // Crear embed de error según el tipo de comando
       let embed;
 
       if (commandType === 'role_based') {

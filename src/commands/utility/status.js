@@ -2,7 +2,6 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getTemplateNames, getTemplatesByServer } = require("../../services/templateService");
 const { getServer, isServerPremium } = require("../../services/serverService");
 const { createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
-// El comando status es visible para todos los usuarios
 
 /**
  * Comando de status para verificar el estado de la base de datos
@@ -14,11 +13,9 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // El comando status es visible para todos los usuarios
 
       const guildId = interaction.guild.id;
       
-      // Obtener información del servidor
       const server = await getServer(guildId);
       const templates = await getTemplatesByServer(guildId);
       const isPremium = await isServerPremium(guildId);

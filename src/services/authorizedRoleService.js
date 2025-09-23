@@ -31,12 +31,10 @@ const isRoleAuthorized = async (roleId, serverId) => {
  */
 const isUserAuthorized = async (member, serverId) => {
   try {
-    // Verificar si el usuario es administrador
     if (member.permissions.has('Administrator')) {
       return true;
     }
 
-    // Verificar si el usuario tiene algún rol autorizado
     const userRoles = member.roles.cache.map(role => role.id);
     const authorizedRoles = await getAuthorizedRoles(serverId);
     const authorizedRoleIds = authorizedRoles.map(role => role.roleId);
@@ -53,7 +51,6 @@ const isUserAuthorized = async (member, serverId) => {
  */
 const addAuthorizedRole = async (roleId, roleName, serverId, addedBy) => {
   try {
-    // Verificar si el rol ya existe
     const existingRole = await AuthorizedRole.findOne({ roleId, serverId });
     if (existingRole) {
       throw new Error('Este rol ya está autorizado para enviar notificaciones.');

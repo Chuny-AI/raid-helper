@@ -11,16 +11,12 @@ const shouldShowCommand = async (interaction, commandType) => {
   try {
     switch (commandType) {
       case 'premium':
-        // Solo mostrar comandos premium si el servidor tiene premium
         return await isServerPremiumSilent(interaction);
       
       case 'owner':
-        // Solo mostrar comandos de propietario si el usuario es el propietario
         return await isOwner(interaction);
       
       case 'admin':
-        // Solo mostrar comandos de admin si el usuario es administrador
-        // Verificar que la interacción sea en un servidor y que member exista
         if (!interaction.guild || !interaction.member) {
           return false;
         }

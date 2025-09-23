@@ -68,7 +68,6 @@ module.exports = {
   async execute(interaction) {
     console.log('[CLAIM] Comando claim ejecutado');
 
-    // Verificar estado de la interacción inmediatamente
     if (interaction.replied || interaction.deferred) {
       console.log('[WARNING] Interacción ya procesada, saltando...');
       return;
@@ -77,7 +76,6 @@ module.exports = {
     let isDeferred = false;
 
     try {
-      // Defer reply inmediatamente en modo efímero usando flags
       try {
         await interaction.deferReply({ flags: 64 }); // 64 = EPHEMERAL
         isDeferred = true;
@@ -95,11 +93,9 @@ module.exports = {
           return;
         }
 
-        // Para otros errores, intentar respuesta directa
         isDeferred = false;
       }
 
-      // Verificar acceso premium ya se hizo en commandFilter
       const subcommand = interaction.options.getSubcommand();
 
       switch (subcommand) {
@@ -116,7 +112,6 @@ module.exports = {
     } catch (error) {
       console.error('[ERROR] Error en comando claim:', error);
 
-      // Si la interacción ya fue procesada, no intentar responder
       if (interaction.replied || interaction.deferred) {
         console.log('[WARNING] No se puede responder, interacción ya procesada');
         return;
@@ -140,7 +135,6 @@ module.exports = {
         }
       } catch (replyError) {
         console.error('[ERROR] Error enviando respuesta de error:', replyError);
-        // No hacer nada más si no se puede responder
       }
     }
   },
@@ -152,11 +146,9 @@ module.exports = {
     const description = interaction.options.getString('descripcion');
 
     try {
-      // Validar que todos los canales necesarios estén configurados
       const ClaimChannelService = require('../../services/claimChannelService');
       const config = await ClaimChannelService.getChannelConfig(interaction.guild.id);
 
-      // Verificar si todos los canales están configurados
       const missingChannels = [];
       if (!config || !config.claimsChannelId) missingChannels.push('**Canal de Claims** (`/claim-config set claims`)');
       if (!config || !config.remindersChannelId) missingChannels.push('**Canal de Recordatorios** (`/claim-config set reminders`)');
@@ -181,13 +173,10 @@ module.exports = {
         return;
       }
 
-      // Parsear tiempo
       const { duration, text: durationText } = ClaimService.parseTimeString(timeString);
 
-      // Calcular tiempo de finalización
       const claimTime = new Date(Date.now() + duration);
 
-      // Crear claim
       const claimData = {
         userId: interaction.user.id,
         username: interaction.user.displayName || interaction.user.username,
@@ -203,7 +192,6 @@ module.exports = {
 
       const claim = await ClaimService.createClaim(claimData);
 
-      // Crear embed de confirmación
       const embed = new EmbedBuilder()
         .setTitle('✅ Claim Creado Exitosamente')
         .setDescription(`¡Has reclamado **${claim.contentType}** en **${claim.mapLocation}**!`)
@@ -246,8 +234,8 @@ module.exports = {
           }
         )
         .setFooter({
-          text: 'Avalon Raid Helper - Sistema de Claims',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Sistema de Claims',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -318,8 +306,8 @@ module.exports = {
           }
         )
         .setFooter({
-          text: 'Avalon Raid Helper - Sistema de Claims',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Sistema de Claims',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
@@ -376,8 +364,8 @@ module.exports = {
           }
         )
         .setFooter({
-          text: 'Avalon Raid Helper - Sistema de Claims',
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: 'Chuny BOT - Sistema de Claims',
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 

@@ -7,7 +7,6 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Importar todos los modelos
 const Claim = require('./src/database/models/Claim');
 const ClaimChannelConfig = require('./src/database/models/ClaimChannelConfig');
 const AuthorizedRole = require('./src/database/models/AuthorizedRole');
@@ -23,7 +22,6 @@ async function cleanupDatabase() {
   try {
     console.log('🔄 Conectando a MongoDB...');
 
-    // Conectar a la base de datos
     await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
@@ -31,7 +29,6 @@ async function cleanupDatabase() {
 
     console.log('✅ Conectado a MongoDB');
 
-    // Cancelar todos los jobs programados antes de limpiar
     console.log('🛑 Cancelando todos los jobs programados...');
     const scheduledJobs = require('node-schedule').scheduledJobs;
     for (const jobName in scheduledJobs) {
@@ -43,7 +40,6 @@ async function cleanupDatabase() {
     console.log('⚠️  ADVERTENCIA: Esto eliminará TODA la información!');
     console.log('');
 
-    // Lista de colecciones a limpiar
     const collections = [
       { model: Claim, name: 'Claims' },
       { model: ClaimChannelConfig, name: 'Configuraciones de Canales de Claims' },
@@ -55,7 +51,6 @@ async function cleanupDatabase() {
       { model: Weapon, name: 'Armas' }
     ];
 
-    // Limpiar cada colección con información detallada
     for (const collection of collections) {
       try {
         console.log(`🔍 Verificando ${collection.name}...`);
@@ -69,7 +64,6 @@ async function cleanupDatabase() {
           console.log(`   - Documentos eliminados: ${result.deletedCount}`);
           console.log(`✅ ${collection.name}: ${count} documentos eliminados`);
 
-          // Verificar que realmente se eliminaron
           const remainingCount = await collection.model.countDocuments();
           if (remainingCount > 0) {
             console.log(`⚠️  ADVERTENCIA: Aún quedan ${remainingCount} documentos en ${collection.name}`);
@@ -87,12 +81,10 @@ async function cleanupDatabase() {
     console.log('');
     console.log('🧹 Limpieza adicional...');
 
-    // Verificación especial para AuthorizedRole
     console.log('🔍 Verificación especial de AuthorizedRole...');
     try {
       const db = mongoose.connection.db;
 
-      // Buscar todas las posibles variaciones del nombre de colección
       const possibleNames = [
         'authorizedroles',
         'AuthorizedRoles',
@@ -111,11 +103,9 @@ async function cleanupDatabase() {
             console.log(`✅ Colección '${name}' limpiada: ${count} documentos eliminados`);
           }
         } catch (err) {
-          // Ignorar errores de colección no encontrada
         }
       }
 
-      // También intentar con el nombre del modelo
       const modelCollectionName = AuthorizedRole.collection.collectionName;
       console.log(`🔍 Nombre de colección del modelo: ${modelCollectionName}`);
       const modelCollection = db.collection(modelCollectionName);
@@ -132,21 +122,18 @@ async function cleanupDatabase() {
 
     console.log('');
 
-    // Limpiar cualquier otra colección que pueda existir
     const db = mongoose.connection.db;
     const allCollections = await db.listCollections().toArray();
 
     for (const collectionInfo of allCollections) {
       const collectionName = collectionInfo.name;
 
-      // Evitar colecciones del sistema
       if (!collectionName.startsWith('system.')) {
         try {
           const collection = db.collection(collectionName);
           const count = await collection.countDocuments();
 
           if (count > 0) {
-            // Solo mostrar si no está en nuestra lista conocida
             const isKnown = collections.some(c =>
               c.model.collection.collectionName === collectionName
             );
@@ -166,7 +153,6 @@ async function cleanupDatabase() {
     console.log('🔍 Verificación final - Estado de todas las colecciones:');
     console.log('='.repeat(50));
 
-    // Verificar estado final de cada modelo
     for (const collection of collections) {
       try {
         const count = await collection.model.countDocuments();
@@ -177,7 +163,6 @@ async function cleanupDatabase() {
       }
     }
 
-    // Listar todas las colecciones de la base de datos
     console.log('');
     console.log('📋 Todas las colecciones en la base de datos:');
     const finalCollections = await db.listCollections().toArray();
@@ -214,14 +199,12 @@ async function cleanupDatabase() {
   } catch (error) {
     console.error('❌ Error durante la limpieza:', error);
   } finally {
-    // Cerrar conexión
     await mongoose.connection.close();
     console.log('🔌 Conexión a MongoDB cerrada');
     process.exit(0);
   }
 }
 
-// Función para confirmar antes de ejecutar
 function confirmCleanup() {
   const readline = require('readline');
   const rl = readline.createInterface({
@@ -259,12 +242,10 @@ function confirmCleanup() {
   });
 }
 
-// Verificar variables de entorno
 if (!process.env.MONGODB_URI) {
   console.error('❌ Error: Variable MONGODB_URI no encontrada');
   console.error('💡 Asegúrate de tener un archivo .env con MONGODB_URI configurado');
   process.exit(1);
 }
 
-// Ejecutar confirmación
 confirmCleanup();

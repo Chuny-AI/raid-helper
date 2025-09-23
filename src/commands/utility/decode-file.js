@@ -23,11 +23,9 @@ module.exports = {
     console.log(`[DECODE-FILE] Comando ejecutado por ${interaction.user.tag} (${interaction.user.id})`);
 
     try {
-      // Defer reply inmediatamente - PÚBLICO (sin ephemeral)
       await interaction.deferReply();
     } catch (error) {
       console.error('[DECODE-FILE] Error al defer reply:', error);
-      // Si falla el defer, intentar reply directo
       try {
         await interaction.reply({
           content: '⚠️ Error de conexión con Discord. Intenta de nuevo.',
@@ -73,7 +71,6 @@ module.exports = {
 
       const attachment = interaction.options.getAttachment('archivo');
 
-      // Validar que sea un archivo de texto
       if (!attachment.name.match(/\.(txt|dat|hex|log)$/i)) {
         const errorEmbed = createErrorEmbed(
           'Formato de Archivo Inválido',
@@ -109,7 +106,6 @@ module.exports = {
         return;
       }
 
-      // Descargar y leer el contenido del archivo
       console.log(`[DECODE-FILE] Descargando archivo: ${attachment.name} (${attachment.size} bytes)`);
 
       const response = await fetch(attachment.url);
@@ -120,13 +116,11 @@ module.exports = {
       const fileContent = await response.text();
       console.log(`[DECODE-FILE] Archivo leído: ${fileContent.length} caracteres`);
 
-      // Limpiar el contenido (quitar saltos de línea, espacios extra, etc.)
       const hexData = fileContent
         .replace(/\s+/g, ' ')  // Reemplazar múltiples espacios por uno solo
         .replace(/\n/g, ' ')   // Reemplazar saltos de línea por espacios
         .trim();
 
-      // Validar que los datos parezcan ser hexadecimales válidos
       if (!DungeonDecoder.isValidHexData(hexData)) {
         const errorEmbed = createErrorEmbed(
           'Datos Inválidos en el Archivo',
@@ -146,7 +140,6 @@ module.exports = {
         return;
       }
 
-      // Decodificar los datos
       console.log(`[DECODE-FILE] Iniciando decodificación de ${hexData.length} caracteres`);
       const bosses = DungeonDecoder.decode(hexData);
 
@@ -161,8 +154,8 @@ module.exports = {
             inline: false
           })
           .setFooter({
-            text: 'Avalon Raid Helper - Decoder',
-            iconURL: 'https://i.imgur.com/AfFp7pu.png'
+            text: 'Chuny BOT - Decoder',
+            iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
           })
           .setTimestamp();
 
@@ -170,12 +163,10 @@ module.exports = {
         return;
       }
 
-      // Determinar el color de mayor prioridad y imagen aleatoria
       const highestPriorityColor = this.getHighestPriorityChest(bosses);
       const embedColor = colorMap[highestPriorityColor] || '#FFD700';
       const randomBackground = albionBackgrounds[Math.floor(Math.random() * albionBackgrounds.length)];
 
-      // Crear el embed único y hermoso
       const dungeonEmbed = new EmbedBuilder()
         .setTitle('🏰 Calabozo de Avalon Decodificado')
         .setDescription(`Encontrados **${bosses.length} jefes** • Analizados por **${interaction.user.displayName}**`)
@@ -198,12 +189,11 @@ module.exports = {
           inline: true
         })
         .setFooter({
-          text: `Avalon Raid Helper • ${attachment.name}`,
-          iconURL: 'https://i.imgur.com/AfFp7pu.png'
+          text: `Chuny BOT • ${attachment.name}`,
+          iconURL: 'https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless'
         })
         .setTimestamp();
 
-      // Enviar el embed único
       await interaction.editReply({ embeds: [dungeonEmbed] });
 
       console.log(`[DECODE-FILE] Decodificación exitosa: ${bosses.length} jefes • Mejor cofre: ${highestPriorityColor}`);
@@ -211,7 +201,6 @@ module.exports = {
     } catch (error) {
       console.error('[ERROR] Error en comando decode-file:', error);
 
-      // Crear embed de error
       const errorEmbed = createErrorEmbed(
         'Error de Decodificación',
         'Hubo un error al procesar el archivo del calabozo.',
@@ -226,7 +215,6 @@ module.exports = {
         }]
       );
 
-      // Intentar responder con manejo seguro de errores
       try {
         if (interaction.deferred) {
           await interaction.editReply({ embeds: [errorEmbed] });
@@ -235,7 +223,6 @@ module.exports = {
         }
       } catch (replyError) {
         console.error('[DECODE-FILE] Error al enviar mensaje de error:', replyError);
-        // Si no podemos responder, al menos loggeamos el error original
       }
     }
   },

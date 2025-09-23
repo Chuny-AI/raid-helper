@@ -52,11 +52,10 @@ const setFooter = (embed) => {
   embed
     .setFooter({
       text: "Creado con ❤️ por Chuny",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setTimestamp();
-    
-  // Agregar información de redes sociales al final del embed
+
   embed.addFields(
     {
       name: "🔗 Mis Redes Sociales",
@@ -94,7 +93,7 @@ const setDescription = (embed, description, template) => {
 const setAuthor = (embed) => {
   embed.setAuthor({
     name: "Chuny",
-    iconURL: "https://i.imgur.com/AfFp7pu.png",
+    iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     url: "https://www.linkedin.com/in/edwinjpa/",
   });
 };
@@ -111,13 +110,12 @@ const setCategoriesAndUnitsFromTemplate = (embed, template) => {
     const emojiId = data.defaultEmoji;
     const displayName = data.displayName;
     const initialValue = 0;
-    
-    // Verificar que data.data existe y es un array
+
     if (!data.data || !Array.isArray(data.data)) {
       console.error('Error: data.data no es un array:', data);
       continue;
     }
-    
+
     const units = data.data.reduce(
       (acc, current) => acc + current.units,
       initialValue
@@ -132,7 +130,6 @@ const setCategoriesAndUnitsFromTemplate = (embed, template) => {
     }
   }
 
-  // Solo añadir campos si hay alguno
   if (fieldsArray.length > 0) {
     embed.addFields(fieldsArray);
   }
@@ -152,7 +149,6 @@ const setImage = (embed, url, template) => {
  * @param {*} finalRoles - Roles finales a mostrar (opcional)
  */
 const pingRoles = (embed, template, finalRoles = null) => {
-  // Usar roles finales si se proporcionan, sino usar los del template
   const roles = finalRoles || template.roles;
   if (roles && roles.length > 0) {
     const rolesString = roles.map((roleId) => `<@&${roleId}>`).join(", ");
@@ -214,27 +210,24 @@ const createBuildEmbed = (weaponCategory, weaponUrl, emojiId, templateName) => {
     .setTimestamp()
     .setFooter({
       text: "Creado con ❤️ por Chuny",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setAuthor({
-      name: "Avalon Raid Helper",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      name: "Chuny BOT",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
       url: "https://github.com/M8-Babbage/avalon-raid-helper",
     });
 
-  // Agregar el emoji del arma si existe
   if (emojiId) {
     embed.setThumbnail(`https://cdn.discordapp.com/emojis/${emojiId}.png`);
   }
 
-  // Agregar el enlace de la build
   embed.addFields({
     name: "🔗 Enlace de la Build",
     value: `[Ver build en Albion Free Market](${weaponUrl})`,
     inline: false,
   });
 
-  // Agregar información adicional
   embed.addFields({
     name: "📋 Instrucciones",
     value: "• Haz clic en el enlace para ver la build completa\n• Equípate con los items mostrados\n• ¡Prepárate para la actividad!",
@@ -258,11 +251,11 @@ const createNoBuildEmbed = (weaponCategory, templateName) => {
     .setTimestamp()
     .setFooter({
       text: "Creado con ❤️ por Chuny",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setAuthor({
-      name: "Avalon Raid Helper",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      name: "Chuny BOT",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
       url: "https://github.com/M8-Babbage/avalon-raid-helper",
     });
 
@@ -292,16 +285,15 @@ const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, l
     .setColor("#7289DA") // Color sutil de Discord
     .setTimestamp()
     .setFooter({
-      text: "Avalon Raid Helper - Notificación",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      text: "Chuny BOT - Notificación",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setAuthor({
-      name: "Avalon Raid Helper",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      name: "Chuny BOT",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
       url: "https://github.com/M8-Babbage/avalon-raid-helper",
     });
 
-  // Agregar campos de información
   embed.addFields({
     name: "📋 Actividad",
     value: activityTitle,
@@ -326,7 +318,6 @@ const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, l
     inline: true,
   });
 
-  // Agregar etiquetas de roles si existen
   if (roles && roles.length > 0) {
     const rolesString = roles.map(roleId => `<@&${roleId}>`).join(" ");
     embed.addFields({
@@ -336,7 +327,6 @@ const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, l
     });
   }
 
-  // Agregar instrucciones
   embed.addFields({
     name: "🚀 ¿Cómo unirse?",
     value: "• Haz clic en el botón 'Ir al Evento' para ir al canal\n• Usa los menús desplegables para seleccionar tu rol\n• ¡Prepárate para la aventura!",
@@ -362,16 +352,15 @@ const createReminderEmbed = (activityTitle, templateName, timeRemaining, partici
     .setColor("#FFD700") // Color dorado para recordatorios
     .setTimestamp()
     .setFooter({
-      text: "Avalon Raid Helper - Recordatorio",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      text: "Chuny BOT - Recordatorio",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setAuthor({
-      name: "Avalon Raid Helper",
-      iconURL: "https://i.imgur.com/AfFp7pu.png",
+      name: "Chuny BOT",
+      iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
       url: "https://github.com/M8-Babbage/avalon-raid-helper",
     });
 
-  // Agregar campos de información
   embed.addFields({
     name: "📋 Actividad",
     value: activityTitle,
@@ -390,11 +379,10 @@ const createReminderEmbed = (activityTitle, templateName, timeRemaining, partici
     inline: true,
   });
 
-  // Agregar lista de participantes
   if (participants.length > 0) {
     const participantsList = participants.slice(0, 10).map(p => `• ${p}`).join('\n');
     const moreText = participants.length > 10 ? `\n... y ${participants.length - 10} más` : '';
-    
+
     embed.addFields({
       name: `👥 Participantes (${participants.length})`,
       value: participantsList + moreText,
@@ -408,7 +396,6 @@ const createReminderEmbed = (activityTitle, templateName, timeRemaining, partici
     });
   }
 
-  // Agregar instrucciones
   embed.addFields({
     name: "🚀 Instrucciones",
     value: "• Haz clic en el botón 'Ir al Evento' para ir al canal\n• Prepárate con el equipo necesario\n• ¡Disfruta de la actividad!",
@@ -425,7 +412,6 @@ const createReminderEmbed = (activityTitle, templateName, timeRemaining, partici
  * @returns {ActionRowBuilder} - Fila de botones
  */
 const createGoToEventButton = (channelId, guildId = null) => {
-  // Si no se proporciona guildId, intentar obtenerlo del cliente
   let finalGuildId = guildId;
   if (!finalGuildId) {
     try {
@@ -438,12 +424,11 @@ const createGoToEventButton = (channelId, guildId = null) => {
       console.error('[ERROR] No se pudo obtener el guildId:', error);
     }
   }
-  
-  // Fallback a GUILD_ID del .env o usar un placeholder
+
   if (!finalGuildId) {
     finalGuildId = process.env.GUILD_ID || 'YOUR_GUILD_ID';
   }
-  
+
   const row = new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
@@ -451,7 +436,7 @@ const createGoToEventButton = (channelId, guildId = null) => {
         .setStyle(ButtonStyle.Link)
         .setURL(`https://discord.com/channels/${finalGuildId}/${channelId}`)
     );
-  
+
   return row;
 };
 

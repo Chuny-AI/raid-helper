@@ -52,23 +52,19 @@ const addParticipant = async (eventId, userId, username, assignedWeapons = []) =
       throw new Error('Evento no encontrado');
     }
 
-    // Verificar si ya es participante
     const existingParticipant = event.participants.find(p => p.userId === userId);
     if (existingParticipant) {
       return { success: false, message: 'Ya eres participante de este evento' };
     }
 
-    // Remover de "No Puedo Ir" si estaba ahí
     event.cannotGo = event.cannotGo.filter(p => p.userId !== userId);
 
-    // Agregar a participantes
     event.participants.push({
       userId,
       username,
       assignedWeapons
     });
 
-    // Actualizar asignaciones de armas
     for (const weapon of assignedWeapons) {
       const weaponAssignment = event.weaponAssignments.find(w => w.weaponId === weapon.weaponId);
       if (weaponAssignment) {
@@ -98,26 +94,21 @@ const markCannotGo = async (eventId, userId, username) => {
       throw new Error('Evento no encontrado');
     }
 
-    // Verificar si ya está en "No Puedo Ir"
     const existingCannotGo = event.cannotGo.find(p => p.userId === userId);
     if (existingCannotGo) {
       return { success: false, message: 'Ya estás marcado como "No Puedo Ir"' };
     }
 
-    // Buscar y liberar armas asignadas directamente en weaponAssignments
     for (const weaponAssignment of event.weaponAssignments) {
       const userIndex = weaponAssignment.assignedUsers.findIndex(u => u.userId === userId);
       if (userIndex !== -1) {
-        // Liberar el spot del arma
         weaponAssignment.currentCount = Math.max(0, weaponAssignment.currentCount - 1);
         weaponAssignment.assignedUsers.splice(userIndex, 1);
       }
     }
 
-    // Remover de participantes si estaba ahí
     event.participants = event.participants.filter(p => p.userId !== userId);
 
-    // Agregar a "No Puedo Ir"
     event.cannotGo.push({
       userId,
       username
@@ -146,7 +137,6 @@ const removeCannotGo = async (eventId, userId) => {
       return { success: false, message: 'No estabas marcado como "No Puedo Ir"' };
     }
 
-    // Remover de "No Puedo Ir"
     event.cannotGo = event.cannotGo.filter(p => p.userId !== userId);
 
     await event.save();
@@ -170,10 +160,8 @@ const toggleCannotGo = async (eventId, userId, username) => {
     const existingCannotGo = event.cannotGo.find(p => p.userId === userId);
     
     if (existingCannotGo) {
-      // Si ya está en "No Puedo Ir", quitarlo
       return await removeCannotGo(eventId, userId);
     } else {
-      // Si no está en "No Puedo Ir", marcarlo
       return await markCannotGo(eventId, userId, username);
     }
   } catch (error) {

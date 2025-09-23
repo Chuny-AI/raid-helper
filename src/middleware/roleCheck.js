@@ -40,12 +40,10 @@ const checkAuthorizedRole = async (interaction) => {
  */
 const checkPremiumAccess = async (interaction) => {
   try {
-    // Verificar que la interacción sea en un servidor
     if (!interaction.guild || !interaction.member) {
       return false;
     }
 
-    // Verificar si es el propietario del bot
     let botOwnerId;
     const application = interaction.client.application;
     if (application && application.owner) {
@@ -58,12 +56,10 @@ const checkPremiumAccess = async (interaction) => {
       return true;
     }
 
-    // Verificar si es administrador del servidor
     if (interaction.member.permissions.has('Administrator')) {
       return true;
     }
 
-    // Verificar si tiene roles autorizados
     const hasAuthorizedRole = await checkAuthorizedRole(interaction);
     if (hasAuthorizedRole) {
       return true;
@@ -85,12 +81,10 @@ const checkPremiumAccess = async (interaction) => {
  */
 const checkPremiumAccessWithOwnerBypass = async (interaction) => {
   try {
-    // Verificar que la interacción sea en un servidor
     if (!interaction.guild) {
       return false; // No permitir comandos premium en DMs
     }
 
-    // Verificar si es el propietario del bot
     let botOwnerId;
     const application = interaction.client.application;
     if (application && application.owner) {
@@ -99,29 +93,26 @@ const checkPremiumAccessWithOwnerBypass = async (interaction) => {
       botOwnerId = process.env.BOT_OWNER_ID;
     }
     
-    // PRIORIDAD 1: Verificar si el servidor es premium
     const guildId = interaction.guild.id;
     const isPremium = await isServerPremium(guildId);
     
     if (!isPremium) {
-      // Si NO es premium, solo el propietario puede usar comandos
       if (interaction.user.id === botOwnerId) {
         return true; // El propietario puede usar comandos en cualquier servidor
       } else {
-        // Cualquier otro usuario (incluso administradores) NO puede usar comandos
         const premiumEmbed = new EmbedBuilder()
           .setTitle("💎 Servidor Premium Requerido")
           .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
           .setColor("#FFD700")
-          .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+          .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
           .setTimestamp()
           .setFooter({
-            text: "Avalon Raid Helper - Premium",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            text: "Chuny BOT - Premium",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
           })
           .setAuthor({
             name: "Chuny Dev",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
             url: "https://www.twitch.tv/chuny_dev",
           })
           .addFields(
@@ -152,12 +143,10 @@ const checkPremiumAccessWithOwnerBypass = async (interaction) => {
             }
           );
 
-        // No hacer reply aquí, el comando principal manejará la respuesta
         return false;
       }
     }
 
-    // PRIORIDAD 2: Si ES premium, verificar permisos de usuario (admin o roles autorizados)
     return await checkPremiumAccess(interaction);
   } catch (error) {
     console.error('[ERROR] Error en checkPremiumAccessWithOwnerBypass:', error);

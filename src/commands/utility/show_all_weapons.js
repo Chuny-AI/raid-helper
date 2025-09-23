@@ -13,7 +13,6 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar acceso premium - SIN BYPASS PARA EL DUEÑO
       const { isServerPremium } = require('../../services/serverService');
       const isPremium = await isServerPremium(interaction.guild.id);
 
@@ -23,15 +22,15 @@ module.exports = {
           .setTitle("💎 Servidor Premium Requerido")
           .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
           .setColor("#FFD700")
-          .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+          .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
           .setTimestamp()
           .setFooter({
-            text: "Avalon Raid Helper - Premium",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            text: "Chuny BOT - Premium",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
           })
           .setAuthor({
             name: "Chuny Dev",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
             url: "https://www.twitch.tv/chuny_dev",
           })
           .addFields(
@@ -88,7 +87,6 @@ module.exports = {
           ]
         );
 
-        // Agrupar armas por categoría
         const weaponsByCategory = {};
         weapons.forEach(weapon => {
           if (!weaponsByCategory[weapon.category]) {
@@ -97,7 +95,6 @@ module.exports = {
           weaponsByCategory[weapon.category].push(weapon);
         });
 
-        // Agregar campos para cada categoría
         for (const category of categories) {
           const categoryWeapons = weaponsByCategory[category.key] || [];
           const weaponList = categoryWeapons

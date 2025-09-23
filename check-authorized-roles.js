@@ -20,11 +20,9 @@ async function checkAuthorizedRoles() {
     console.log('🔍 Base de datos:', process.env.MONGODB_URI);
     console.log('');
 
-    // Obtener información de la colección
     const collectionName = AuthorizedRole.collection.collectionName;
     console.log(`📋 Nombre de colección: ${collectionName}`);
 
-    // Contar documentos
     const count = await AuthorizedRole.countDocuments();
     console.log(`📊 Total de documentos: ${count}`);
 
@@ -51,7 +49,6 @@ async function checkAuthorizedRoles() {
       console.log('✅ La colección está vacía');
     }
 
-    // Verificar también directamente en la base de datos
     console.log('');
     console.log('🔍 Verificación directa en MongoDB:');
     const db = mongoose.connection.db;
@@ -76,7 +73,6 @@ async function checkAuthorizedRoles() {
   }
 }
 
-// Verificar variables de entorno
 if (!process.env.MONGODB_URI) {
   console.error('❌ Error: Variable MONGODB_URI no encontrada');
   process.exit(1);

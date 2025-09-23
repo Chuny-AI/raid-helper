@@ -47,7 +47,6 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar acceso premium - SIN BYPASS PARA EL DUEÑO
       const { isServerPremium } = require('../../services/serverService');
       const isPremium = await isServerPremium(interaction.guild.id);
 
@@ -56,15 +55,15 @@ module.exports = {
           .setTitle("💎 Servidor Premium Requerido")
           .setDescription("Este comando solo está disponible en servidores premium. ¡Contacta a un administrador para activar premium en este servidor!")
           .setColor("#FFD700")
-          .setThumbnail("https://i.imgur.com/AfFp7pu.png")
+          .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
           .setTimestamp()
           .setFooter({
-            text: "Avalon Raid Helper - Premium",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            text: "Chuny BOT - Premium",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
           })
           .setAuthor({
             name: "Chuny Dev",
-            iconURL: "https://i.imgur.com/AfFp7pu.png",
+            iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
             url: "https://www.twitch.tv/chuny_dev",
           })
           .addFields(
@@ -98,10 +97,8 @@ module.exports = {
         return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
       }
 
-      // Verificar si es el propietario del bot o administrador
       const isOwner = await checkOwner(interaction);
       if (!isOwner) {
-        // Si no es propietario, verificar si es administrador
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
           return interaction.reply({
             content: "❌ Solo el propietario del bot y los administradores pueden gestionar roles autorizados.",
@@ -113,7 +110,6 @@ module.exports = {
       const guildId = interaction.guild.id;
       const subcommand = interaction.options.getSubcommand();
 
-      // Asegurar que el servidor existe en la base de datos
       await getOrCreateServer(guildId, interaction.guild.name);
 
       switch (subcommand) {

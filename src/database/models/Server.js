@@ -29,7 +29,6 @@ const serverSchema = new mongoose.Schema({
   }
 });
 
-// Middleware para actualizar updatedAt
 serverSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

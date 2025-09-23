@@ -35,7 +35,6 @@ class AuthorizedUserService {
    */
   static async authorizeUser(userId, authorizedBy, username = null, reason = null) {
     try {
-      // Verificar si ya existe
       const existingUser = await AuthorizedUser.findOne({ userId });
 
       if (existingUser) {
@@ -43,7 +42,6 @@ class AuthorizedUserService {
           console.log(`[AUTH] Usuario ${userId} ya está autorizado`);
           return { success: false, message: 'Usuario ya está autorizado' };
         } else {
-          // Reactivar usuario
           existingUser.active = true;
           existingUser.authorizedBy = authorizedBy;
           existingUser.authorizedAt = new Date();
@@ -56,7 +54,6 @@ class AuthorizedUserService {
         }
       }
 
-      // Crear nuevo usuario autorizado
       const newUser = new AuthorizedUser({
         userId,
         username,

@@ -57,11 +57,9 @@ const weaponSchema = new mongoose.Schema({
   }
 });
 
-// Índice compuesto para búsquedas eficientes
 weaponSchema.index({ category: 1, isActive: 1 });
 weaponSchema.index({ emojiId: 1, isActive: 1 });
 
-// Middleware para actualizar updatedAt
 weaponSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

@@ -47,16 +47,13 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Defer temprano para evitar timeouts y manejar todo con editReply
       try {
         await interaction.deferReply({ flags: 64 });
       } catch (e) {
-        // Si ya fue reconocida o expirada, salimos silenciosamente
         if (e?.code === 40060 || e?.code === 10062) return;
         throw e;
       }
 
-      // Verificar si es el propietario del bot (silencioso)
       const owner = await isOwner(interaction);
       if (!owner) {
         const embed = createErrorEmbed(
@@ -72,7 +69,6 @@ module.exports = {
       const targetServerId = interaction.options.getString("server_id");
       const guildId = targetServerId || interaction.guild.id;
 
-      // Obtener información del servidor objetivo
       let targetGuild;
       if (targetServerId) {
         targetGuild = interaction.client.guilds.cache.get(targetServerId);
@@ -93,7 +89,6 @@ module.exports = {
         targetGuild = interaction.guild;
       }
 
-      // Asegurar que el servidor existe en la base de datos
       await getOrCreateServer(guildId, targetGuild.name);
 
       let embed;

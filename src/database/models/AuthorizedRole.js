@@ -25,7 +25,6 @@ const authorizedRoleSchema = new mongoose.Schema({
   }
 });
 
-// Índice compuesto para búsquedas eficientes
 authorizedRoleSchema.index({ serverId: 1, roleId: 1 });
 
 module.exports = mongoose.model('AuthorizedRole', authorizedRoleSchema);
