@@ -1,98 +1,72 @@
 {
-  "title": "Avaloniana",
-  "time": "1h",
+  "title": "Chuny - Ava Rush",
+  "time": "30m",
   "description": "**Reglas**\n\n**Comidas:** Todos deben llevar 6 comidas de cada tipo que sean requeridas.\n**Builds:** Revisar las builds en su respectivo canal creadas por CharlesBabbage o Chuny.\n**Escape:** Todos deben ir con su set de escape, van bajo su propio riesgo.\n**Desconexión:** Si están haciendo avas con nosotros, por favor guardar el loot en su debido cofre si se tienen que desconectar para poder hacer el split loot y después no tener confusiones.\n**Mapa:** HO del gremio definido por el caller.\n**Loot:** Solo personas asignadas.",
   "color": "#00FFFF",
   "image": "https://media.discordapp.net/attachments/1289065983071223864/1330703272297627799/love_2.png?ex=68c2c7bf&is=68c1763f&hm=9e958511cd8eaaddd2975c1e6608b45342629536c497c2befa3df8052f1a82ad&=&format=webp&quality=lossless",
-  "url": "",
-  "roles": ["1236607272780693514", "1294008782069694464"],
+  "url": "chuny.co",
+  "roles": [
+    "1420516818812145684"
+  ],
+  "reminder": "5m",
+  "notifyAll": true,
   "weapons": {
-    "tank": {
-      "displayName": "Martillo relámpago",
-      "defaultEmoji": "1286454020675862549",
-      "data": [
-       {
-         "id": 126,
-         "name": "",
-         "units": 1,
-         "image": "",
-         "emoji": "1415437240846258237",
-         "url": "",
-         "sendBuildToPrivate": true
-       }
-      ]
-    },
     "offtank": {
       "displayName": "Maza íncubo",
       "defaultEmoji": "1286453835937746964",
       "data": [
         {
           "id": 41,
-          "name": "",
+          "name": "Maza íncubo",
           "units": 1,
           "image": "",
           "emoji": "1286453835937746964",
-          "url": "",
+          "url": "https://albionfreemarket.com/builds/details/68c0f165b43c26a4dc1738a7",
           "sendBuildToPrivate": true
         }
       ]
     },
-    "mirada_firme": {
-      "displayName": "Bastón de mirada firme",
-      "defaultEmoji": "1415437230838648963",
+    "falce": {
+      "displayName": "Falce de cristal",
+      "defaultEmoji": "1286454785108873267",
       "data": [
-       {
-         "id": 127,
-         "name": "",
-         "units": 1,
-         "image": "",
-         "emoji": "1415437230838648963",
-         "url": "",
-         "sendBuildToPrivate": true
-       }
+        {
+          "id": 119,
+          "name": "Falce de cristal",
+          "units": 5,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": "https://albionfreemarket.com/builds/details/68c0e34fb43c26a4dc1738a1",
+          "sendBuildToPrivate": true
+        }
       ]
     },
-    "falce": {
-     "displayName": "Falce de cristal",
-     "defaultEmoji": "1286454785108873267",
-     "data": [
-       {
-         "id": 119,
-         "name": "",
-         "units": 5,
-         "image": "",
-         "emoji": "1286454785108873267",
-         "url": "",
-         "sendBuildToPrivate": true
-       }
-     ]
-   },
     "silencio": {
       "displayName": "Bastón arcano",
       "defaultEmoji": "1286454717525921812",
       "data": [
         {
           "id": 110,
-          "name": "",
+          "name": "Bastón arcano",
           "units": 1,
           "image": "",
           "emoji": "1286454717525921812",
-          "url": "",
+          "url": "https://albionfreemarket.com/builds/details/68c0f2acb43c26a4dc1738a9",
           "sendBuildToPrivate": true
         }
       ]
     },
-    "raiz": {
+    "caido": {
       "displayName": "Bastón caído",
       "defaultEmoji": "1286453946659115090",
       "data": [
         {
           "id": 55,
-          "name": "",
+          "name": "Bastón caído",
           "units": 1,
           "image": "",
           "emoji": "1286453946659115090",
-          "url": "",
+          "url": "https://albionfreemarket.com/builds/details/68c0ee0eb43c26a4dc1738a5",
           "sendBuildToPrivate": true
         }
       ]
@@ -103,26 +77,26 @@
       "data": [
         {
           "id": 89,
-          "name": "",
+          "name": "Invocador oscuro",
           "units": 1,
           "image": "",
           "emoji": "1286454278868832256",
-          "url": "",
+          "url": "https://albionfreemarket.com/builds/details/68c1064d49aec3c17b6ce0c8",
           "sendBuildToPrivate": true
         }
       ]
     },
-    "hola": {
+    "raiz": {
       "displayName": "Raíz DPS",
       "defaultEmoji": "1286453795236085770",
       "data": [
         {
           "id": 32,
-          "name": "",
+          "name": "Bastón de raíz férrea",
           "units": 1,
           "image": "",
           "emoji": "1286453795236085770",
-          "url": "",
+          "url": "https://albionfreemarket.com/builds/details/68c2299149aec3c17b6ce11d",
           "sendBuildToPrivate": true
         }
       ]
@@ -133,7 +107,7 @@
       "data": [
         {
           "id": 999,
-          "name": "",
+          "name": "Lista de espera",
           "units": 10,
           "image": "",
           "emoji": "1290446199706484736",
@@ -148,7 +122,7 @@
       "data": [
         {
           "id": 999,
-          "name": "",
+          "name": "No puedo ir",
           "units": 10,
           "image": "",
           "emoji": "1288146526698344550",

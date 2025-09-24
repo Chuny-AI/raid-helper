@@ -274,11 +274,10 @@ const createNoBuildEmbed = (weaponCategory, templateName) => {
  * @param {string} serverName - Nombre del servidor
  * @param {string} timeRemaining - Tiempo restante formateado
  * @param {string} leaderName - Nombre del líder
- * @param {string} channelId - ID del canal donde se creó la actividad
- * @param {Array} roles - Lista de roles del template
- * @returns {EmbedBuilder} - Embed de notificación masiva
+ * @param {string} messageUrl - URL del mensaje del raid (opcional)
+ * @returns {Object} - Objeto con embed y componentes
  */
-const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, leaderName, channelId, roles = []) => {
+const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, leaderName, messageUrl = null) => {
   const embed = new EmbedBuilder()
     .setTitle(`🔔 Nueva Actividad - ${activityTitle}`)
     .setDescription(`Se ha creado una nueva actividad en **${serverName}**`)
@@ -318,22 +317,31 @@ const createMassNotificationEmbed = (activityTitle, serverName, timeRemaining, l
     inline: true,
   });
 
-  if (roles && roles.length > 0) {
-    const rolesString = roles.map(roleId => `<@&${roleId}>`).join(" ");
-    embed.addFields({
-      name: "🎭 Roles Válidos",
-      value: rolesString,
-      inline: false,
-    });
-  }
-
   embed.addFields({
     name: "🚀 ¿Cómo unirse?",
-    value: "• Haz clic en el botón 'Ir al Evento' para ir al canal\n• Usa los menús desplegables para seleccionar tu rol\n• ¡Prepárate para la aventura!",
+    value: messageUrl ?
+      "• Haz clic en el botón 'Ir al Evento' para ir directamente al raid\n• Usa los menús desplegables para seleccionar tu rol\n• ¡Prepárate para la aventura!" :
+      "• Ve al canal donde se publicó el evento\n• Usa los menús desplegables para seleccionar tu rol\n• ¡Prepárate para la aventura!",
     inline: false,
   });
 
-  return embed;
+  // Crear componentes si hay messageUrl
+  let components = [];
+  if (messageUrl) {
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setStyle(ButtonStyle.Link)
+          .setURL(messageUrl)
+          .setLabel('🚀 Ir al Evento')
+      );
+    components = [row];
+  }
+
+  return {
+    embeds: [embed],
+    components: components
+  };
 };
 
 /**

@@ -70,9 +70,16 @@ class EconomyService {
   static async getBalance(userId, serverId) {
     try {
       const userBalance = await this.getUserBalance(userId, serverId);
+      console.log(`[DEBUG] getBalance for ${userId}: userBalance=`, userBalance);
+      console.log(`[DEBUG] userBalance.balance=`, userBalance.balance);
+      console.log(`[DEBUG] typeof userBalance.balance=`, typeof userBalance.balance);
+
+      const value = Number(userBalance.balance) || 0;
+      console.log(`[DEBUG] processed value=`, value);
+
       return {
-        balance: userBalance.balance,
-        lastUpdated: userBalance.lastUpdated
+        balance: value,
+        lastUpdated: userBalance.lastUpdated || new Date()
       };
     } catch (error) {
       throw new Error(`Error al obtener balance: ${error.message}`);
@@ -128,7 +135,12 @@ class EconomyService {
    * Formatea un número como moneda
    */
   static formatCurrency(amount) {
-    return amount.toLocaleString('es-ES') + ' 🪙';
+    console.log(`[DEBUG] formatCurrency input:`, amount, `type: ${typeof amount}`);
+    const n = Number(amount ?? 0) || 0;
+    console.log(`[DEBUG] formatCurrency processed:`, n);
+    const result = n.toLocaleString('es-ES') + ' 🪙';
+    console.log(`[DEBUG] formatCurrency result:`, result);
+    return result;
   }
 
   /**

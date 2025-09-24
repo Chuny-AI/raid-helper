@@ -18,9 +18,9 @@ const getTemplatesByServer = async (serverId) => {
  */
 const getTemplateByName = async (templateName, serverId) => {
   try {
-    return await Template.findOne({ 
-      title: templateName, 
-      serverId 
+    return await Template.findOne({
+      title: templateName,
+      serverId
     });
   } catch (error) {
     console.error('[ERROR] Error en getTemplateByName:', error);
@@ -37,14 +37,14 @@ const createTemplate = async (templateData, serverId) => {
       ...templateData,
       serverId
     });
-    
+
     const savedTemplate = await template.save();
-    
+
     await Server.findOneAndUpdate(
       { guildId: serverId },
       { $push: { templates: savedTemplate._id } }
     );
-    
+
     return savedTemplate;
   } catch (error) {
     console.error('[ERROR] Error en createTemplate:', error);
@@ -74,14 +74,14 @@ const updateTemplate = async (templateId, updateData) => {
 const deleteTemplate = async (templateId, serverId) => {
   try {
     const deletedTemplate = await Template.findByIdAndDelete(templateId);
-    
+
     if (deletedTemplate) {
       await Server.findOneAndUpdate(
         { guildId: serverId },
         { $pull: { templates: templateId } }
       );
     }
-    
+
     return deletedTemplate;
   } catch (error) {
     console.error('[ERROR] Error en deleteTemplate:', error);
@@ -94,14 +94,22 @@ const deleteTemplate = async (templateId, serverId) => {
  */
 const getTemplateNames = async (serverId) => {
   try {
-    const templates = await Template.find({ serverId }, 'title');
+    // Usar lean() para consulta más rápida y limitar a 25 resultados
+    const templates = await Template.find({ serverId }, 'title')
+      .limit(25)
+      .lean()
+      .maxTimeMS(2000); // Timeout de 2 segundos
+
     return templates.map(template => ({
       name: template.title,
       value: template.title
     }));
   } catch (error) {
     console.error('[ERROR] Error en getTemplateNames:', error);
-    throw error;
+
+    // En caso de error, devolver array vacío en lugar de lanzar error
+    // para que el autocomplete no falle
+    return [];
   }
 };
 
@@ -112,26 +120,26 @@ const migrateTemplatesFromFiles = async (serverId) => {
   try {
     const fs = require('fs');
     const path = require('path');
-    
+
     const templatesPath = path.join(__dirname, '../templates');
     const templateFiles = fs.readdirSync(templatesPath).filter(file => file.endsWith('.json'));
-    
+
     const migratedTemplates = [];
-    
+
     for (const file of templateFiles) {
       const filePath = path.join(templatesPath, file);
       const templateData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      
+
       const existingTemplate = await Template.findOne({
         title: templateData.title,
         serverId
       });
-      
+
       if (!existingTemplate) {
         if (!templateData.url) {
           templateData.url = "";
         }
-        
+
         if (templateData.weapons) {
           Object.keys(templateData.weapons).forEach(weaponKey => {
             if (templateData.weapons[weaponKey].data) {
@@ -146,12 +154,12 @@ const migrateTemplatesFromFiles = async (serverId) => {
             }
           });
         }
-        
+
         const template = await createTemplate(templateData, serverId);
         migratedTemplates.push(template);
       }
     }
-    
+
     return migratedTemplates;
   } catch (error) {
     console.error('[ERROR] Error en migrateTemplatesFromFiles:', error);

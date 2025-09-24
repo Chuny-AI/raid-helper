@@ -31,6 +31,14 @@ module.exports = {
         .setRequired(true)
         .setMinValue(2)
         .setMaxValue(20)
+    )
+    .addNumberOption(option =>
+      option
+        .setName('tax')
+        .setDescription('Porcentaje de impuesto a descontar (0-50%)')
+        .setRequired(false)
+        .setMinValue(0)
+        .setMaxValue(50)
     ),
 
   async execute(interaction) {
@@ -46,14 +54,22 @@ module.exports = {
         });
       }
 
+      // Defer la respuesta para evitar timeouts
+      await interaction.deferReply();
+
       // Obtener los valores de los parámetros
       const motivo = interaction.options.getString('motivo');
       const cantidadTotal = interaction.options.getInteger('cantidad_total');
       const jugadores = interaction.options.getInteger('jugadores');
+      const taxPorcentaje = interaction.options.getNumber('tax') || 0;
+
+      // Calcular el impuesto y la cantidad neta
+      const impuesto = Math.floor(cantidadTotal * (taxPorcentaje / 100));
+      const cantidadNeta = cantidadTotal - impuesto;
 
       // Calcular la división
-      const porJugador = Math.floor(cantidadTotal / jugadores);
-      const resto = cantidadTotal % jugadores;
+      const porJugador = Math.floor(cantidadNeta / jugadores);
+      const resto = cantidadNeta % jugadores;
 
       // Crear el embed de resultado
       const resultEmbed = new EmbedBuilder()
@@ -83,6 +99,27 @@ module.exports = {
           iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless"
         })
         .setTimestamp();
+
+      // Si hay impuesto, mostrar información adicional
+      if (taxPorcentaje > 0) {
+        resultEmbed.addFields([
+          {
+            name: "🏛️ Impuesto",
+            value: `${taxPorcentaje}% = ${impuesto.toLocaleString()} monedas`,
+            inline: true
+          },
+          {
+            name: "💸 Cantidad Neta",
+            value: `${cantidadNeta.toLocaleString()} monedas`,
+            inline: true
+          },
+          {
+            name: "📊 Desglose",
+            value: `Total: ${cantidadTotal.toLocaleString()}\nImpuesto: -${impuesto.toLocaleString()}\nNeto: ${cantidadNeta.toLocaleString()}`,
+            inline: false
+          }
+        ]);
+      }
 
       // Si hay resto, añadir información sobre él
       if (resto > 0) {
@@ -119,7 +156,7 @@ module.exports = {
         }
       ]);
 
-      await interaction.reply({
+      await interaction.editReply({
         embeds: [resultEmbed]
       });
 
@@ -132,9 +169,8 @@ module.exports = {
       );
 
       if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          embeds: [errorEmbed],
-          ephemeral: true
+        await interaction.editReply({
+          embeds: [errorEmbed]
         });
       } else {
         await interaction.reply({

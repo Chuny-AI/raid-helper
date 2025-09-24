@@ -197,12 +197,12 @@ module.exports = {
         },
         {
           name: '💵 Cantidad Añadida',
-          value: `${EconomyService.formatCurrency(amount)}`,
+          value: EconomyService.formatCurrency(amount),
           inline: true
         },
         {
           name: '🏦 Nuevo Balance',
-          value: `${EconomyService.formatCurrency(result.newBalance)}`,
+          value: EconomyService.formatCurrency(result.newBalance),
           inline: true
         },
         {
@@ -264,12 +264,12 @@ module.exports = {
         },
         {
           name: '💵 Cantidad Eliminada',
-          value: `${EconomyService.formatCurrency(amount)}`,
+          value: EconomyService.formatCurrency(amount),
           inline: true
         },
         {
           name: '🏦 Nuevo Balance',
-          value: `${EconomyService.formatCurrency(result.newBalance)}`,
+          value: EconomyService.formatCurrency(result.newBalance),
           inline: true
         },
         {
@@ -315,7 +315,15 @@ module.exports = {
       throw new Error('Los bots no tienen balance');
     }
 
-    const balance = await EconomyService.getBalance(targetUser.id, serverId);
+    // Obtener balance; el servicio garantiza creación si no existe
+    const balanceResult = await EconomyService.getBalance(targetUser.id, serverId);
+    console.log(`[DEBUG] handleBalance balanceResult=`, balanceResult);
+
+    const numericBalance = Number(balanceResult?.balance ?? 0) || 0;
+    console.log(`[DEBUG] handleBalance numericBalance=`, numericBalance);
+
+    const formattedBalance = EconomyService.formatCurrency(numericBalance);
+    console.log(`[DEBUG] handleBalance formattedBalance=`, formattedBalance);
 
     const balanceEmbed = new EmbedBuilder()
       .setTitle('💰 Balance del Usuario')
@@ -329,7 +337,7 @@ module.exports = {
         },
         {
           name: '🏦 Balance Total',
-          value: `${EconomyService.formatCurrency(balance)}`,
+          value: formattedBalance,
           inline: true
         },
         {
@@ -370,7 +378,7 @@ module.exports = {
 
   async handleTop(interaction, serverId) {
     const limit = interaction.options.getInteger('limite') || 10;
-    const topUsers = await EconomyService.getTopUsers(serverId, limit);
+    const topUsers = await EconomyService.getTopBalances(serverId, limit);
 
     if (topUsers.length === 0) {
       const noDataEmbed = new EmbedBuilder()

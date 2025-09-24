@@ -83,9 +83,19 @@ module.exports = {
     const focusedOption = interaction.options.getFocused(true);
 
     if (focusedOption.name === 'template') {
+      // Crear timeout para evitar interacciones que se cuelguen
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Autocomplete timeout')), 2500) // 2.5 segundos
+      );
+
       try {
         const guildId = interaction.guild.id;
-        const templates = await getTemplateNames(guildId);
+
+        // Ejecutar la consulta con timeout
+        const templates = await Promise.race([
+          getTemplateNames(guildId),
+          timeoutPromise
+        ]);
 
         const filtered = templates
           .filter(template =>
@@ -93,22 +103,36 @@ module.exports = {
           )
           .slice(0, 25); // Discord limita a 25 opciones
 
-        await interaction.respond(
-          filtered.map(template => ({
-            name: template.name,
-            value: template.name
-          }))
-        );
+        // Solo responder si la interacción no ha sido respondida
+        if (!interaction.responded) {
+          await interaction.respond(
+            filtered.map(template => ({
+              name: template.name,
+              value: template.name
+            }))
+          );
+        }
       } catch (error) {
-        console.error('[ERROR] Error en autocomplete:', error);
-        await interaction.respond([]);
+        console.error('[ERROR] Error en autocomplete:', error.message);
+
+        // Solo responder si la interacción no ha sido respondida
+        try {
+          if (!interaction.responded) {
+            await interaction.respond([]);
+          }
+        } catch (responseError) {
+          // Si falla al responder, solo loggear el código de error
+          if (responseError.code !== 40060) { // No loggear si ya fue reconocida
+            console.error('[WARN] Error respondiendo autocomplete:', responseError.code);
+          }
+        }
       }
     }
   },
 
   async execute(interaction) {
     try {
-      await interaction.deferReply();
+      // No hacer defer todavía, necesitamos verificar si hay roles a notificar primero
 
       /**
        * Verificar acceso premium - SIN BYPASS PARA EL DUEÑO
@@ -331,8 +355,19 @@ module.exports = {
       let finalNotificationRoles = [];
       if (notificationRoles.length > 0) {
         finalNotificationRoles = notificationRoles;
+        console.log(`[DEBUG RAID] Usando roles del comando:`, finalNotificationRoles);
       } else if (template.roles && template.roles.length > 0) {
         finalNotificationRoles = template.roles;
+        console.log(`[DEBUG RAID] Usando roles del template:`, finalNotificationRoles);
+      } else {
+        console.log(`[DEBUG RAID] No se encontraron roles ni en comando ni en template`);
+      }
+
+      // Si NO hay roles a notificar, hacer defer para evitar timeout
+      // Si SÍ hay roles, NO hacer defer para poder usar reply() con menciones
+      const hasRolesToNotify = finalNotificationRoles.length > 0;
+      if (!hasRolesToNotify) {
+        await interaction.deferReply();
       }
 
       const row = createSelect(template, templateName, interaction);
@@ -386,11 +421,40 @@ module.exports = {
       let notificationContent = '';
 
       if (finalNotificationRoles.length > 0) {
+        console.log(`[DEBUG RAID] Roles a notificar:`, finalNotificationRoles);
         const roleMentions = finalNotificationRoles.map(roleId => `<@&${roleId}>`).join(' ');
         notificationContent += `${roleMentions}\n`;
+        console.log(`[DEBUG RAID] Contenido de notificación:`, notificationContent);
+      } else {
+        console.log(`[DEBUG RAID] No hay roles para notificar`);
       }
 
-      if (finalNotificationRoles.length > 0) {
+      /**
+       * Primero publicar el mensaje del raid
+       * Si hay roles a notificar, usar reply() directamente para que las menciones funcionen
+       * Si no hay roles, usar safeReply() normal
+       */
+      let raidMessage;
+      if (hasRolesToNotify) {
+        console.log(`[DEBUG RAID] Publicando con reply() para mencionar roles`);
+        raidMessage = await interaction.reply({
+          embeds: [embed],
+          components: [row],
+          content: notificationContent || undefined,
+        });
+      } else {
+        console.log(`[DEBUG RAID] Publicando con safeReply() sin roles`);
+        raidMessage = await safeReply(interaction, {
+          embeds: [embed],
+          components: [row],
+          content: notificationContent || undefined,
+        });
+      }
+
+      /**
+       * Enviar notificaciones por DM con enlace al evento después de publicar
+       */
+      if (finalNotificationRoles.length > 0 && raidMessage) {
         try {
           const members = await interaction.guild.members.fetch();
           const targetMembers = members.filter(member =>
@@ -399,37 +463,34 @@ module.exports = {
 
           const activityTitle = title || template.title;
           const timeRemaining = time || template.time;
-          const massNotificationEmbed = createMassNotificationEmbed(
+
+          // Crear el enlace al mensaje del raid
+          const messageUrl = `https://discord.com/channels/${interaction.guild.id}/${interaction.channel.id}/${raidMessage.id || interaction.id}`;
+
+          const massNotification = createMassNotificationEmbed(
             activityTitle,
             interaction.guild.name,
             timeRemaining,
-            user.toString()
+            user.toString(),
+            messageUrl // Pasar la URL del mensaje
           );
 
           for (const member of targetMembers.values()) {
             try {
               await member.send({
-                embeds: [massNotificationEmbed]
+                embeds: massNotification.embeds,
+                components: massNotification.components
               });
             } catch (dmError) {
               console.log(`[INFO] No se pudo enviar DM a ${member.user.username}: ${dmError.message}`);
             }
           }
 
-          console.log(`[INFO] Notificación enviada a ${targetMembers.size} miembros con roles específicos`);
+          console.log(`[INFO] Notificación enviada a ${targetMembers.size} miembros con enlace al evento`);
         } catch (notifyError) {
           console.error('[ERROR] Error enviando notificaciones a roles:', notifyError);
         }
       }
-
-      /**
-       * Interactuar con el usuario
-       */
-      await safeReply(interaction, {
-        embeds: [embed],
-        components: [row],
-        content: notificationContent || undefined,
-      });
     } catch (error) {
       console.error('[ERROR] Error en comando raid:', error);
       const errorEmbed = createErrorEmbed(

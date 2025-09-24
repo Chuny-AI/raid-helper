@@ -388,6 +388,16 @@ const getEvents = () => {
           }
         });
 
+        // PRIMERO: Actualizar el embed inmediatamente para respuesta visual rápida
+        try {
+          await interaction.message.edit({
+            embeds: [embed],
+          });
+        } catch (updateError) {
+          console.error('[ERROR] Error actualizando el mensaje del evento:', updateError);
+        }
+
+        // SEGUNDO: Actualizar recordatorios (rápido)
         try {
           const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
           const participants = extractParticipantsFromEmbed(embed);
@@ -397,60 +407,54 @@ const getEvents = () => {
           console.error('[ERROR] Error actualizando participantes del recordatorio:', reminderError);
         }
 
-        try {
-          const { getTemplateByName } = require('../services/templateService');
-          const { createBuildEmbed, createNoBuildEmbed } = require('./embed');
-          const template = await getTemplateByName(templateName, interaction.guild.id);
+        // TERCERO: Enviar build en segundo plano (puede tomar tiempo)
+        // Usar setImmediate para no bloquear la respuesta visual
+        setImmediate(async () => {
+          try {
+            const { getTemplateByName } = require('../services/templateService');
+            const { createBuildEmbed, createNoBuildEmbed } = require('./embed');
+            const template = await getTemplateByName(templateName, interaction.guild.id);
 
-          if (template && template.weapons) {
-            let weaponUrl = null;
-            let weaponEmoji = null;
-            let shouldSendBuild = true; // Por defecto true si no se especifica
+            if (template && template.weapons) {
+              let weaponUrl = null;
+              let weaponEmoji = null;
+              let shouldSendBuild = true; // Por defecto true si no se especifica
 
-            for (const [key, weapon] of Object.entries(template.weapons)) {
-              if (weapon.data && Array.isArray(weapon.data)) {
-                const weaponItem = weapon.data.find(item => String(item.id) === String(weaponId));
-                if (weaponItem) {
-                  weaponUrl = weaponItem.url;
-                  weaponEmoji = weaponItem.emoji;
-                  shouldSendBuild = weaponItem.sendBuildToPrivate !== false;
-                  break;
+              for (const [key, weapon] of Object.entries(template.weapons)) {
+                if (weapon.data && Array.isArray(weapon.data)) {
+                  const weaponItem = weapon.data.find(item => String(item.id) === String(weaponId));
+                  if (weaponItem) {
+                    weaponUrl = weaponItem.url;
+                    weaponEmoji = weaponItem.emoji;
+                    shouldSendBuild = weaponItem.sendBuildToPrivate !== false;
+                    break;
+                  }
+                }
+              }
+
+              if (shouldSendBuild) {
+                let buildEmbed;
+                if (weaponUrl && weaponUrl.trim() !== '') {
+                  buildEmbed = createBuildEmbed(weaponCategory, weaponUrl, weaponEmoji, templateName);
+                } else {
+                  buildEmbed = createNoBuildEmbed(weaponCategory, templateName);
+                }
+
+                try {
+                  await interaction.user.send({
+                    embeds: [buildEmbed],
+                  });
+                } catch (dmError) {
+                  console.error('Error enviando mensaje privado:', dmError);
+                  // No usar followUp aquí ya que puede estar fuera del contexto de tiempo
+                  console.log('[INFO] No se pudo enviar build por DM, usuario probablemente tiene DMs cerrados');
                 }
               }
             }
-
-            if (shouldSendBuild) {
-              let buildEmbed;
-              if (weaponUrl && weaponUrl.trim() !== '') {
-                buildEmbed = createBuildEmbed(weaponCategory, weaponUrl, weaponEmoji, templateName);
-              } else {
-                buildEmbed = createNoBuildEmbed(weaponCategory, templateName);
-              }
-
-              try {
-                await interaction.user.send({
-                  embeds: [buildEmbed],
-                });
-              } catch (dmError) {
-                console.error('Error enviando mensaje privado:', dmError);
-                await interaction.followUp({
-                  embeds: [buildEmbed],
-                  ephemeral: true,
-                });
-              }
-            }
+          } catch (error) {
+            console.error('Error obteniendo URL del arma:', error);
           }
-        } catch (error) {
-          console.error('Error obteniendo URL del arma:', error);
-        }
-
-        try {
-          await interaction.message.edit({
-            embeds: [embed],
-          });
-        } catch (updateError) {
-          console.error('[ERROR] Error actualizando el mensaje del evento:', updateError);
-        }
+        });
       }
     }
   });
