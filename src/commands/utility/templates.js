@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getTemplateNames } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
-const { createErrorEmbed, createInfoEmbed, createPremiumEmbed } = require("../../utils/errorEmbeds");
+const { createErrorEmbed, createInfoEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
  * Comando para listar los templates disponibles en el servidor
