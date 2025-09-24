@@ -16,26 +16,28 @@ const createSelect = (template, templateName, interaction) => {
     .setPlaceholder("¡Selecciona tu opción!");
 
   const entries = Object.entries(template.weapons);
+  let optionIndex = 0; // Para asegurar valores únicos
   for (const [, weapon] of entries) {
     const weaponCategory = weapon.displayName;
-    
+
     if (!weapon.data || !Array.isArray(weapon.data)) {
       console.error('Error: weapon.data no es un array:', weapon);
       continue;
     }
-    
+
     for (const item of weapon.data) {
       const emojiId = item.emoji;
       const weaponName = item.name || weaponCategory; // Usar displayName si name está vacío
       const weaponId = item.id;
+      // Create unique value by combining weaponId with category and index to avoid duplicates
+      const uniqueValue = `${weaponId}-${weaponCategory.replace(/\s+/g, '_')}-${optionIndex}`;
       select.addOptions(
         new StringSelectMenuOptionBuilder()
           .setLabel(`${weaponName} - ${weaponCategory}`)
-          .setValue(
-            `${templateName}-${emojiId}-${weaponName}-${weaponCategory}-${weaponId}`
-          )
+          .setValue(uniqueValue)
           .setEmoji(emojiId)
       );
+      optionIndex++;
     }
   }
 

@@ -303,14 +303,24 @@ const getEvents = () => {
     if (interaction.type === InteractionType.MessageComponent) {
       const { customId, values } = interaction;
       if (customId.startsWith("weapons-")) {
-        const {
-          templateName,
-          emojiSelected,
-          weaponName,
-          weaponCategory,
-          weaponId,
-        } = getCustomInfo(values[0].split("-"));
-        const getCustomEmbedId = customId.split("-")[2];
+        // Acknowledge immediately to avoid "This interaction failed" due to long processing
+        try {
+          await interaction.deferUpdate();
+        } catch (ackError) {
+          console.error('[WARN] No se pudo deferUpdate en interacción de registro:', ackError);
+        }
+
+        // Extract templateName and interactionId from customId: weapons-{templateName}-{interactionId}
+        // Since templateName can contain dashes, we need to extract the interactionId (last part) first
+        const lastDashIndex = customId.lastIndexOf('-');
+        const getCustomEmbedId = customId.substring(lastDashIndex + 1);
+        const templateName = customId.substring('weapons-'.length, lastDashIndex);
+
+        // Parse the unique value format: weaponId-weaponCategory-index
+        const valueParts = values[0].split('-');
+        const weaponId = valueParts[0];
+        const weaponCategoryFromValue = valueParts.slice(1, -1).join('-').replace(/_/g, ' '); // Remove index and restore spaces
+
         const embedsList = embedsMap[templateName];
         if (!embedsList) {
           console.error(`No se encontró la lista de embeds para ${templateName}`);
@@ -328,16 +338,50 @@ const getEvents = () => {
           return;
         }
 
+        // Get weapon info from template using weaponId and category
+        let weaponCategory = null;
+        let emojiSelected = null;
+        let weaponName = null;
+
+        try {
+          const { getTemplateByName } = require('../services/templateService');
+          const template = await getTemplateByName(templateName, interaction.guild.id);
+
+          if (template && template.weapons) {
+            for (const [key, weapon] of Object.entries(template.weapons)) {
+              if (weapon.data && Array.isArray(weapon.data) && weapon.displayName === weaponCategoryFromValue) {
+                const weaponItem = weapon.data.find(item => String(item.id) === String(weaponId));
+                if (weaponItem) {
+                  weaponCategory = weapon.displayName;
+                  emojiSelected = weaponItem.emoji;
+                  weaponName = weaponItem.name || weapon.displayName;
+                  break;
+                }
+              }
+            }
+          }
+        } catch (templateError) {
+          console.error('[ERROR] Error obteniendo datos del template:', templateError);
+        }
+
+        if (!weaponCategory || !emojiSelected) {
+          await interaction.followUp({
+            content: "No se pudo procesar la selección del arma.",
+            ephemeral: true,
+          });
+          return;
+        }
+
         const embed = currentEmbedEntry.embed;
         const newUser = modifyUnitsFromName(embed, weaponCategory);
         if (!newUser) {
-          await interaction.reply({
+          await interaction.followUp({
             content: "No puedes seleccionar más unidades de este arma.",
             ephemeral: true,
           });
           return;
         }
-        deleteUserIfExistsOnCurrentField(embed, interaction, emojiSelected);
+        deleteUserIfExistsOnCurrentField(embed, interaction);
         embed.data.fields.forEach((field) => {
           if (field.name.includes(weaponCategory)) {
             field.value += `\n<:${emojiSelected}:${emojiSelected}> ${interaction.user}`;
@@ -347,8 +391,8 @@ const getEvents = () => {
         try {
           const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
           const participants = extractParticipantsFromEmbed(embed);
-          updateReminderParticipants(interaction.id, participants);
-          addInterestedUser(interaction.id, interaction.user.id);
+          updateReminderParticipants(getCustomEmbedId, participants);
+          addInterestedUser(getCustomEmbedId, interaction.user.id);
         } catch (reminderError) {
           console.error('[ERROR] Error actualizando participantes del recordatorio:', reminderError);
         }
@@ -365,7 +409,7 @@ const getEvents = () => {
 
             for (const [key, weapon] of Object.entries(template.weapons)) {
               if (weapon.data && Array.isArray(weapon.data)) {
-                const weaponItem = weapon.data.find(item => item.id.toString() === weaponId);
+                const weaponItem = weapon.data.find(item => String(item.id) === String(weaponId));
                 if (weaponItem) {
                   weaponUrl = weaponItem.url;
                   weaponEmoji = weaponItem.emoji;
@@ -400,9 +444,13 @@ const getEvents = () => {
           console.error('Error obteniendo URL del arma:', error);
         }
 
-        await interaction.update({
-          embeds: [embed],
-        });
+        try {
+          await interaction.message.edit({
+            embeds: [embed],
+          });
+        } catch (updateError) {
+          console.error('[ERROR] Error actualizando el mensaje del evento:', updateError);
+        }
       }
     }
   });
@@ -437,20 +485,10 @@ const modifyUnitsFromName = (embed, weaponCategory) => {
   return isValidUser; // Devuelve si fue una acción válida
 };
 
-const getCustomInfo = (values) => {
-  const templateName = values[0];
-  const emojiSelected = values[1];
-  const weaponName = values[2];
-  const weaponCategory = values[3];
-  const weaponId = values[4];
-  return { templateName, emojiSelected, weaponName, weaponCategory, weaponId };
-};
-
 
 const deleteUserIfExistsOnCurrentField = (
   embed,
-  interaction,
-  weaponCategory
+  interaction
 ) => {
   embed.data.fields.forEach((field) => {
     const regexUnits = /<:(\w+):\1>\s+(.+?)\s+\((\d+)\/(\d+)\):/;
