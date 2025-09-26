@@ -58,7 +58,7 @@ const templateSchema = new mongoose.Schema({
   },
   image: {
     type: String,
-    required: true
+    default: ""
   },
   url: {
     type: String,
@@ -80,6 +80,10 @@ const templateSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  reminder: {
+    type: String,
+    default: "5m"
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -90,7 +94,7 @@ const templateSchema = new mongoose.Schema({
   }
 });
 
-templateSchema.pre('save', function(next) {
+templateSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   next();
 });

@@ -33,6 +33,12 @@ const getTemplateByName = async (templateName, serverId) => {
  */
 const createTemplate = async (templateData, serverId) => {
   try {
+    // Validar que el título no sea null o undefined
+    if (!templateData.title) {
+      console.log('[ERROR] createTemplate - Title es null o undefined:', templateData.title);
+      throw new Error('Title es requerido y no puede ser null');
+    }
+
     const template = new Template({
       ...templateData,
       serverId
@@ -71,13 +77,20 @@ const updateTemplate = async (templateId, updateData) => {
 /**
  * Elimina un template
  */
-const deleteTemplate = async (templateId, serverId) => {
+const deleteTemplate = async (templateId, serverId = null) => {
   try {
+    const template = await Template.findById(templateId);
+    if (!template) {
+      return null;
+    }
+
     const deletedTemplate = await Template.findByIdAndDelete(templateId);
 
     if (deletedTemplate) {
+      // Usar el serverId del template si no se proporciona
+      const guildId = serverId || template.serverId;
       await Server.findOneAndUpdate(
-        { guildId: serverId },
+        { guildId },
         { $pull: { templates: templateId } }
       );
     }

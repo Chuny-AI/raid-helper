@@ -5,6 +5,9 @@ const { getOrCreateServer } = require("../services/serverService");
 const { filterCommand } = require("./commandFilter");
 const ClaimService = require("../services/claimService");
 
+// Import template command
+const templateCommand = require("../commands/utility/template");
+
 const getEvents = () => {
   client.once(Events.ClientReady, async (readyClient) => {
     console.log(`El bot ${readyClient.user.tag} está listo.`);
@@ -110,79 +113,107 @@ const getEvents = () => {
 
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId.startsWith("template_weapon_select_")) {
-        await createTemplateCommand.handleWeaponSelect(interaction);
+        await templateCommand.handleSelectMenu(interaction);
         return;
       }
 
 
-      if (interaction.customId.startsWith("template_weapon_category_select_")) {
+      if (interaction.customId.startsWith("template_weapon_category_")) {
         console.log('[DEBUG] Eventos: Selección de categoría de armas detectada:', interaction.customId);
-        await createTemplateCommand.handleWeaponCategorySelect(interaction);
+        await templateCommand.handleSelectMenu(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_emoji_category_")) {
+        console.log('[DEBUG] Eventos: Selección de categoría de emoji detectada:', interaction.customId);
+        await templateCommand.handleSelectMenu(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_emoji_weapon_")) {
+        console.log('[DEBUG] Eventos: Selección de arma para emoji detectada:', interaction.customId);
+        await templateCommand.handleSelectMenu(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_multi_category_")) {
+        console.log('[DEBUG] Eventos: Selección múltiple de categoría detectada:', interaction.customId);
+        await templateCommand.handleSelectMenu(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_change_category_")) {
         console.log('[DEBUG] Eventos: Cambiar categoría detectado:', interaction.customId);
-        await createTemplateCommand.handleAddWeapons(interaction);
+        await templateCommand.handleSelectMenu(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_add_more_weapons_")) {
         console.log('[DEBUG] Eventos: Agregar más armas detectado:', interaction.customId);
-        await createTemplateCommand.handleAddWeapons(interaction);
+        await templateCommand.handleSelectMenu(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_add_weapons_")) {
         console.log('[DEBUG] Eventos: Agregar armas detectado:', interaction.customId);
-        await createTemplateCommand.handleAddWeapons(interaction);
+        await templateCommand.handleSelectMenu(interaction);
         return;
       }
 
 
 
       if (interaction.customId.startsWith("template_categories_prev_") || interaction.customId.startsWith("template_categories_next_")) {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_emoji_category_select_")) {
-        await createTemplateCommand.handleEmojiCategorySelect(interaction);
+        await templateCommand.handleEmojiCategorySelect(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_emoji_select_")) {
-        await createTemplateCommand.handleEmojiSelect(interaction);
+        await templateCommand.handleEmojiSelect(interaction);
         return;
       }
 
-      if (interaction.customId === "template_edit_emoji_category_select") {
-        await createTemplateCommand.handleBackToMain(interaction);
+      // Group selects para edición de grupos de armas
+      if (interaction.customId.includes("select_weapon_") ||
+        interaction.customId.includes("back_to_group_")) {
+        console.log('[DEBUG] Events: Redirigiendo group select a templateCommand.handleSelectMenu');
+        await templateCommand.handleSelectMenu(interaction);
         return;
       }
 
-      if (interaction.customId === "template_edit_emoji_select") {
-        await createTemplateCommand.handleBackToMain(interaction);
+      // Template select menus - usar comando unificado
+      if (interaction.customId.startsWith("template_") ||
+        interaction.customId === "edit_template_select" ||
+        interaction.customId === "edit_weapon_category_select") {
+        await templateCommand.handleSelectMenu(interaction);
         return;
       }
 
-      if (interaction.customId === "template_edit_category_select") {
-        await createTemplateCommand.handleEditCategorySelect(interaction);
+      // Category select para añadir armas a grupos
+      if (interaction.customId.startsWith("category_select_for_group_")) {
+        await templateCommand.handleCategorySelectForGroup(interaction);
         return;
       }
 
-      if (interaction.customId === "template_remove_category_select") {
-        await createTemplateCommand.handleRemoveCategorySelect(interaction);
+      // Weapon select para añadir armas específicas a grupos
+      if (interaction.customId.startsWith("weapon_select_for_group_")) {
+        await templateCommand.handleWeaponSelectForGroup(interaction);
         return;
       }
 
-      if (interaction.customId === "edit_template_select") {
-        await editTemplateCommand.handleEditSelect(interaction);
+      // Remove weapons select para eliminar armas específicas de grupos
+      if (interaction.customId.startsWith("remove_weapons_select_")) {
+        await templateCommand.handleRemoveWeaponsSelect(interaction);
         return;
       }
 
-      if (interaction.customId === "edit_weapon_category_select") {
-        await editTemplateCommand.handleWeaponsEdit(interaction, interaction.client.templateEditState?.get(interaction.user.id)?.template);
+      // Direct weapon select para añadir armas directamente sin categorías
+      if (interaction.customId.startsWith("direct_weapon_select_")) {
+        await templateCommand.handleDirectWeaponSelect(interaction);
         return;
       }
     }
@@ -197,105 +228,239 @@ const getEvents = () => {
       }
 
       if (interaction.customId === "template_add_category") {
-        await createTemplateCommand.handleAddCategory(interaction);
+        await templateCommand.handleAddCategory(interaction);
         return;
       }
 
       if (interaction.customId === "template_edit_category") {
-        await createTemplateCommand.handleEditCategory(interaction);
+        await templateCommand.handleEditCategory(interaction);
         return;
       }
 
       if (interaction.customId === "template_remove_category") {
-        await createTemplateCommand.handleRemoveCategory(interaction);
+        await templateCommand.handleRemoveCategory(interaction);
         return;
       }
 
       if (interaction.customId === "template_config_final") {
-        await createTemplateCommand.handleConfigFinal(interaction);
+        await templateCommand.handleConfigFinal(interaction);
         return;
       }
 
       if (interaction.customId === "template_skip_category") {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_continue_category_")) {
-        await createTemplateCommand.handleContinueCategory(interaction);
+        await templateCommand.handleContinueCategory(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_config_weapon_")) {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_edit_weapons_")) {
-        await createTemplateCommand.handleAddWeapons(interaction);
+        await templateCommand.handleButton(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_edit_category_info_")) {
-        await createTemplateCommand.handleEditCategoryInfo(interaction);
+        await templateCommand.handleEditCategoryInfo(interaction);
         return;
       }
 
       if (interaction.customId === "template_back_to_main") {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
+        return;
+      }
+
+      // Botones de navegación de vuelta
+      if (interaction.customId.startsWith("back_to_weapons_") || interaction.customId.startsWith("back_to_group_")) {
+        console.log('[DEBUG] Events: Redirigiendo back_to navigation a templateCommand.handleButton');
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      // Nuevos botones para el flujo mejorado
+      if (interaction.customId.startsWith("template_add_weapon_group_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_finish_group_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_finish_weapons_")) {
+        console.log('[DEBUG] Events: Detected template_finish_weapons_ button click:', interaction.customId);
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_cancel_group_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_back_to_categories_")) {
+        await templateCommand.handleButton(interaction);
         return;
       }
 
       if (interaction.customId === "template_back_to_emoji_categories") {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_back_to_emoji_categories_")) {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
         return;
       }
 
       if (interaction.customId === "template_back_to_edit_emoji_categories") {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("edit_")) {
-        await editTemplateCommand.handleButtonClick(interaction);
+        await templateCommand.handleButtonClick(interaction);
+        return;
+      }
+
+      // Template edit buttons específicos - usar comando unificado para edit
+      if (interaction.customId.startsWith("template_edit_")) {
+        console.log('[DEBUG] Events: Redirigiendo template_edit_ a templateCommand.handleButton');
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      // Group buttons para edición de grupos de armas
+      if (interaction.customId.startsWith("group_") ||
+        interaction.customId.includes("_group_") ||
+        interaction.customId.includes("back_to_group_") ||
+        interaction.customId.includes("confirm_delete_group_")) {
+        console.log('[DEBUG] Events: Redirigiendo group button a templateCommand.handleEditButton');
+        await templateCommand.handleEditButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_confirm_creation_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_cancel_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_continue_roles_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_back_roles_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_quick_create_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_force_cancel_")) {
+        console.log('[DEBUG] Events: Detected template_force_cancel_ button click:', interaction.customId);
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_continue_existing_")) {
+        console.log('[DEBUG] Events: Detected template_continue_existing_ button click:', interaction.customId);
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      // Template continue config button (for step 2)
+      if (interaction.customId.startsWith("template_continue_config_")) {
+        console.log('[DEBUG] Events: Detected template_continue_config_ button click:', interaction.customId);
+        await templateCommand.handleContinueConfigButton(interaction);
+        return;
+      }
+
+      // Template deletion buttons
+      if (interaction.customId.startsWith("template_delete_confirm_") || interaction.customId.startsWith("template_delete_cancel_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
+      // Template confirmation and cancellation buttons (for template creation)
+      if (interaction.customId.startsWith("template_confirm_") || interaction.customId.startsWith("template_cancel_")) {
+        console.log('[DEBUG] Events: Detected template confirm/cancel button click:', interaction.customId);
+        await templateCommand.handleButton(interaction);
         return;
       }
 
     }
 
     if (interaction.isModalSubmit()) {
+      // Handle template basic info modal (first modal in template creation)
+      if (interaction.customId.startsWith("template_basic_info_")) {
+        await templateCommand.handleModalSubmit(interaction);
+        return;
+      }
+
+      // Group modals para edición de grupos de armas
+      if (interaction.customId.includes("add_weapon_modal_") ||
+        interaction.customId.includes("edit_weapon_modal_") ||
+        interaction.customId.includes("new_group_modal_")) {
+        console.log('[DEBUG] Events: Redirigiendo group modal a templateCommand.handleModalSubmit');
+        await templateCommand.handleModalSubmit(interaction);
+        return;
+      }
+
       if (interaction.customId === "template_new_category_modal") {
-        await createTemplateCommand.handleNewCategoryModal(interaction);
+        await templateCommand.handleNewCategoryModal(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_weapon_config_modal_")) {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_weapon_search_modal_")) {
-        await createTemplateCommand.handleBackToMain(interaction);
+        await templateCommand.handleBackToMain(interaction);
         return;
       }
 
       if (interaction.customId === "template_final_config_modal") {
-        await createTemplateCommand.handleFinalConfigModal(interaction);
+        await templateCommand.handleFinalConfigModal(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("template_edit_category_info_modal_")) {
-        await createTemplateCommand.handleEditCategoryInfoModal(interaction);
+        await templateCommand.handleEditCategoryInfoModal(interaction);
+        return;
+      }
+
+      // Template modals - usar comando unificado
+      if (interaction.customId.startsWith("template_")) {
+        await templateCommand.handleModalSubmit(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("template_weapon_config_")) {
+        await templateCommand.handleModalSubmit(interaction);
         return;
       }
 
       if (interaction.customId.startsWith("edit_") && interaction.customId.endsWith("_modal")) {
-        await editTemplateCommand.handleModalSubmit(interaction);
+        await templateCommand.handleModalSubmit(interaction);
         return;
       }
     }
