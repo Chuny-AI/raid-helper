@@ -508,12 +508,12 @@ async function showAdditionalConfigModal(interaction, sessionId) {
 
     const notifyAllInput = new TextInputBuilder()
       .setCustomId('notifyAll')
-      .setLabel('Notificar a todos? (Sí/No)')
+      .setLabel('Notificar a todos? (Escribir: si o no)')
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
       .setMaxLength(5)
-      .setPlaceholder('Sí o No')
-      .setValue(data.notifyAll ? 'Sí' : 'No');
+      .setPlaceholder('si o no')
+      .setValue(data.notifyAll ? 'si' : 'no');
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(imageInput),

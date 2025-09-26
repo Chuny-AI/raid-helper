@@ -842,7 +842,14 @@ module.exports = {
       // Manejo de modals de edición del template editor
       else if (interaction.customId.includes('template_edit_') && interaction.customId.includes('_submit_')) {
         console.log('[DEBUG] Procesando modal del editor:', interaction.customId);
-        await this.handleEditModalSubmit(interaction);
+        try {
+          await this.handleEditModalSubmit(interaction);
+        } catch (editError) {
+          console.error('[ERROR] Error en modal de edición:', editError);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'Error al procesar el modal de edición.', ephemeral: true });
+          }
+        }
         return;
       }
       // Manejo de modals de grupos de armas
@@ -1208,12 +1215,12 @@ module.exports = {
 
       const notifyAllInput = new TextInputBuilder()
         .setCustomId('notifyAll')
-        .setLabel('Notificar a todos? (Sí/No)')
+        .setLabel('Notificar a todos? (Escribir: si o no)')
         .setStyle(TextInputStyle.Short)
         .setRequired(false)
         .setMaxLength(5)
-        .setPlaceholder('Sí o No')
-        .setValue(data.notifyAll ? 'Sí' : 'No');
+        .setPlaceholder('si o no')
+        .setValue(data.notifyAll ? 'si' : 'no');
 
       modal.addComponents(
         new ActionRowBuilder().addComponents(reminderInput),
@@ -1588,9 +1595,9 @@ module.exports = {
 
     const notifyAllInput = new TextInputBuilder()
       .setCustomId('notifyAll')
-      .setLabel('Notificar a Todos (true/false)')
+      .setLabel('Notificar a Todos (Escribir: si o no)')
       .setStyle(TextInputStyle.Short)
-      .setValue(template.notifyAll ? 'true' : 'false')
+      .setValue(template.notifyAll ? 'si' : 'no')
       .setRequired(false)
       .setMaxLength(5);
 
@@ -1668,8 +1675,16 @@ module.exports = {
       }
     } catch (error) {
       console.error('[ERROR] Error en handleEditModalSubmit:', error);
-      const errorEmbed = createErrorEmbed("Error", "Error al procesar el modal de edición.");
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      
+      // Solo responder si la interacción no ha sido respondida aún
+      if (!interaction.replied && !interaction.deferred) {
+        try {
+          const errorEmbed = createErrorEmbed("Error", "Error al procesar el modal de edición.");
+          await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        } catch (replyError) {
+          console.error('[ERROR] No se pudo enviar respuesta de error:', replyError);
+        }
+      }
     }
   },
 
@@ -1729,9 +1744,10 @@ module.exports = {
     const session = templateEditSessions.get(sessionId);
 
     const reminder = interaction.fields.getTextInputValue('reminder');
-    const notifyAllStr = interaction.fields.getTextInputValue('notifyAll').toLowerCase();
-
-    const notifyAll = notifyAllStr === 'true' || notifyAllStr === 'sí' || notifyAllStr === 'si';
+    const notifyAllRaw = (interaction.fields.getTextInputValue('notifyAll') || '').toLowerCase().trim();
+    
+    // Aceptar múltiples variaciones para "sí"
+    const notifyAll = ['si', 'sí', 's', 'yes', 'y', 'true', '1'].includes(notifyAllRaw);
 
     session.data.reminder = reminder || '5m';
     session.data.notifyAll = notifyAll;
@@ -1794,15 +1810,20 @@ module.exports = {
       // Helper: convierte un grupo en formato de creación ({displayName, data: [...]})
       // al formato del editor ({categories: [{ name, weapons: [...] }]}).
       const convertCreationGroupToEditorGroup = (weaponConfig, existingGroup) => {
+        console.log('[DEBUG] convertCreationGroupToEditorGroup: weaponConfig received:', JSON.stringify(weaponConfig, null, 2));
+
         const editorWeapons = (weaponConfig?.data || []).map(w => ({
           id: w.id,
           name: w.name,
           quantity: w.units,
           image: w.image || '',
-          emoji: w.emoji,
+          emojiId: w.emojiId, // Preservar emojiId original
+          emoji: w.emoji || `<:weapon:${w.emojiId}>`, // Formato de emoji para mostrar
           url: w.url || '',
           sendBuildToPrivate: !!w.sendBuildToPrivate
         }));
+
+        console.log('[DEBUG] convertCreationGroupToEditorGroup: editorWeapons created:', JSON.stringify(editorWeapons, null, 2));
 
         // Intentar preservar nombres de categorías existentes si están disponibles
         let categoryName = 'General';
@@ -1811,7 +1832,9 @@ module.exports = {
           categoryName = existingGroup.categories[0].name || 'General';
         }
 
-        return {
+        const result = {
+          name: weaponConfig?.displayName || 'Nuevo Grupo',
+          defaultEmoji: weaponConfig?.defaultEmoji || '⚔️',
           categories: [
             {
               name: categoryName,
@@ -1819,6 +1842,9 @@ module.exports = {
             }
           ]
         };
+
+        console.log('[DEBUG] convertCreationGroupToEditorGroup: final result:', JSON.stringify(result, null, 2));
+        return result;
       };
 
       // Actualizar datos de la sesión de edición
@@ -1860,12 +1886,83 @@ module.exports = {
         }
       }
 
+      // Manejar adición de armas a un grupo existente
+      if (updatedData.addWeaponsToGroup !== undefined && updatedData.groupIndex !== undefined) {
+        if (editSession.data.weapons && editSession.data.weapons[updatedData.groupIndex]) {
+          const existing = editSession.data.weapons[updatedData.groupIndex];
+          const newWeapons = (updatedData.addWeaponsToGroup?.data || []).map(w => ({
+            id: w.id || Date.now() + Math.random(),
+            name: w.name,
+            quantity: w.units,
+            image: w.image || '',
+            emojiId: w.emojiId, // Preservar emojiId original
+            emoji: w.emoji || `<:weapon:${w.emojiId}>`, // Formato de emoji para mostrar
+            url: w.url || '',
+            sendBuildToPrivate: !!w.sendBuildToPrivate
+          }));
+
+          // Añadir las nuevas armas a la primera categoría del grupo existente
+          if (existing.categories && existing.categories.length > 0) {
+            existing.categories[0].weapons = [...(existing.categories[0].weapons || []), ...newWeapons];
+          } else {
+            // Si no hay categorías, crear una nueva
+            existing.categories = [{
+              name: 'General',
+              weapons: newWeapons
+            }];
+          }
+          editSession.hasChanges = true;
+        }
+      }
+
       console.log(`[DEBUG] Datos sincronizados exitosamente desde creación a edición para sesión ${sessionId}`);
       return true;
     } catch (error) {
       console.error('[ERROR] Error al sincronizar datos desde creación a edición:', error);
       return false;
     }
+  },
+
+  // Convierte los datos de weapons del formato de editor al formato de base de datos
+  convertEditorToDbFormat(editorWeapons) {
+    if (!Array.isArray(editorWeapons)) {
+      console.log('[DEBUG] convertEditorToDbFormat: Input is not an array, returning as-is');
+      return editorWeapons;
+    }
+
+    const dbFormat = {};
+
+    editorWeapons.forEach((group, index) => {
+      const groupKey = `group_${index + 1}`;
+
+      // Recolectar todas las armas de todas las categorías
+      const allWeapons = [];
+      if (group.categories && Array.isArray(group.categories)) {
+        group.categories.forEach(category => {
+          if (category.weapons && Array.isArray(category.weapons)) {
+            category.weapons.forEach(weapon => {
+              allWeapons.push({
+                id: weapon.id || Date.now() + Math.random(),
+                name: weapon.name,
+                units: weapon.quantity || 1,
+                image: weapon.image || '',
+                emojiId: weapon.emojiId || weapon.emoji, // Usar emojiId si existe, sino emoji como fallback
+                url: weapon.url || '',
+                sendBuildToPrivate: weapon.sendBuildToPrivate || false
+              });
+            });
+          }
+        });
+      }
+
+      dbFormat[groupKey] = {
+        displayName: group.name || 'Nuevo Grupo',
+        defaultEmoji: group.defaultEmoji || '⚔️',
+        data: allWeapons
+      };
+    });
+
+    return dbFormat;
   },
 
   // Mostrar editor de roles con multi-select directo
@@ -2321,29 +2418,49 @@ module.exports = {
         return;
       }
 
-      // Mostrar modal solo para el nombre del grupo
-      const modal = new ModalBuilder()
-        .setCustomId(`new_group_modal_${sessionId}`)
-        .setTitle('Crear Nuevo Grupo de Armas');
+      // Crear una sesión temporal de creación de template para el nuevo grupo
+      const { createSession } = require('../../lib/template/template-sessions');
 
-      const groupNameInput = new TextInputBuilder()
-        .setCustomId('group_name')
-        .setLabel('Nombre del Grupo')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMaxLength(50)
-        .setPlaceholder('Ej: Tanques, DPS, Soporte...');
+      // Generar ID único para la sesión temporal de creación
+      const tempSessionId = `edit_${sessionId}_${Date.now()}`;
 
-      const row1 = new ActionRowBuilder().addComponents(groupNameInput);
+      // Crear sesión de creación temporal con datos básicos del template
+      const tempSessionData = {
+        userId: interaction.user.id,
+        guildId: interaction.guild.id,
+        step: 'weapon_category_selection',
+        isEdit: true,
+        originalSessionId: sessionId,
+        isNewGroup: true,
+        data: {
+          // Copiar datos básicos del template existente
+          templateId: session.data.templateId,
+          name: session.data.name,
+          description: session.data.description,
+          weapons: {}
+        },
+        tempGroupConfig: null
+      };
 
-      modal.addComponents(row1);
+      createSession(tempSessionId, tempSessionData);
 
-      await interaction.showModal(modal);
+      // Diferir la interacción si es un botón
+      if (interaction.isButton()) {
+        await interaction.deferUpdate();
+      }
+
+      // Mostrar selección de categorías de armas usando el sistema de template create
+      const createHandlers = require('../../lib/template/template-create-handlers');
+      await createHandlers.showWeaponCategorySelection(interaction, tempSessionId);
 
     } catch (error) {
       console.error('Error al añadir nuevo grupo de armas:', error);
       const errorEmbed = createErrorEmbed('Error', 'Hubo un error al crear un nuevo grupo de armas.');
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      } else {
+        await interaction.editReply({ embeds: [errorEmbed], components: [] });
+      }
     }
   },
 
@@ -2956,8 +3073,18 @@ module.exports = {
     try {
       const templateService = require('../../services/templateService');
 
+      // Convertir datos del formato de editor al formato de base de datos
+      const dataToSave = {
+        ...session.data,
+        weapons: this.convertEditorToDbFormat(session.data.weapons)
+      };
+
+      console.log('[DEBUG] saveTemplateChanges: Converting weapons format');
+      console.log('[DEBUG] saveTemplateChanges: Editor format:', JSON.stringify(session.data.weapons, null, 2));
+      console.log('[DEBUG] saveTemplateChanges: DB format:', JSON.stringify(dataToSave.weapons, null, 2));
+
       // Actualizar el template en la base de datos
-      await templateService.updateTemplate(session.templateId, session.data);
+      await templateService.updateTemplate(session.templateId, dataToSave);
 
       const successEmbed = new EmbedBuilder()
         .setTitle('✅ Template Actualizado')
@@ -3378,56 +3505,67 @@ async function handleGroupButton(interaction, customId) {
   }
 }
 
-// Añadir arma a un grupo
+// Añadir arma a un grupo usando el sistema completo de template create
 async function handleAddWeaponToGroup(interaction, sessionId, groupIndex) {
   try {
-    const modal = new ModalBuilder()
-      .setCustomId(`add_weapon_modal_${sessionId}_${groupIndex}`)
-      .setTitle('Añadir Nueva Arma');
+    const session = templateEditSessions.get(sessionId);
+    if (!session) {
+      const errorEmbed = createErrorEmbed('Sesión expirada', 'La sesión de edición ha expirado.');
+      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return;
+    }
 
-    const weaponNameInput = new TextInputBuilder()
-      .setCustomId('weapon_name')
-      .setLabel('Nombre del Arma')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMaxLength(50);
+    const weaponGroup = session.data.weapons[groupIndex];
+    if (!weaponGroup) {
+      const errorEmbed = createErrorEmbed('Grupo no encontrado', 'El grupo seleccionado no existe.');
+      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return;
+    }
 
-    const weaponQuantityInput = new TextInputBuilder()
-      .setCustomId('weapon_quantity')
-      .setLabel('Cantidad')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setValue('1')
-      .setMaxLength(3);
+    // Crear una sesión temporal de creación de template para añadir armas al grupo
+    const { createSession } = require('../../lib/template/template-sessions');
 
-    const weaponEmojiInput = new TextInputBuilder()
-      .setCustomId('weapon_emoji')
-      .setLabel('Emoji (opcional)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false)
-      .setValue('⚔️')
-      .setMaxLength(10);
+    // Generar ID único para la sesión temporal de creación
+    const tempSessionId = `editweapon_${sessionId}_${groupIndex}_${Date.now()}`;
 
-    const weaponCategoryInput = new TextInputBuilder()
-      .setCustomId('weapon_category')
-      .setLabel('Categoría (opcional)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false)
-      .setValue('General')
-      .setMaxLength(30);
+    // Crear sesión de creación temporal con datos del grupo existente
+    const tempSessionData = {
+      userId: interaction.user.id,
+      guildId: interaction.guild.id,
+      step: 'weapon_category_selection',
+      isEdit: true,
+      originalSessionId: sessionId,
+      editingGroupIndex: groupIndex,
+      isNewGroup: false,
+      isAddingWeapons: true, // Marcar que estamos añadiendo armas, no reemplazando el grupo
+      data: {
+        // Copiar datos básicos del template existente
+        templateId: session.data.templateId,
+        name: session.data.name,
+        description: session.data.description,
+        weapons: {}
+      },
+      tempGroupConfig: {
+        displayName: weaponGroup.name || weaponGroup.displayName || `Grupo ${groupIndex + 1}`,
+        defaultEmoji: weaponGroup.defaultEmoji || '⚔️',
+        weaponKey: `group_${groupIndex}`,
+        weapons: [] // Empezar sin armas para que el usuario pueda añadir nuevas
+      }
+    };
 
-    const row1 = new ActionRowBuilder().addComponents(weaponNameInput);
-    const row2 = new ActionRowBuilder().addComponents(weaponQuantityInput);
-    const row3 = new ActionRowBuilder().addComponents(weaponEmojiInput);
-    const row4 = new ActionRowBuilder().addComponents(weaponCategoryInput);
+    createSession(tempSessionId, tempSessionData);
 
-    modal.addComponents(row1, row2, row3, row4);
+    // Diferir la interacción si es un botón
+    if (interaction.isButton()) {
+      await interaction.deferUpdate();
+    }
 
-    await interaction.showModal(modal);
+    // Mostrar selección de categorías de armas usando el sistema de template create
+    const createHandlers = require('../../lib/template/template-create-handlers');
+    await createHandlers.showWeaponCategorySelection(interaction, tempSessionId);
 
   } catch (error) {
-    console.error('Error al mostrar modal de añadir arma:', error);
-    throw error;
+    console.error('Error al añadir arma al grupo:', error);
   }
 }
 

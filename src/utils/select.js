@@ -26,17 +26,22 @@ const createSelect = (template, templateName, interaction) => {
     }
 
     for (const item of weapon.data) {
-      const emojiId = item.emoji;
+      const emojiId = item.emojiId || item.emoji; // Usar emojiId si existe, sino emoji como fallback
       const weaponName = item.name || weaponCategory; // Usar displayName si name está vacío
       const weaponId = item.id;
       // Create unique value by combining weaponId with category and index to avoid duplicates
       const uniqueValue = `${weaponId}-${weaponCategory.replace(/\s+/g, '_')}-${optionIndex}`;
-      select.addOptions(
-        new StringSelectMenuOptionBuilder()
-          .setLabel(`${weaponName} - ${weaponCategory}`)
-          .setValue(uniqueValue)
-          .setEmoji(emojiId)
-      );
+      
+      // Solo añadir emoji si existe y es válido
+      const optionBuilder = new StringSelectMenuOptionBuilder()
+        .setLabel(`${weaponName} - ${weaponCategory}`)
+        .setValue(uniqueValue);
+        
+      if (emojiId) {
+        optionBuilder.setEmoji(emojiId);
+      }
+      
+      select.addOptions(optionBuilder);
       optionIndex++;
     }
   }

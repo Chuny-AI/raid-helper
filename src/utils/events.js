@@ -518,7 +518,7 @@ const getEvents = () => {
                 const weaponItem = weapon.data.find(item => String(item.id) === String(weaponId));
                 if (weaponItem) {
                   weaponCategory = weapon.displayName;
-                  emojiSelected = weaponItem.emoji;
+                  emojiSelected = weaponItem.emojiId || weaponItem.emoji; // Usar emojiId si existe, sino emoji como fallback
                   weaponName = weaponItem.name || weapon.displayName;
                   break;
                 }
@@ -549,7 +549,13 @@ const getEvents = () => {
         deleteUserIfExistsOnCurrentField(embed, interaction);
         embed.data.fields.forEach((field) => {
           if (field.name.includes(weaponCategory)) {
-            field.value += `\n<:${emojiSelected}:${emojiSelected}> ${interaction.user}`;
+            // Formatear el emoji correctamente para mostrar en texto
+            let formattedEmoji = emojiSelected;
+            if (emojiSelected && emojiSelected.match(/^\d+$/)) {
+              // Si es solo un ID numérico, formatearlo como emoji personalizado
+              formattedEmoji = `<:weapon:${emojiSelected}>`;
+            }
+            field.value += `\n${formattedEmoji} ${interaction.user}`;
           }
         });
 

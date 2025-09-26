@@ -6,6 +6,9 @@
 // Store global para las sesiones de creación de templates
 const templateCreationSessions = new Map();
 
+// Store para mapear sessionIds cortos a sessionIds originales
+const shortToOriginalSessionIdMap = new Map();
+
 // Timeout de sesiones (30 minutos)
 const SESSION_TIMEOUT = 30 * 60 * 1000;
 
@@ -26,6 +29,14 @@ function createSession(sessionId, sessionData) {
     lastAccessed: Date.now()
   };
   templateCreationSessions.set(sessionId, sessionWithTimestamp);
+
+  // Si el sessionId es muy largo, crear un mapeo corto
+  if (sessionId.length > 50) {
+    const shortSessionId = sessionId.slice(-20);
+    shortToOriginalSessionIdMap.set(shortSessionId, sessionId);
+    console.log(`[SESSIONS] Created short mapping: ${shortSessionId} -> ${sessionId}`);
+  }
+
   console.log(`[SESSIONS] Created session ${sessionId}. Total sessions: ${templateCreationSessions.size}`);
   return sessionWithTimestamp;
 }
@@ -34,18 +45,31 @@ function createSession(sessionId, sessionData) {
  * Obtiene una sesión específica
  */
 function getSession(sessionId) {
-  const session = templateCreationSessions.get(sessionId);
+  let session = templateCreationSessions.get(sessionId);
+  let actualSessionId = sessionId;
+
+  // Si no se encuentra directamente, intentar con el mapeo de sessionId corto
+  if (!session && shortToOriginalSessionIdMap.has(sessionId)) {
+    actualSessionId = shortToOriginalSessionIdMap.get(sessionId);
+    session = templateCreationSessions.get(actualSessionId);
+    console.log(`[SESSIONS] Using short mapping: ${sessionId} -> ${actualSessionId}`);
+  }
+
   if (session) {
     // Verificar si la sesión ha expirado
     const now = Date.now();
     if (now - session.lastAccessed > SESSION_TIMEOUT) {
-      console.log(`[SESSIONS] Session ${sessionId} expired, removing`);
-      templateCreationSessions.delete(sessionId);
+      console.log(`[SESSIONS] Session ${actualSessionId} expired, removing`);
+      templateCreationSessions.delete(actualSessionId);
+      // También limpiar el mapeo si existe
+      if (actualSessionId !== sessionId) {
+        shortToOriginalSessionIdMap.delete(sessionId);
+      }
       return null;
     }
     // Actualizar último acceso
     session.lastAccessed = now;
-    console.log(`[SESSIONS] Accessed session ${sessionId}. Age: ${Math.floor((now - session.createdAt) / 1000)}s`);
+    console.log(`[SESSIONS] Accessed session ${actualSessionId}. Age: ${Math.floor((now - session.createdAt) / 1000)}s`);
   } else {
     console.log(`[SESSIONS] Session ${sessionId} not found. Available sessions: [${Array.from(templateCreationSessions.keys()).join(', ')}]`);
   }
@@ -56,9 +80,20 @@ function getSession(sessionId) {
  * Actualiza una sesión
  */
 function updateSession(sessionId, sessionData) {
-  const existingSession = templateCreationSessions.get(sessionId);
+  let existingSession = templateCreationSessions.get(sessionId);
+  let actualSessionId = sessionId;
+
+  // Si no se encuentra directamente, intentar con el mapeo de sessionId corto
+  if (!existingSession && shortToOriginalSessionIdMap.has(sessionId)) {
+    actualSessionId = shortToOriginalSessionIdMap.get(sessionId);
+    existingSession = templateCreationSessions.get(actualSessionId);
+    console.log(`[SESSIONS] Using short mapping for update: ${sessionId} -> ${actualSessionId}`);
+  }
+
   if (!existingSession) {
     console.log(`[SESSIONS] Warning: Trying to update non-existent session ${sessionId}`);
+    console.log(`[SESSIONS] Available sessions: [${Array.from(templateCreationSessions.keys()).join(', ')}]`);
+    console.log(`[SESSIONS] Short mappings: [${Array.from(shortToOriginalSessionIdMap.entries()).map(([k, v]) => `${k}->${v}`).join(', ')}]`);
     return null;
   }
 
@@ -67,8 +102,8 @@ function updateSession(sessionId, sessionData) {
     ...sessionData,
     lastAccessed: Date.now()
   };
-  templateCreationSessions.set(sessionId, updatedSession);
-  console.log(`[SESSIONS] Updated session ${sessionId}. Step: ${updatedSession.step}`);
+  templateCreationSessions.set(actualSessionId, updatedSession);
+  console.log(`[SESSIONS] Updated session ${actualSessionId}. Step: ${updatedSession.step}`);
   return updatedSession;
 }
 
@@ -76,6 +111,19 @@ function updateSession(sessionId, sessionData) {
  * Elimina una sesión
  */
 function deleteSession(sessionId) {
+  // Si es un sessionId largo, también eliminar el mapeo corto
+  if (sessionId.length > 50) {
+    const shortSessionId = sessionId.slice(-20);
+    shortToOriginalSessionIdMap.delete(shortSessionId);
+  }
+
+  // Si es un sessionId corto, buscar y eliminar el original
+  if (shortToOriginalSessionIdMap.has(sessionId)) {
+    const originalSessionId = shortToOriginalSessionIdMap.get(sessionId);
+    shortToOriginalSessionIdMap.delete(sessionId);
+    return templateCreationSessions.delete(originalSessionId);
+  }
+
   return templateCreationSessions.delete(sessionId);
 }
 

@@ -47,6 +47,30 @@ function formatEmoji(emojiId, fallback = '⚔️') {
   return fallback;
 }
 
+/**
+ * Función auxiliar para generar customIds cortos para evitar el límite de 100 caracteres
+ */
+function generateShortCustomId(prefix, sessionId, suffix = '') {
+  // Si el sessionId es muy largo, usar solo una parte única
+  let shortSessionId = sessionId;
+  if (sessionId.length > 50) {
+    // Usar los últimos 20 caracteres que suelen contener el timestamp único
+    shortSessionId = sessionId.slice(-20);
+  }
+
+  const customId = suffix ? `${prefix}_${shortSessionId}_${suffix}` : `${prefix}_${shortSessionId}`;
+
+  // Verificar que no exceda el límite de Discord (100 caracteres)
+  if (customId.length > 100) {
+    // Recortar más el sessionId si es necesario
+    const availableLength = 100 - prefix.length - (suffix ? suffix.length + 2 : 1); // -2 por los guiones bajos
+    shortSessionId = sessionId.slice(-Math.max(10, availableLength));
+    return suffix ? `${prefix}_${shortSessionId}_${suffix}` : `${prefix}_${shortSessionId}`;
+  }
+
+  return customId;
+}
+
 
 
 /**
@@ -449,7 +473,7 @@ async function showWeaponCategorySelection(interaction, sessionId) {
     const components = [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`template_add_weapon_group_${sessionId}`)
+          .setCustomId(generateShortCustomId('template_add_weapon_group', sessionId))
           .setLabel('Agregar Grupo de Armas')
           .setStyle(ButtonStyle.Primary)
           .setEmoji('➕')
@@ -587,7 +611,7 @@ async function handleAddWeaponGroup(interaction) {
 
   // Mostrar modal para configuración básica del grupo
   const modal = new ModalBuilder()
-    .setCustomId(`template_basic_weapon_group_${sessionId}`)
+    .setCustomId(generateShortCustomId('template_basic_weapon_group', sessionId))
     .setTitle('Nuevo Grupo de Armas');
 
   const displayNameInput = new TextInputBuilder()
@@ -610,13 +634,17 @@ async function handleAddWeaponGroup(interaction) {
  */
 async function handleBasicWeaponGroupSubmit(interaction) {
   const sessionId = getSessionIdFromInteraction(interaction);
+  console.log('[DEBUG] handleBasicWeaponGroupSubmit: sessionId:', sessionId);
+
   const session = getSession(sessionId);
+  console.log('[DEBUG] handleBasicWeaponGroupSubmit: session found:', !!session);
 
   if (!session) {
     return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: 64 });
   }
 
   const displayName = interaction.fields.getTextInputValue('displayName');
+  console.log('[DEBUG] handleBasicWeaponGroupSubmit: displayName:', displayName);
 
   // Generar clave automática incremental
   const existingKeys = Object.keys(session.data.weapons || {});
@@ -627,14 +655,23 @@ async function handleBasicWeaponGroupSubmit(interaction) {
     weaponKey = `group_${counter}`;
   }
 
+  console.log('[DEBUG] handleBasicWeaponGroupSubmit: generated weaponKey:', weaponKey);
+
   // Guardar configuración temporal del grupo
-  updateSession(sessionId, {
-    tempGroupConfig: {
-      displayName,
-      weaponKey,
-      weapons: []
-    }
+  const tempGroupConfig = {
+    displayName,
+    weaponKey,
+    weapons: []
+  };
+
+  console.log('[DEBUG] handleBasicWeaponGroupSubmit: tempGroupConfig to save:', tempGroupConfig);
+
+  const updatedSession = updateSession(sessionId, {
+    tempGroupConfig
   });
+
+  console.log('[DEBUG] handleBasicWeaponGroupSubmit: session updated:', !!updatedSession);
+  console.log('[DEBUG] handleBasicWeaponGroupSubmit: updatedSession.tempGroupConfig:', updatedSession?.tempGroupConfig);
 
   await interaction.deferUpdate();
   await showEmojiCategorySelection(interaction, sessionId);
@@ -648,9 +685,21 @@ async function showEmojiCategorySelection(interaction, sessionId) {
     const categories = await getWeaponCategoriesWithFallback();
     const session = getSession(sessionId);
 
+    if (!session) {
+      console.error('[ERROR] showEmojiCategorySelection: No session found');
+      return await interaction.editReply({ content: 'Sesión expirada. Inicia el proceso nuevamente.' });
+    }
+
+    if (!session.tempGroupConfig) {
+      console.error('[ERROR] showEmojiCategorySelection: No tempGroupConfig found in session');
+      return await interaction.editReply({ content: 'Error de configuración. Inicia el proceso nuevamente.' });
+    }
+
+    const groupName = session.tempGroupConfig.displayName || 'Nuevo Grupo';
+
     const embed = new EmbedBuilder()
       .setTitle('🎨 Seleccionar Emoji del Grupo')
-      .setDescription(`Elige la categoría de arma para el emoji del grupo **${session.tempGroupConfig.displayName}**`)
+      .setDescription(`Elige la categoría de arma para el emoji del grupo **${groupName}**`)
       .setColor(0x00FFFF)
       .addFields([
         {
@@ -661,7 +710,7 @@ async function showEmojiCategorySelection(interaction, sessionId) {
       ]);
 
     const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`template_emoji_category_${sessionId}`)
+      .setCustomId(generateShortCustomId('template_emoji_category', sessionId))
       .setPlaceholder('Selecciona una categoría para el emoji')
       .addOptions(categories.slice(0, 25).map(category => {
         const opt = {
@@ -744,7 +793,7 @@ async function showEmojiWeaponSelection(interaction, sessionId, category) {
       ]);
 
     const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`template_emoji_weapon_${sessionId}`)
+      .setCustomId(generateShortCustomId('template_emoji_weapon', sessionId))
       .setPlaceholder('Selecciona el arma para el emoji')
       .addOptions(categoryWeapons.slice(0, 25).map(weapon => {
         const opt = {
@@ -925,7 +974,7 @@ async function showMultipleWeaponSelection(interaction, sessionId) {
     ]);
 
     const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`template_multi_category_${sessionId}`)
+      .setCustomId(generateShortCustomId('template_multi_category', sessionId))
       .setPlaceholder('Selecciona una categoría para agregar armas')
       .addOptions(categories.slice(0, 25).map(category => ({
         label: category.displayName,
@@ -941,7 +990,7 @@ async function showMultipleWeaponSelection(interaction, sessionId) {
     if (session.tempGroupConfig.weapons.length > 0) {
       buttons.push(
         new ButtonBuilder()
-          .setCustomId(`template_finish_group_${sessionId}`)
+          .setCustomId(generateShortCustomId('template_finish_group', sessionId))
           .setLabel('✅ Finalizar Grupo')
           .setStyle(ButtonStyle.Success)
       );
@@ -949,7 +998,7 @@ async function showMultipleWeaponSelection(interaction, sessionId) {
 
     buttons.push(
       new ButtonBuilder()
-        .setCustomId(`template_cancel_group_${sessionId}`)
+        .setCustomId(generateShortCustomId('template_cancel_group', sessionId))
         .setLabel('❌ Cancelar')
         .setStyle(ButtonStyle.Danger)
     );
@@ -1155,7 +1204,7 @@ async function showGroupConfigModal(interaction, sessionId, category) {
     }
 
     const modal = new ModalBuilder()
-      .setCustomId(`template_group_config_${sessionId}`)
+      .setCustomId(generateShortCustomId('template_group_config', sessionId))
       .setTitle(`Configurar Grupo: ${categoryInfo.displayName}`);
 
     const displayNameInput = new TextInputBuilder()
@@ -1559,8 +1608,11 @@ async function handleAddWeapons(interaction) {
   // Mostrar modal de configuración para esta arma
   try {
     console.log('[DEBUG] handleAddWeapons: Creating modal');
+    const shortCustomId = generateShortCustomId('template_single_weapon_config', sessionId);
+    console.log('[DEBUG] handleAddWeapons: Short customId generated:', shortCustomId);
+
     const modal = new ModalBuilder()
-      .setCustomId(`template_single_weapon_config_${sessionId}`)
+      .setCustomId(shortCustomId)
       .setTitle(`Configurar: ${selectedWeapon.name}`);
 
     // Campo de cantidad
@@ -1784,7 +1836,7 @@ async function handleFinishGroup(interaction) {
         name: weapon.name,
         units: weapon.quantity,
         image: weapon.image || '',
-        emoji: formatEmoji(weapon.emojiId, '⚔️'),
+        emojiId: weapon.emojiId, // Guardar emojiId original para BD
         url: weapon.url || '',
         sendBuildToPrivate: weapon.sendBuildToPrivate || false
       }))
@@ -1826,12 +1878,22 @@ async function handleFinishGroup(interaction) {
           newWeaponGroup: weaponConfig
         });
       } else if (session.editingGroupIndex !== undefined) {
-        // Actualizar grupo existente
-        console.log('[DEBUG] handleFinishGroup: Actualizando grupo existente en índice:', session.editingGroupIndex);
-        await templateModule.syncFromCreationToEdit(session.originalSessionId, {
-          editedWeaponGroup: weaponConfig,
-          groupIndex: session.editingGroupIndex
-        });
+        // Verificar si estamos añadiendo armas a un grupo existente o reemplazando el grupo completo
+        if (session.isAddingWeapons) {
+          // Añadir armas al grupo existente
+          console.log('[DEBUG] handleFinishGroup: Añadiendo armas al grupo existente en índice:', session.editingGroupIndex);
+          await templateModule.syncFromCreationToEdit(session.originalSessionId, {
+            addWeaponsToGroup: weaponConfig,
+            groupIndex: session.editingGroupIndex
+          });
+        } else {
+          // Reemplazar grupo completo
+          console.log('[DEBUG] handleFinishGroup: Actualizando grupo existente en índice:', session.editingGroupIndex);
+          await templateModule.syncFromCreationToEdit(session.originalSessionId, {
+            editedWeaponGroup: weaponConfig,
+            groupIndex: session.editingGroupIndex
+          });
+        }
       } else {
         // Método de respaldo para compatibilidad
         console.log('[DEBUG] handleFinishGroup: Usando método de sincronización de respaldo');
