@@ -385,13 +385,6 @@ const getEvents = () => {
         return;
       }
 
-      // Template continue config button (for step 2)
-      if (interaction.customId.startsWith("template_continue_config_")) {
-        console.log('[DEBUG] Events: Detected template_continue_config_ button click:', interaction.customId);
-        await templateCommand.handleContinueConfigButton(interaction);
-        return;
-      }
-
       // Template deletion buttons
       if (interaction.customId.startsWith("template_delete_confirm_") || interaction.customId.startsWith("template_delete_cancel_")) {
         await templateCommand.handleButton(interaction);

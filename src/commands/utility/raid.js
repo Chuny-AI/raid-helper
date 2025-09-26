@@ -24,6 +24,14 @@ module.exports = {
     )
     .addStringOption((option) =>
       option
+        .setName("time")
+        .setDescription(
+          'Indica el tiempo restante en minutos (1-60) ej: "30", "45", "60" (OBLIGATORIO)'
+        )
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
         .setName("title")
         .setDescription(
           "Especifica un título personalizado para la actividad (opcional)"
@@ -35,14 +43,6 @@ module.exports = {
         .setName("description")
         .setDescription(
           "Especifica una descripción personalizada para la actividad (opcional)"
-        )
-        .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("time")
-        .setDescription(
-          'Indica el tiempo restante para la actividad en formato "1h 30m" (opcional)'
         )
         .setRequired(false)
     )
@@ -66,7 +66,7 @@ module.exports = {
       option
         .setName("reminder")
         .setDescription(
-          'Tiempo antes de la actividad para enviar recordatorio (ej: "10m", "30m", "1h") (opcional)'
+          'Minutos antes de la actividad para enviar recordatorio (1-60) ej: "10", "30" (opcional)'
         )
         .setRequired(false)
     )
@@ -188,14 +188,14 @@ module.exports = {
 
       let delayTime;
       try {
-        delayTime = parseTime(time ?? template.time);
+        delayTime = parseTime(time);
       } catch (timeError) {
         const errorEmbed = createErrorEmbed(
           "Error en el Tiempo del Evento",
           `Error procesando el tiempo del evento: ${timeError.message}`,
           [{
             name: "Formato Correcto",
-            value: "Usa formatos como: `1h 30m`, `45m`, `2h`, `30s`",
+            value: "Usa números de 1 a 60 (minutos): `30`, `45`, `60`",
             inline: false
           }]
         );
@@ -205,14 +205,14 @@ module.exports = {
         });
       }
 
-      const maxEventTime = 60 * 60 * 1000; // 1 hora en milisegundos
+      const maxEventTime = 60 * 60 * 1000; // 60 minutos en milisegundos
       if (delayTime > maxEventTime) {
         const warningEmbed = createWarningEmbed(
           "Tiempo del Evento Excedido",
-          "El tiempo del evento no puede exceder 1 hora.",
+          "El tiempo del evento no puede exceder 60 minutos.",
           [{
             name: "Tiempos Válidos",
-            value: "Usa tiempos como: `45m`, `30m`, `15m`, `1h`",
+            value: "Usa números de 1 a 60: `30`, `45`, `60`",
             inline: false
           }]
         );
@@ -223,9 +223,6 @@ module.exports = {
       }
 
       let finalReminder = reminder;
-      if (!reminder && template.reminder) {
-        finalReminder = template.reminder;
-      }
 
       if (finalReminder) {
         let reminderTime;
@@ -237,7 +234,7 @@ module.exports = {
             `Error procesando el tiempo del recordatorio: ${reminderError.message}`,
             [{
               name: "Formato Correcto",
-              value: "Usa formatos como: `10m`, `30m`, `1h`",
+              value: "Usa números de 1 a 60 (minutos): `10`, `30`, `45`",
               inline: false
             }]
           );
@@ -247,13 +244,17 @@ module.exports = {
           });
         }
 
-        if (reminderTime >= delayTime) {
+        // Validación: reminder debe ser <= time - 5 minutos
+        const minValidReminder = 5 * 60 * 1000; // 5 minutos en milisegundos
+        const maxAllowedReminder = delayTime - minValidReminder;
+
+        if (reminderTime > maxAllowedReminder) {
           const warningEmbed = createWarningEmbed(
             "Tiempo de Recordatorio Inválido",
-            "El tiempo del recordatorio debe ser menor al tiempo del evento.",
+            "El recordatorio debe ser menor o igual al tiempo del evento menos 5 minutos.",
             [{
               name: "Ejemplo",
-              value: "Si el evento es de `1h`, el recordatorio puede ser `30m` o `15m`",
+              value: `Para un evento de ${time} minutos, el recordatorio máximo permitido es ${Math.floor((maxAllowedReminder) / (60 * 1000))} minutos`,
               inline: false
             }]
           );
@@ -268,7 +269,7 @@ module.exports = {
             "El tiempo del recordatorio debe ser mayor a 0.",
             [{
               name: "Ejemplo",
-              value: "Usa tiempos como: `5m`, `10m`, `30m`",
+              value: "Usa números como: `5`, `10`, `30`",
               inline: false
             }]
           );
@@ -356,11 +357,8 @@ module.exports = {
       if (notificationRoles.length > 0) {
         finalNotificationRoles = notificationRoles;
         console.log(`[DEBUG RAID] Usando roles del comando:`, finalNotificationRoles);
-      } else if (template.roles && template.roles.length > 0) {
-        finalNotificationRoles = template.roles;
-        console.log(`[DEBUG RAID] Usando roles del template:`, finalNotificationRoles);
       } else {
-        console.log(`[DEBUG RAID] No se encontraron roles ni en comando ni en template`);
+        console.log(`[DEBUG RAID] No se especificaron roles para notificar`);
       }
 
       // Si NO hay roles a notificar, hacer defer para evitar timeout
@@ -397,7 +395,7 @@ module.exports = {
         try {
           const { createReminder, addInterestedUser } = require('../../utils/reminderManager');
           const activityTitle = title || template.title;
-          const activityTime = time || template.time;
+          const activityTime = time; // time es obligatorio ahora
 
           createReminder(
             interaction.id,
@@ -462,7 +460,7 @@ module.exports = {
           );
 
           const activityTitle = title || template.title;
-          const timeRemaining = time || template.time;
+          const timeRemaining = time; // time es obligatorio ahora
 
           // Crear el enlace al mensaje del raid
           const messageUrl = `https://discord.com/channels/${interaction.guild.id}/${interaction.channel.id}/${raidMessage.id || interaction.id}`;

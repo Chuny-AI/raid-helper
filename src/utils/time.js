@@ -1,6 +1,6 @@
 /**
- * Obtiene el tiempo en formato 1h 30m y lo convierte a milisegundos
- * @param {*} timeString: string - Tiempo en formato 1h 30m
+ * Obtiene el tiempo en minutos y lo convierte a milisegundos
+ * @param {*} timeString: string - Tiempo en minutos (1-60)
  * @returns: number - Tiempo en milisegundos
  */
 const parseTime = (timeString) => {
@@ -8,66 +8,36 @@ const parseTime = (timeString) => {
     throw new Error('Tiempo inválido: debe ser una cadena de texto');
   }
 
-  const cleanTime = timeString.trim().toLowerCase();
+  const cleanTime = timeString.trim();
 
-  let hours = 0;
-  let minutes = 0;
-
-  const hoursMatch = cleanTime.match(/(\d+)h/);
-  if (hoursMatch) {
-    hours = parseInt(hoursMatch[1], 10);
+  // Solo aceptar números sin letras
+  const numberMatch = cleanTime.match(/^(\d+)$/);
+  if (!numberMatch) {
+    throw new Error(`Formato de tiempo inválido: "${timeString}". Usa solo números de 1 a 60 (minutos)`);
   }
 
-  const minutesMatch = cleanTime.match(/(\d+)m/);
-  if (minutesMatch) {
-    minutes = parseInt(minutesMatch[1], 10);
-  }
+  const minutes = parseInt(numberMatch[1], 10);
 
-  if (!hoursMatch && !minutesMatch) {
-    const numberMatch = cleanTime.match(/^(\d+)$/);
-    if (numberMatch) {
-      minutes = parseInt(numberMatch[1], 10);
-    } else {
-      throw new Error(`Formato de tiempo inválido: "${timeString}". Usa formato como "1h", "30m", "1h 30m", o "15"`);
-    }
-  }
-
-  if (isNaN(hours) || isNaN(minutes) || hours < 0 || minutes < 0) {
-    throw new Error(`Valores de tiempo inválidos: horas=${hours}, minutos=${minutes}`);
-  }
-
-  if (minutes >= 60) {
-    throw new Error('Los minutos no pueden ser 60 o más. Usa horas en su lugar.');
+  if (isNaN(minutes) || minutes < 1 || minutes > 60) {
+    throw new Error(`Tiempo inválido: "${timeString}". Debe ser un número entre 1 y 60 (minutos)`);
   }
 
   /**
-   * Las horas se multiplican por 60 minutos, 60 segundos y 1000 milisegundos
    * Los minutos se multiplican por 60 segundos y 1000 milisegundos
    */
-  const totalMs = hours * 60 * 60 * 1000 + minutes * 60 * 1000;
-
-  if (totalMs <= 0) {
-    throw new Error('El tiempo debe ser mayor a 0');
-  }
+  const totalMs = minutes * 60 * 1000;
 
   return totalMs;
 };
 
 /**
- * Convierte milisegundos a formato legible (ej: "30m", "1h 15m")
+ * Convierte milisegundos a formato de minutos (ej: "30", "45")
  * @param {number} milliseconds - Tiempo en milisegundos
- * @returns {string} - Tiempo formateado
+ * @returns {string} - Tiempo formateado en minutos
  */
 const formatTime = (milliseconds) => {
   const totalMinutes = Math.floor(milliseconds / (60 * 1000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  } else {
-    return `${minutes}m`;
-  }
+  return `${totalMinutes}`;
 };
 
 module.exports = {

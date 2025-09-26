@@ -275,8 +275,8 @@ async function showRoleSelection(interaction, sessionId) {
     })));
 
   // Crear embed informativo con progreso
-  const totalSteps = 4;
-  const currentStep = 3;
+  const totalSteps = 3;
+  const currentStep = 2;
 
   const embed = new EmbedBuilder()
     .setTitle(`🎭 Configuración de Template - Paso ${currentStep}/${totalSteps}`)
@@ -285,7 +285,7 @@ async function showRoleSelection(interaction, sessionId) {
     .addFields([
       {
         name: '📋 Template actual',
-        value: `**Título:** ${session.data.title}\n**Tiempo:** ${session.data.time}\n**Recordatorio:** ${session.data.reminder}`,
+        value: `**Título:** ${session.data.title}\n**Descripción:** ${session.data.description}`,
         inline: false
       },
       {
@@ -295,10 +295,15 @@ async function showRoleSelection(interaction, sessionId) {
       },
       {
         name: '📊 Progreso',
-        value: `✅ Información básica\n✅ Configuración adicional\n🔄 **Selección de roles** (paso actual)\n⏳ Configuración de armas`,
+        value: `✅ Información básica\n🔄 **Selección de roles** (paso actual)\n⏳ Configuración de armas`,
         inline: false
       }
     ]);
+
+  // Agregar imagen del template si existe
+  if (session.data.image) {
+    embed.setThumbnail(session.data.image);
+  }
 
   const continueButton = new ButtonBuilder()
     .setCustomId(`template_continue_roles_${sessionId}`)
@@ -445,10 +450,15 @@ async function showWeaponCategorySelection(interaction, sessionId) {
     console.log('[DEBUG] showWeaponCategorySelection: Session data weapons:', session.data.weapons ? Object.keys(session.data.weapons) : 'none');
 
     const embed = new EmbedBuilder()
-      .setTitle('⚔️ Configuración de Armas')
-      .setDescription('Aquí puedes agregar grupos de armas personalizados para tu template.')
+      .setTitle('⚔️ Configuración de Template - Paso 2/2')
+      .setDescription('**Configuración de Armas**\n\nAquí puedes agregar grupos de armas personalizados para tu template.')
       .setColor(0x00FFFF)
       .addFields([
+        {
+          name: '📋 Template actual',
+          value: `**Título:** ${session.data.title}\n**Descripción:** ${session.data.description}`,
+          inline: false
+        },
         {
           name: 'Grupos Configurados',
           value: Object.keys(session.data.weapons).length > 0
@@ -456,9 +466,18 @@ async function showWeaponCategorySelection(interaction, sessionId) {
               const group = session.data.weapons[key];
               // Manejar ambos formatos: 'data' (nuevo) y 'weapons' (anterior)
               const weaponCount = group.data ? group.data.length : (group.weapons ? group.weapons.length : 0);
-              return `• **${group.displayName}** (${weaponCount} armas)`;
+              // Formatear el emoji del grupo
+              const groupEmoji = group.defaultEmoji ?
+                (group.defaultEmoji.match(/^\d+$/) ? `<:emoji:${group.defaultEmoji}>` : group.defaultEmoji) :
+                '⚔️';
+              return `${groupEmoji} **${group.displayName}** (${weaponCount} armas)`;
             }).join('\n')
             : 'Ningún grupo configurado aún',
+          inline: false
+        },
+        {
+          name: '📊 Progreso',
+          value: `✅ Información básica\n🔄 **Configuración de armas** (paso actual)`,
           inline: false
         },
         {
@@ -467,6 +486,11 @@ async function showWeaponCategorySelection(interaction, sessionId) {
           inline: false
         }
       ]);
+
+    // Agregar imagen del template si existe
+    if (session.data.image) {
+      embed.setThumbnail(session.data.image);
+    }
 
     console.log('[DEBUG] showWeaponCategorySelection: Embed created successfully');
 
@@ -888,7 +912,6 @@ async function handleWeaponConfigSubmit(interaction) {
   // Obtener valores del modal
   const quantity = parseInt(interaction.fields.getTextInputValue('quantity'));
   const buildUrl = interaction.fields.getTextInputValue('buildUrl') || '';
-  const sendBuildToPrivateValue = interaction.fields.getTextInputValue('sendBuildToPrivate').toLowerCase().trim();
 
   // Validar cantidad
   if (isNaN(quantity) || quantity <= 0 || quantity > 999) {
@@ -898,8 +921,8 @@ async function handleWeaponConfigSubmit(interaction) {
     });
   }
 
-  // Validar sendBuildToPrivate
-  const sendBuildToPrivate = sendBuildToPrivateValue === 'si' || sendBuildToPrivateValue === 'sí' || sendBuildToPrivateValue === 'yes' || sendBuildToPrivateValue === 's';
+  // Calcular sendBuildToPrivate automáticamente: si hay URL -> true, si no hay URL -> false
+  const sendBuildToPrivate = buildUrl.trim().length > 0;
 
   // Agregar arma procesada a la lista
   const processedWeapons = session.processedWeapons || [];
@@ -1444,15 +1467,6 @@ async function showWeaponConfigModal(interaction, sessionId, weaponIds) {
     .setMaxLength(500)
     .setPlaceholder('https://albionfreemarket.com/builds/...');
 
-  const sendPrivateInput = new TextInputBuilder()
-    .setCustomId('sendBuildToPrivate')
-    .setLabel('¿Enviar build por privado? (true/false)')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(5)
-    .setPlaceholder('true o false')
-    .setValue('true');
-
   // Guardar temporalmente los weaponIds y categoria
   updateSession(sessionId, {
     tempWeaponIds: weaponIds,
@@ -1462,8 +1476,7 @@ async function showWeaponConfigModal(interaction, sessionId, weaponIds) {
   modal.addComponents(
     new ActionRowBuilder().addComponents(displayNameInput),
     new ActionRowBuilder().addComponents(keyInput),
-    new ActionRowBuilder().addComponents(urlInput),
-    new ActionRowBuilder().addComponents(sendPrivateInput)
+    new ActionRowBuilder().addComponents(urlInput)
   );
 
   await interaction.showModal(modal);
@@ -1634,20 +1647,9 @@ async function handleAddWeapons(interaction) {
       .setMaxLength(500)
       .setPlaceholder('https://albionfreemarket.com/builds/...');
 
-    // Campo de notificación privada
-    const notifyInput = new TextInputBuilder()
-      .setCustomId('sendBuildToPrivate')
-      .setLabel('¿Enviar build por privado? (si/no)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMaxLength(5)
-      .setPlaceholder('si o no')
-      .setValue('no');
-
     modal.addComponents(
       new ActionRowBuilder().addComponents(quantityInput),
-      new ActionRowBuilder().addComponents(urlInput),
-      new ActionRowBuilder().addComponents(notifyInput)
+      new ActionRowBuilder().addComponents(urlInput)
     );
 
     console.log('[DEBUG] handleAddWeapons: Showing modal');
@@ -1707,12 +1709,10 @@ async function handleSingleWeaponConfigSubmit(interaction) {
     // Obtener valores del modal
     const quantityStr = interaction.fields.getTextInputValue('quantity');
     const buildUrl = interaction.fields.getTextInputValue('buildUrl') || '';
-    const sendBuildToPrivateValue = interaction.fields.getTextInputValue('sendBuildToPrivate').toLowerCase().trim();
 
     console.log('[DEBUG] Modal values:');
     console.log('[DEBUG] - quantity string:', quantityStr);
     console.log('[DEBUG] - buildUrl:', buildUrl);
-    console.log('[DEBUG] - sendBuildToPrivate:', sendBuildToPrivateValue);
 
     const quantity = parseInt(quantityStr);
     console.log('[DEBUG] - parsed quantity:', quantity);
@@ -1725,8 +1725,9 @@ async function handleSingleWeaponConfigSubmit(interaction) {
       });
     }
 
-    // Validar sendBuildToPrivate
-    const sendBuildToPrivate = sendBuildToPrivateValue === 'si' || sendBuildToPrivateValue === 'sí' || sendBuildToPrivateValue === 'yes' || sendBuildToPrivateValue === 's';
+    // Calcular sendBuildToPrivate automáticamente: si hay URL -> true, si no hay URL -> false
+    const sendBuildToPrivate = buildUrl.trim().length > 0;
+    console.log('[DEBUG] - sendBuildToPrivate (auto):', sendBuildToPrivate);
 
     // Agregar arma al grupo temporal
     const processedWeapon = {

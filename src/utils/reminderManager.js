@@ -10,8 +10,8 @@ const activeReminders = new Map();
 /**
  * Crea un recordatorio para una actividad
  * @param {string} interactionId - ID único de la interacción
- * @param {string} reminderTime - Tiempo del recordatorio (ej: "10m", "30m")
- * @param {string} activityTime - Tiempo total de la actividad (ej: "1h")
+ * @param {string} reminderTime - Tiempo del recordatorio (ej: "10", "30")
+ * @param {string} activityTime - Tiempo total de la actividad (ej: "60")
  * @param {string} templateName - Nombre del template
  * @param {string} channelId - ID del canal donde se creó la actividad
  * @param {string} guildId - ID del servidor
@@ -22,19 +22,19 @@ const createReminder = (interactionId, reminderTime, activityTime, templateName,
   try {
     const reminderDelay = parseTime(reminderTime);
     const totalActivityTime = parseTime(activityTime);
-    
+
     const reminderTimeMs = totalActivityTime - reminderDelay;
-    
+
     if (reminderTimeMs <= 0) {
       console.log(`[WARNING] El tiempo de recordatorio (${reminderTime}) es mayor o igual al tiempo de la actividad (${activityTime})`);
       return null;
     }
-    
+
     const timeoutId = setTimeout(async () => {
       await sendReminderNotification(interactionId, templateName, channelId, guildId, activityTitle, participants);
       activeReminders.delete(interactionId);
     }, reminderTimeMs);
-    
+
     activeReminders.set(interactionId, {
       timeoutId,
       participants,
@@ -45,10 +45,10 @@ const createReminder = (interactionId, reminderTime, activityTime, templateName,
       reminderTime,
       interestedUsers: new Set() // Usuarios que han mostrado interés en esta actividad
     });
-    
+
     console.log(`[INFO] Recordatorio creado para ${templateName} en ${reminderTime} (${reminderTimeMs}ms)`);
     return timeoutId;
-    
+
   } catch (error) {
     console.error('[ERROR] Error creando recordatorio:', error);
     return null;
@@ -94,24 +94,24 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
   try {
     const { client } = require('./client');
     const channel = client.channels.cache.get(channelId);
-    
+
     if (!channel) {
       console.error(`[ERROR] No se encontró el canal ${channelId}`);
       return;
     }
-    
+
     const reminder = activeReminders.get(interactionId);
     const reminderTimeFormatted = reminder ? formatTime(parseTime(reminder.reminderTime)) : 'pronto';
-    
+
     let updatedParticipants = participants || [];
     try {
       const messages = await channel.messages.fetch({ limit: 20 });
-      const eventMessage = messages.find(msg => 
-        msg.embeds.length > 0 && 
-        msg.embeds[0].title && 
+      const eventMessage = messages.find(msg =>
+        msg.embeds.length > 0 &&
+        msg.embeds[0].title &&
         msg.embeds[0].title.includes(activityTitle)
       );
-      
+
       if (eventMessage && eventMessage.embeds.length > 0) {
         const { extractParticipantsFromEmbed } = require('./events');
         const extractedParticipants = extractParticipantsFromEmbed(eventMessage.embeds[0]);
@@ -123,35 +123,35 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
     } catch (fetchError) {
       console.error('[ERROR] Error obteniendo participantes del mensaje:', fetchError);
     }
-    
+
     const reminderEmbed = createReminderEmbed(activityTitle, templateName, reminderTimeFormatted, updatedParticipants, channelId);
-    
+
     const { createReminderComponents } = require('./embed');
     const components = createReminderComponents(channelId, guildId);
-    
+
     await channel.send({
       embeds: [reminderEmbed],
       components: components
     });
-    
+
     const interestedUsers = reminder?.interestedUsers || new Set();
-    
+
     updatedParticipants.forEach(participant => {
       const userId = participant.replace(/[<@!>]/g, '');
       if (userId && userId.length > 0) {
         interestedUsers.add(userId);
       }
     });
-    
+
     if (interestedUsers.size === 0) {
       try {
         const messages = await channel.messages.fetch({ limit: 10 });
-        const eventMessage = messages.find(msg => 
-          msg.embeds.length > 0 && 
-          msg.embeds[0].title && 
+        const eventMessage = messages.find(msg =>
+          msg.embeds.length > 0 &&
+          msg.embeds[0].title &&
           msg.embeds[0].title.includes(activityTitle)
         );
-        
+
         if (eventMessage) {
           interestedUsers.add(eventMessage.author.id);
         }
@@ -159,14 +159,14 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
         console.error('[ERROR] Error obteniendo mensajes del canal:', fetchError);
       }
     }
-    
+
     let successfulDMs = 0;
     let failedDMs = 0;
-    
+
     for (const userId of interestedUsers) {
       try {
         const user = await client.users.fetch(userId);
-        
+
         if (user && !user.bot) {
           await user.send({
             embeds: [reminderEmbed],
@@ -179,9 +179,9 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
         failedDMs++;
       }
     }
-    
+
     console.log(`[INFO] Recordatorio enviado para ${templateName}: ${successfulDMs} DMs exitosos, ${failedDMs} DMs fallidos, ${updatedParticipants.length} participantes`);
-    
+
   } catch (error) {
     console.error('[ERROR] Error enviando recordatorio:', error);
   }

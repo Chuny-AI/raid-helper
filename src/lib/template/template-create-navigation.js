@@ -23,10 +23,11 @@ async function handleBack(interaction) {
     session.step = 'additional_config';
     await showAdditionalConfigModal(interaction, sessionId);
   } else if (customId.includes('_weapons_')) {
-    // Volver a la selección de roles
-    session.step = 'role_selection';
-    const { showRoleSelection } = require('./template-create-handlers');
-    await showRoleSelection(interaction, sessionId);
+    // Volver al inicio (ya no hay selección de roles)
+    return await interaction.reply({
+      content: 'Para modificar la información básica, cancela y reinicia el proceso con `/template create`.',
+      flags: 64
+    });
   } else if (customId.includes('_category_')) {
     // Volver a la selección de categorías
     const { showWeaponCategorySelection } = require('./template-create-handlers');
@@ -54,11 +55,8 @@ async function handleContinue(interaction) {
 
   if (customId.includes('_roles_')) {
     if (session.isEdit) {
-      // Es una sesión de edición, sincronizar roles y volver al editor
+      // Es una sesión de edición, volver al editor principal
       const templateModule = require('../../commands/utility/template');
-      await templateModule.syncFromCreationToEdit(sessionId, {
-        roles: session.data.roles
-      });
 
       // Limpiar sesión temporal de creación
       deleteSession(sessionId);
@@ -138,27 +136,16 @@ async function showFinalSummary(interaction, sessionId) {
 
   // Crear embed de resumen
   const embed = new EmbedBuilder()
-    .setTitle('📋 Resumen del Template')
+    .setTitle('📋 Resumen del Template - Finalización')
     .setDescription('Revisa la configuración antes de crear el template.')
-    .setColor(parseInt(data.color.replace('#', ''), 16))
+    .setColor(0x00FFFF)
     .addFields([
       {
         name: '📝 Información Básica',
         value: [
           `**Título:** ${data.title}`,
-          `**Duración:** ${data.time}`,
-          `**Color:** ${data.color}`,
-          `**URL:** ${data.url || 'No especificada'}`,
-          `**Recordatorio:** ${data.reminder}`,
-          `**Notificar a todos:** ${data.notifyAll ? 'Sí' : 'No'}`
+          `**Imagen:** ${data.image ? 'Configurada' : 'Imagen por defecto'}`
         ].join('\n'),
-        inline: false
-      },
-      {
-        name: '🎭 Roles Autorizados',
-        value: data.roles.length > 0
-          ? data.roles.map(roleId => `<@&${roleId}>`).join(', ')
-          : 'Todos los usuarios',
         inline: false
       },
       {
@@ -170,10 +157,21 @@ async function showFinalSummary(interaction, sessionId) {
       }
     ]);
 
+  // Agregar imagen si está configurada
+  if (data.image) {
+    embed.setThumbnail(data.image);
+  }
+
   // Agregar información de armas si hay configuradas
   if (Object.keys(data.weapons).length > 0) {
     const weaponInfo = Object.entries(data.weapons)
-      .map(([key, weapon]) => `• **${weapon.displayName}** (${weapon.data.length} armas, ${weapon.data[0].units} slots)`)
+      .map(([key, weapon]) => {
+        // Formatear el emoji del grupo
+        const groupEmoji = weapon.defaultEmoji ?
+          (weapon.defaultEmoji.match(/^\d+$/) ? `<:emoji:${weapon.defaultEmoji}>` : weapon.defaultEmoji) :
+          '⚔️';
+        return `${groupEmoji} **${weapon.displayName}** (${weapon.data.length} armas, ${weapon.data[0].units} slots)`;
+      })
       .join('\n');
 
     embed.addFields([
@@ -256,15 +254,9 @@ async function handleConfirm(interaction) {
     // Crear el template en la base de datos
     const templateData = {
       title: session.data.title,
-      time: session.data.time,
       description: session.data.description,
-      color: session.data.color,
       image: session.data.image,
-      url: session.data.url,
-      roles: session.data.roles,
-      weapons: session.data.weapons,
-      notifyAll: session.data.notifyAll,
-      reminder: session.data.reminder
+      weapons: session.data.weapons
     };
 
     console.log('[DEBUG] handleConfirm: Template data prepared:', JSON.stringify(templateData, null, 2));
@@ -363,8 +355,6 @@ async function handleAdditionalConfigSubmit(interaction) {
   // Obtener valores del modal
   const image = interaction.fields.getTextInputValue('image') || '';
   const reminder = interaction.fields.getTextInputValue('reminder') || '5m';
-  const notifyAllRaw = (interaction.fields.getTextInputValue('notifyAll') || '').toLowerCase().trim();
-  const notifyAll = ['si', 'sí', 's', 'yes', 'y', 'true', '1'].includes(notifyAllRaw);
 
   // Validar formato del recordatorio
   if (reminder && !isValidTimeFormat(reminder)) {
@@ -374,20 +364,11 @@ async function handleAdditionalConfigSubmit(interaction) {
     });
   }
 
-  // Actualizar datos de la sesión
-  updateSession(sessionId, {
-    data: {
-      ...session.data,
-      image: image,
-      reminder: reminder,
-      notifyAll: notifyAll
-    },
-    step: 'role_selection'
+  // Esta función ya no se usa con el nuevo flujo simplificado
+  return await interaction.reply({
+    content: 'Esta función ya no está disponible. Usa `/template create` para crear un template.',
+    flags: 64
   });
-
-  // Mostrar selección de roles
-  const { showRoleSelection } = require('./template-create-handlers');
-  await showRoleSelection(interaction, sessionId);
 }
 
 /**
@@ -506,19 +487,9 @@ async function showAdditionalConfigModal(interaction, sessionId) {
       .setPlaceholder('5m, 10m, 15m, 30m')
       .setValue(data.reminder || '5m');
 
-    const notifyAllInput = new TextInputBuilder()
-      .setCustomId('notifyAll')
-      .setLabel('Notificar a todos? (Escribir: si o no)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false)
-      .setMaxLength(5)
-      .setPlaceholder('si o no')
-      .setValue(data.notifyAll ? 'si' : 'no');
-
     modal.addComponents(
       new ActionRowBuilder().addComponents(imageInput),
-      new ActionRowBuilder().addComponents(reminderInput),
-      new ActionRowBuilder().addComponents(notifyAllInput)
+      new ActionRowBuilder().addComponents(reminderInput)
     );
 
     console.log('🔄 Mostrando modal adicional...');

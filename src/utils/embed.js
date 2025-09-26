@@ -42,7 +42,7 @@ const setTile = (embed, title, template) => {
  * Setear el color del embed
  */
 const setColor = (embed, color, template) => {
-  embed.setColor(color ?? template.color);
+  embed.setColor(color ?? '#00FFFF'); // Color por defecto si no se proporciona
 };
 
 /**
@@ -146,12 +146,11 @@ const setImage = (embed, url, template) => {
  * Pinear a los roles en el embed
  * @param {*} embed
  * @param {*} template
- * @param {*} finalRoles - Roles finales a mostrar (opcional)
+ * @param {*} finalRoles - Roles finales a mostrar (obligatorio ahora que templates no tienen roles)
  */
 const pingRoles = (embed, template, finalRoles = null) => {
-  const roles = finalRoles || template.roles;
-  if (roles && roles.length > 0) {
-    const rolesString = roles.map((roleId) => `<@&${roleId}>`).join(", ");
+  if (finalRoles && finalRoles.length > 0) {
+    const rolesString = finalRoles.map((roleId) => `<@&${roleId}>`).join(", ");
     embed.addFields({ name: "Roles válidos:", value: rolesString });
   }
 };

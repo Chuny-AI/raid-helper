@@ -192,7 +192,7 @@ module.exports = {
       }
 
       const templateList = templates.map((template, index) =>
-        `**${index + 1}.** ${template.title} - *${template.time}*`
+        `**${index + 1}.** ${template.title}`
       ).join('\n');
 
       const successEmbed = createSuccessEmbed(
@@ -224,7 +224,12 @@ module.exports = {
       return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
     }
 
-    // Mostrar el modal de información básica
+    // Mostrar directamente el modal simplificado
+    await this.showTemplateModal(interaction);
+  },
+
+  // Mostrar modal simplificado (solo title, description, image)
+  async showTemplateModal(interaction) {
     const modal = new ModalBuilder()
       .setCustomId('template_basic_info_modal')
       .setTitle('Crear Nuevo Template');
@@ -237,13 +242,6 @@ module.exports = {
       .setRequired(true)
       .setMaxLength(100);
 
-    const timeInput = new TextInputBuilder()
-      .setCustomId('template_time')
-      .setLabel('Duración (máximo 1h o 60m)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('60m')
-      .setRequired(true);
-
     const descriptionInput = new TextInputBuilder()
       .setCustomId('template_description')
       .setLabel('Descripción')
@@ -251,14 +249,6 @@ module.exports = {
       .setPlaceholder('Descripción del evento...')
       .setRequired(true)
       .setMaxLength(1000);
-
-    const colorInput = new TextInputBuilder()
-      .setCustomId('template_color')
-      .setLabel('Color (código hex, ej: #FF0000)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('#00FFFF')
-      .setValue('#00FFFF')
-      .setRequired(true);
 
     const imageInput = new TextInputBuilder()
       .setCustomId('template_image')
@@ -269,12 +259,10 @@ module.exports = {
       .setRequired(true);
 
     const firstActionRow = new ActionRowBuilder().addComponents(titleInput);
-    const secondActionRow = new ActionRowBuilder().addComponents(timeInput);
-    const thirdActionRow = new ActionRowBuilder().addComponents(descriptionInput);
-    const fourthActionRow = new ActionRowBuilder().addComponents(colorInput);
-    const fifthActionRow = new ActionRowBuilder().addComponents(imageInput);
+    const secondActionRow = new ActionRowBuilder().addComponents(descriptionInput);
+    const thirdActionRow = new ActionRowBuilder().addComponents(imageInput);
 
-    modal.addComponents(firstActionRow, secondActionRow, thirdActionRow, fourthActionRow, fifthActionRow);
+    modal.addComponents(firstActionRow, secondActionRow, thirdActionRow);
     await interaction.showModal(modal);
   },
 
@@ -313,12 +301,8 @@ module.exports = {
         lastActivity: Date.now(),
         data: {
           title: template.title,
-          time: template.time,
           description: template.description,
-          color: template.color,
           image: template.image,
-          url: template.url || '',
-          roles: template.roles || [],
           weapons: Array.isArray(template.weapons) ? template.weapons :
             (template.weapons && typeof template.weapons === 'object') ?
               Object.values(template.weapons).map(weaponGroup => {
@@ -335,9 +319,7 @@ module.exports = {
                 }
                 // Si ya tiene el formato correcto
                 return weaponGroup;
-              }) : [],
-          notifyAll: template.notifyAll,
-          reminder: template.reminder || '5m'
+              }) : []
         },
         hasChanges: false,
         step: 'overview'
@@ -390,23 +372,11 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle('📝 Editor de Templates')
         .setDescription(`**${template.title}**\n\n¿Qué deseas editar?`)
-        .setColor(parseInt(template.color.replace('#', ''), 16))
+        .setColor(0x00FFFF)
         .addFields([
           {
             name: '📋 Información Básica',
-            value: `Título: \`${template.title}\`\nTiempo: \`${template.time}\`\nColor: \`${template.color}\``,
-            inline: true
-          },
-          {
-            name: '⚙️ Configuración',
-            value: `Recordatorio: \`${template.reminder || '5m'}\`\nNotificar todos: \`${template.notifyAll ? 'Sí' : 'No'}\``,
-            inline: true
-          },
-          {
-            name: '🎭 Roles a Notificar',
-            value: template.roles && template.roles.length > 0
-              ? template.roles.map(roleId => `<@&${roleId}>`).join(', ')
-              : 'Sin roles a notificar',
+            value: `Título: \`${template.title}\``,
             inline: true
           },
           {
@@ -447,21 +417,11 @@ module.exports = {
             .setCustomId(`template_edit_description_${sessionId}`)
             .setLabel('Descripción')
             .setStyle(ButtonStyle.Primary)
-            .setEmoji('📝'),
-          new ButtonBuilder()
-            .setCustomId(`template_edit_config_${sessionId}`)
-            .setLabel('Configuración')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('⚙️')
+            .setEmoji('📝')
         );
 
       const row2 = new ActionRowBuilder()
         .addComponents(
-          new ButtonBuilder()
-            .setCustomId(`template_edit_roles_${sessionId}`)
-            .setLabel(template.notifyAll ? 'Roles a Notificar' : 'Roles de Ping')
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji('🎭'),
           new ButtonBuilder()
             .setCustomId(`template_edit_weapons_${sessionId}`)
             .setLabel('Grupos de Armas')
@@ -672,16 +632,14 @@ module.exports = {
 
       // Crear embed de confirmación usando el sistema estandarizado
       const confirmEmbed = createErrorEmbed(
-        "⚠️ Confirmar Eliminación de Template",
+        "Confirmar Eliminación de Template",
         `¿Estás seguro de que quieres eliminar el template **"${template.title}"**?\n\n⚠️ **Esta acción no se puede deshacer**`,
         [
           {
             name: "📋 Información del Template",
             value: [
               `**📝 Título:** ${template.title}`,
-              `**⏰ Duración:** ${template.time}`,
               `**📄 Descripción:** ${template.description.length > 80 ? template.description.substring(0, 80) + '...' : template.description}`,
-              `**👥 Roles configurados:** ${template.roles?.length || 0}`,
               `**⚔️ Grupos de armas:** ${Object.keys(template.weapons || {}).length}`
             ].join('\n'),
             inline: false
@@ -757,15 +715,9 @@ module.exports = {
       // Crear el nuevo template copiando todos los datos del original
       const newTemplateData = {
         title: newName,
-        time: originalTemplate.time,
         description: originalTemplate.description,
-        color: originalTemplate.color,
         image: originalTemplate.image,
-        url: originalTemplate.url || '',
-        roles: originalTemplate.roles || [],
-        weapons: originalTemplate.weapons || {},
-        notifyAll: originalTemplate.notifyAll,
-        reminder: originalTemplate.reminder || '5m'
+        weapons: originalTemplate.weapons || {}
       };
 
       const clonedTemplate = await createTemplate(newTemplateData, interaction.guild.id);
@@ -780,8 +732,7 @@ module.exports = {
             value: [
               `**Nombre original:** ${originalTemplate.title}`,
               `**Nuevo nombre:** ${newName}`,
-              `**Duración:** ${newTemplateData.time}`,
-              `**Roles:** ${newTemplateData.roles.length} configurados`,
+              `**Descripción:** ${newTemplateData.description}`,
               `**Grupos de armas:** ${Object.keys(newTemplateData.weapons).length} grupos`
             ].join('\n'),
             inline: false
@@ -989,70 +940,31 @@ module.exports = {
   // =============== CREATE HANDLERS ===============
   async handleBasicInfoModal(interaction) {
     try {
-      // Extraer datos del modal
+      // Extraer datos del modal (solo title, description, image)
       const title = interaction.fields.getTextInputValue('template_title');
-      const time = interaction.fields.getTextInputValue('template_time');
       const description = interaction.fields.getTextInputValue('template_description');
-      const color = interaction.fields.getTextInputValue('template_color');
       const image = interaction.fields.getTextInputValue('template_image');
 
       // Crear sesión usando el sistema existente
       const { createSession } = require('../../lib/template/template-sessions');
-      // Simplificamos el sessionId para usar solo el timestamp - más fácil de extraer consistentemente
-      // Usamos un formato simple de solo timestamp para evitar problemas con la extracción
       const sessionId = `${Date.now()}`;
       console.log('🔄 Creando nueva sesión con id:', sessionId);
-      console.log('[DEBUG] El tipo de sessionId es:', typeof sessionId);
+
       createSession(sessionId, {
         userId: interaction.user.id,
         guildId: interaction.guild.id,
-        step: 'additional_config',
+        step: 'weapon_categories',
         data: {
           title,
-          time,
           description,
-          color,
           image,
-          reminder: '5m',
-          roles: [],
-          weapons: {},
-          notifyAll: false
+          weapons: {}
         }
       });
 
-      // Mostrar interfaz intermedia con botón para continuar al siguiente paso
-      const embed = createSuccessEmbed(
-        "Información Básica Guardada",
-        "Los datos básicos del template han sido guardados correctamente.",
-        [
-          {
-            name: "📋 Datos Guardados",
-            value: `**Título:** ${title}\n**Tiempo:** ${time}\n**Color:** ${color}`,
-            inline: false
-          },
-          {
-            name: "📋 Siguiente Paso",
-            value: "Configura las opciones adicionales del template",
-            inline: false
-          }
-        ]
-      );
-
-      const continueButton = new ButtonBuilder()
-        .setCustomId(`template_continue_config_${sessionId}`)
-        .setLabel('Continuar Configuración')
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji('➡️');
-
-      console.log('🔄 Creando botón con customId:', `template_continue_config_${sessionId}`);
-
-      const actionRow = new ActionRowBuilder().addComponents(continueButton);
-
-      await interaction.reply({
-        embeds: [embed],
-        components: [actionRow],
-        ephemeral: true
-      });
+      // Ir directamente a la configuración de armas
+      const { showWeaponCategorySelection } = require('../../lib/template/template-create-handlers');
+      await showWeaponCategorySelection(interaction, sessionId);
 
     } catch (error) {
       console.error('[ERROR] Error en handleBasicInfoModal:', error);
@@ -1094,12 +1006,7 @@ module.exports = {
         // Mapear botones específicos a sus handlers
         const createHandlers = require('../../lib/template/template-create-handlers');
 
-        // IMPORTANTE: Primero manejar el botón específico de continuar config
-        if (interaction.customId.includes('template_continue_config_')) {
-          // Mostrar modal de configuración adicional
-          console.log('🔄 [DEBUG] Detectado template_continue_config_, llamando a handleContinueConfigButton');
-          await this.handleContinueConfigButton(interaction);
-        } else if (interaction.customId.includes('_roles_')) {
+        if (interaction.customId.includes('_roles_')) {
           await createHandlers.handleRoleSelection(interaction);
         } else if (interaction.customId.includes('add_weapon_group')) {
           await createHandlers.handleAddWeaponGroup(interaction);
@@ -1167,141 +1074,9 @@ module.exports = {
     }
   },
 
-  async handleContinueConfigButton(interaction) {
-    try {
-      console.log('🔄 handleContinueConfigButton iniciando con customId:', interaction.customId);
 
-      // Usar la función extractSessionId para mantener consistencia
-      const { extractSessionId } = require('../../lib/template/template-create-navigation');
-      const sessionId = extractSessionId(interaction.customId);
-      console.log('🔄 SessionId extraído con extractSessionId:', sessionId);
 
-      // Verificar si la sesión existe usando el sistema original
-      const { getSession } = require('../../lib/template/template-sessions');
-      const session = getSession(sessionId);
 
-      if (!session) {
-        console.error('❌ Sesión no encontrada para sessionId:', sessionId);
-        console.log('🔍 Sesiones disponibles:', Array.from(require('../../lib/template/template-sessions').getTemplateCreationSessions().keys()));
-        const errorEmbed = createErrorEmbed(
-          "Sesión Expirada",
-          "La sesión ha expirado. Por favor, inicia el proceso nuevamente con `/template create`."
-        );
-        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-      }
-
-      console.log('✅ Sesión válida encontrada');
-
-      // Crear el modal directamente aquí para evitar problemas de importación
-      const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
-
-      const modal = new ModalBuilder()
-        .setCustomId(`template_additional_config_${sessionId}`)
-        .setTitle('Template - Configuración Adicional');
-
-      const data = session.data || {};
-
-      // No incluimos el campo de imagen ya que se obtuvo del primer modal
-      // La imagen ya está almacenada en session.data.image
-
-      const reminderInput = new TextInputBuilder()
-        .setCustomId('reminder')
-        .setLabel('Tiempo de recordatorio')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false)
-        .setMaxLength(20)
-        .setPlaceholder('5m, 10m, 15m, 30m')
-        .setValue(data.reminder || '5m');
-
-      const notifyAllInput = new TextInputBuilder()
-        .setCustomId('notifyAll')
-        .setLabel('Notificar a todos? (Escribir: si o no)')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false)
-        .setMaxLength(5)
-        .setPlaceholder('si o no')
-        .setValue(data.notifyAll ? 'si' : 'no');
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(reminderInput),
-        new ActionRowBuilder().addComponents(notifyAllInput)
-      );
-
-      console.log('🔄 Mostrando modal de paso 2...');
-      await interaction.showModal(modal);
-      console.log('✅ Modal de paso 2 mostrado exitosamente');
-
-    } catch (error) {
-      console.error('[ERROR] Error en handleContinueConfigButton:', error); const errorEmbed = createErrorEmbed(
-        "Error al Continuar",
-        "Ocurrió un error al mostrar la configuración adicional."
-      );
-
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-      }
-    }
-  },
-
-  async handleAdditionalConfigModal(interaction) {
-    try {
-      // Usar la función extractSessionId para mantener consistencia
-      const { extractSessionId } = require('../../lib/template/template-create-navigation');
-      const sessionId = extractSessionId(interaction.customId);
-      console.log('🔄 Procesando modal adicional para sesión:', sessionId);
-
-      // Verificar si la sesión existe usando el sistema original
-      const { getSession } = require('../../lib/template/template-sessions');
-      const session = getSession(sessionId);
-
-      if (!session) {
-        console.error('❌ Sesión no encontrada para sessionId:', sessionId);
-        console.log('🔍 Sesiones disponibles:', Array.from(require('../../lib/template/template-sessions').getTemplateCreationSessions().keys()));
-        const errorEmbed = createErrorEmbed(
-          "Sesión Expirada",
-          "La sesión ha expirado. Inicia el proceso nuevamente con `/template create`."
-        );
-        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-      }
-
-      // Extraer datos del modal (ahora sin el campo image)
-      const reminder = interaction.fields.getTextInputValue('reminder') || '5m';
-      const notifyAllValue = (interaction.fields.getTextInputValue('notifyAll') || '').toLowerCase().trim();
-      const notifyAll = ['si', 'sí', 's', 'yes', 'y', 'true', '1'].includes(notifyAllValue);
-
-      // Actualizar sesión con nuevos datos (imagen ya está guardada del primer modal)
-      session.data.reminder = reminder;
-      session.data.notifyAll = notifyAll;
-
-      console.log('✅ Datos adicionales guardados:', { reminder, notifyAll, image: session.data.image });
-
-      try {
-        // Continuar al siguiente paso (selección de roles)
-        const { showRoleSelection } = require('../../lib/template/template-create-handlers');
-        console.log('🔄 Transicionando a selección de roles para la sesión:', sessionId);
-        await showRoleSelection(interaction, sessionId);
-        console.log('✅ Transición exitosa a selección de roles');
-      } catch (transitionError) {
-        console.error('❌ Error al transicionar a selección de roles:', transitionError);
-        // Si ocurre un error y aún no se ha respondido a la interacción, mostrar mensaje de error
-        if (!interaction.replied && !interaction.deferred) {
-          const errorEmbed = createErrorEmbed(
-            "Error al Continuar",
-            "Ocurrió un error al avanzar al siguiente paso. Por favor, inicia el proceso nuevamente con `/template create`."
-          );
-          await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-        }
-      }
-
-    } catch (error) {
-      console.error('[ERROR] Error en handleAdditionalConfigModal:', error);
-      const errorEmbed = createErrorEmbed(
-        "Error al Procesar",
-        "Ocurrió un error al procesar la configuración adicional."
-      );
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-    }
-  },
 
   // =============== DELETE HANDLERS ===============
   async handleDeleteConfirm(interaction) {
@@ -1314,14 +1089,14 @@ module.exports = {
 
       if (deletedTemplate) {
         const successEmbed = createSuccessEmbed(
-          "✅ Template Eliminado Exitosamente",
+          "Template Eliminado Exitosamente",
           `El template **"${deletedTemplate.title}"** ha sido eliminado correctamente del servidor.`,
           [
             {
               name: "📋 Template Eliminado",
               value: [
                 `**📝 Título:** ${deletedTemplate.title}`,
-                `**⏰ Duración:** ${deletedTemplate.time}`,
+                `**📄 Descripción:** ${deletedTemplate.description}`,
                 `**🗓️ Eliminado:** <t:${Math.floor(Date.now() / 1000)}:F>`
               ].join('\n'),
               inline: false
@@ -1452,11 +1227,7 @@ module.exports = {
       if (interaction.customId.startsWith('template_')) {
         const createHandlers = require('../../lib/template/template-create-handlers');
 
-        // IMPORTANTE: Primero manejar el botón específico de continuar config
-        if (interaction.customId.includes('template_continue_config_')) {
-          console.log('🔄 [DEBUG] Detectado template_continue_config_, llamando a handleContinueConfigButton');
-          await this.handleContinueConfigButton(interaction);
-        } else if (interaction.customId.includes('_roles_')) {
+        if (interaction.customId.includes('_roles_')) {
           await createHandlers.handleRoleSelection(interaction);
         } else if (interaction.customId.includes('add_weapon_group')) {
           await createHandlers.handleAddWeaponGroup(interaction);
@@ -1675,7 +1446,7 @@ module.exports = {
       }
     } catch (error) {
       console.error('[ERROR] Error en handleEditModalSubmit:', error);
-      
+
       // Solo responder si la interacción no ha sido respondida aún
       if (!interaction.replied && !interaction.deferred) {
         try {
@@ -1745,7 +1516,7 @@ module.exports = {
 
     const reminder = interaction.fields.getTextInputValue('reminder');
     const notifyAllRaw = (interaction.fields.getTextInputValue('notifyAll') || '').toLowerCase().trim();
-    
+
     // Aceptar múltiples variaciones para "sí"
     const notifyAll = ['si', 'sí', 's', 'yes', 'y', 'true', '1'].includes(notifyAllRaw);
 
@@ -3015,7 +2786,11 @@ module.exports = {
         // Formato de creación: { key: { displayName, data: [...] } }
         weaponsInfo = Object.values(template.weapons).map(wc => {
           const count = (wc.data || []).length;
-          return `• ${wc.displayName || 'Grupo'}: ${count} armas`;
+          // Formatear el emoji del grupo
+          const groupEmoji = wc.defaultEmoji ?
+            (wc.defaultEmoji.match(/^\d+$/) ? `<:emoji:${wc.defaultEmoji}>` : wc.defaultEmoji) :
+            '⚔️';
+          return `${groupEmoji} **${wc.displayName || 'Grupo'}**: ${count} armas`;
         }).join('\n');
       }
 

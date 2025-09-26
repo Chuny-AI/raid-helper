@@ -44,15 +44,7 @@ const templateSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  time: {
-    type: String,
-    required: true
-  },
   description: {
-    type: String,
-    required: true
-  },
-  color: {
     type: String,
     required: true
   },
@@ -60,13 +52,6 @@ const templateSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
-  url: {
-    type: String,
-    default: ""
-  },
-  roles: [{
-    type: String
-  }],
   weapons: {
     type: mongoose.Schema.Types.Mixed,
     default: {}
@@ -75,14 +60,6 @@ const templateSchema = new mongoose.Schema({
     type: String,
     required: true,
     index: true
-  },
-  notifyAll: {
-    type: Boolean,
-    default: false
-  },
-  reminder: {
-    type: String,
-    default: "5m"
   },
   createdAt: {
     type: Date,
