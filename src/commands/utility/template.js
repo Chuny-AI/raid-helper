@@ -405,36 +405,22 @@ module.exports = {
         embed.setThumbnail(template.image);
       }
 
-      // Botones de edición organizados por categorías
-      const row1 = new ActionRowBuilder()
+      // Mostrar todas las opciones directamente
+      const editOptionsRow = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
             .setCustomId(`template_edit_basic_${sessionId}`)
             .setLabel('Información Básica')
             .setStyle(ButtonStyle.Primary)
-            .setEmoji('📋'),
-          new ButtonBuilder()
-            .setCustomId(`template_edit_description_${sessionId}`)
-            .setLabel('Descripción')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('📝')
-        );
-
-      const row2 = new ActionRowBuilder()
-        .addComponents(
+            .setEmoji('📝'),
           new ButtonBuilder()
             .setCustomId(`template_edit_weapons_${sessionId}`)
-            .setLabel('Grupos de Armas')
+            .setLabel('Gestionar Armas')
             .setStyle(ButtonStyle.Secondary)
-            .setEmoji('⚔️'),
-          new ButtonBuilder()
-            .setCustomId(`template_edit_image_${sessionId}`)
-            .setLabel('Imagen')
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji('🖼️')
+            .setEmoji('⚔️')
         );
 
-      const row3 = new ActionRowBuilder()
+      const actionRow = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
             .setCustomId(`template_edit_preview_${sessionId}`)
@@ -445,7 +431,11 @@ module.exports = {
             .setCustomId(`template_edit_save_${sessionId}`)
             .setLabel('Guardar Cambios')
             .setStyle(ButtonStyle.Success)
-            .setEmoji('💾'),
+            .setEmoji('💾')
+        );
+
+      const cancelRow = new ActionRowBuilder()
+        .addComponents(
           new ButtonBuilder()
             .setCustomId(`template_edit_cancel_${sessionId}`)
             .setLabel('Cancelar')
@@ -455,7 +445,7 @@ module.exports = {
 
       await interaction.reply({
         embeds: [embed],
-        components: [row1, row2, row3],
+        components: [editOptionsRow, actionRow, cancelRow],
         ephemeral: true
       });
 
@@ -554,6 +544,9 @@ module.exports = {
       }
 
       switch (action) {
+        case 'all':
+          await this.showEditAllModal(interaction, sessionId);
+          break;
         case 'basic':
           await this.showEditBasicModal(interaction, sessionId);
           break;
@@ -1281,7 +1274,63 @@ module.exports = {
     }
   },
 
-  // Modal para editar información básica (título, tiempo, color)
+  // Modal para mostrar todas las opciones de edición
+  async showEditAllModal(interaction, sessionId) {
+    const session = templateEditSessions.get(sessionId);
+    const template = session.data;
+
+    // Crear un embed con todas las opciones de edición
+    const embed = new EmbedBuilder()
+      .setTitle('🛠️ Editor de Template')
+      .setDescription(`**Template:** ${template.title}\n\nSelecciona qué deseas editar:`)
+      .setColor(template.color || '#0099ff');
+
+    const editOptionsRow = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`template_edit_basic_${sessionId}`)
+          .setLabel('📝 Información Básica')
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji('📝'),
+        new ButtonBuilder()
+          .setCustomId(`template_edit_weapons_${sessionId}`)
+          .setLabel('⚔️ Gestionar Armas')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('⚔️'),
+        new ButtonBuilder()
+          .setCustomId(`template_edit_roles_${sessionId}`)
+          .setLabel('👥 Roles a Notificar')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('👥')
+      );
+
+    const actionRow = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`template_edit_preview_${sessionId}`)
+          .setLabel('👁️ Vista Previa')
+          .setStyle(ButtonStyle.Success)
+          .setEmoji('👁️'),
+        new ButtonBuilder()
+          .setCustomId(`template_edit_save_${sessionId}`)
+          .setLabel('💾 Guardar Cambios')
+          .setStyle(ButtonStyle.Success)
+          .setEmoji('💾'),
+        new ButtonBuilder()
+          .setCustomId(`template_edit_cancel_${sessionId}`)
+          .setLabel('❌ Cancelar')
+          .setStyle(ButtonStyle.Danger)
+          .setEmoji('❌')
+      );
+
+    await interaction.reply({
+      embeds: [embed],
+      components: [editOptionsRow, actionRow],
+      ephemeral: true
+    });
+  },
+
+  // Modal para editar información básica (título, descripción, imagen, tiempo, color)
   async showEditBasicModal(interaction, sessionId) {
     const session = templateEditSessions.get(sessionId);
     const template = session.data;
@@ -1294,30 +1343,30 @@ module.exports = {
       .setCustomId('title')
       .setLabel('Título del Template')
       .setStyle(TextInputStyle.Short)
-      .setValue(template.title)
+      .setValue(template.title || '')
       .setRequired(true)
       .setMaxLength(100);
 
-    const timeInput = new TextInputBuilder()
-      .setCustomId('time')
-      .setLabel('Duración (ej: 30m, 1h, 2h30m)')
-      .setStyle(TextInputStyle.Short)
-      .setValue(template.time)
+    const descriptionInput = new TextInputBuilder()
+      .setCustomId('description')
+      .setLabel('Descripción del Template')
+      .setStyle(TextInputStyle.Paragraph)
+      .setValue(template.description || '')
       .setRequired(true)
-      .setMaxLength(20);
+      .setMaxLength(4000);
 
-    const colorInput = new TextInputBuilder()
-      .setCustomId('color')
-      .setLabel('Color (hex ej: #FF5733)')
+    const imageInput = new TextInputBuilder()
+      .setCustomId('image')
+      .setLabel('URL de la Imagen (opcional)')
       .setStyle(TextInputStyle.Short)
-      .setValue(template.color)
-      .setRequired(true)
-      .setMaxLength(7);
+      .setValue(template.image || '')
+      .setRequired(false)
+      .setMaxLength(500);
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(titleInput),
-      new ActionRowBuilder().addComponents(timeInput),
-      new ActionRowBuilder().addComponents(colorInput)
+      new ActionRowBuilder().addComponents(descriptionInput),
+      new ActionRowBuilder().addComponents(imageInput)
     );
 
     await interaction.showModal(modal);
@@ -1336,7 +1385,7 @@ module.exports = {
       .setCustomId('description')
       .setLabel('Descripción del Template')
       .setStyle(TextInputStyle.Paragraph)
-      .setValue(template.description)
+      .setValue(template.description || '')
       .setRequired(true)
       .setMaxLength(4000);
 
@@ -1464,31 +1513,39 @@ module.exports = {
     const session = templateEditSessions.get(sessionId);
 
     const title = interaction.fields.getTextInputValue('title');
-    const time = interaction.fields.getTextInputValue('time');
-    const color = interaction.fields.getTextInputValue('color');
+    const description = interaction.fields.getTextInputValue('description');
+    const image = interaction.fields.getTextInputValue('image');
 
-    // Validar color hex
-    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
-      return await interaction.reply({
-        content: 'Color inválido. Debe ser un código hex válido (ej: #FF5733).',
-        ephemeral: true
-      });
+    // Validar URL de imagen si se proporciona
+    if (image && image.trim() !== '') {
+      try {
+        new URL(image);
+      } catch {
+        return await interaction.reply({
+          content: 'URL de imagen inválida. Debe ser una URL válida.',
+          ephemeral: true
+        });
+      }
     }
 
     // Actualizar datos de la sesión
     session.data.title = title;
-    session.data.time = time;
-    session.data.color = color;
+    session.data.description = description;
+    session.data.image = image.trim() || null;
     session.hasChanges = true;
 
     const successEmbed = new EmbedBuilder()
       .setTitle('✅ Información Básica Actualizada')
       .setDescription([
         `**Título:** ${title}`,
-        `**Tiempo:** ${time}`,
-        `**Color:** ${color}`
+        `**Descripción:** ${description.length > 100 ? description.substring(0, 100) + '...' : description}`,
+        `**Imagen:** ${image ? 'Configurada' : 'Sin imagen'}`
       ].join('\n'))
-      .setColor(parseInt(color.replace('#', ''), 16));
+      .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
+
+    if (image) {
+      successEmbed.setThumbnail(image);
+    }
 
     await interaction.reply({ embeds: [successEmbed], ephemeral: true });
   },
@@ -1505,7 +1562,7 @@ module.exports = {
     const successEmbed = new EmbedBuilder()
       .setTitle('✅ Descripción Actualizada')
       .setDescription(description.length > 200 ? description.substring(0, 200) + '...' : description)
-      .setColor(parseInt(session.data.color.replace('#', ''), 16));
+      .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
 
     await interaction.reply({ embeds: [successEmbed], ephemeral: true });
   },
@@ -1530,7 +1587,7 @@ module.exports = {
         `**Recordatorio:** ${session.data.reminder}`,
         `**Notificar a Todos:** ${notifyAll ? 'Sí' : 'No'}`
       ].join('\n'))
-      .setColor(parseInt(session.data.color.replace('#', ''), 16));
+      .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
 
     await interaction.reply({ embeds: [successEmbed], ephemeral: true });
   },
@@ -1555,7 +1612,7 @@ module.exports = {
     const successEmbed = new EmbedBuilder()
       .setTitle('✅ Imagen Actualizada')
       .setDescription(imageUrl ? `Imagen establecida` : 'Imagen eliminada')
-      .setColor(parseInt(session.data.color.replace('#', ''), 16));
+      .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
 
     if (imageUrl) {
       successEmbed.setImage(imageUrl);
@@ -1760,7 +1817,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle(`🎭 ${titleText}`)
         .setDescription(descriptionText)
-        .setColor(parseInt(template.color.replace('#', ''), 16))
+        .setColor(parseInt((template.color || '#0099ff').replace('#', ''), 16))
         .addFields([
           {
             name: 'Roles Actuales',
@@ -1877,7 +1934,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle('⚔️ Editor de Grupos de Armas')
         .setDescription('Gestiona los grupos de armas de tu template')
-        .setColor(parseInt(template.color.replace('#', ''), 16));
+        .setColor(parseInt((template.color || '#0099ff').replace('#', ''), 16));
 
       // Mostrar grupos existentes
       if (template.weapons && template.weapons.length > 0) {
@@ -2735,13 +2792,13 @@ module.exports = {
 
     // Crear embed de vista previa similar al template final
     const previewEmbed = new EmbedBuilder()
-      .setTitle(`🎯 ${template.title}`)
-      .setDescription(template.description)
-      .setColor(parseInt(template.color.replace('#', ''), 16))
+      .setTitle(`🎯 ${template.title || 'Sin título'}`)
+      .setDescription(template.description || 'Sin descripción')
+      .setColor(parseInt((template.color || '#0099ff').replace('#', ''), 16))
       .addFields([
         {
           name: '⏱️ Duración',
-          value: template.time,
+          value: template.time || 'No especificada',
           inline: true
         },
         {
@@ -2864,7 +2921,7 @@ module.exports = {
       const successEmbed = new EmbedBuilder()
         .setTitle('✅ Template Actualizado')
         .setDescription(`El template **${session.data.title}** ha sido actualizado exitosamente.`)
-        .setColor(parseInt(session.data.color.replace('#', ''), 16))
+        .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16))
         .addFields([
           {
             name: '📝 Cambios Guardados',
@@ -2921,7 +2978,7 @@ module.exports = {
             ? `**Roles seleccionados:**\n${selectedRoles.map(roleId => `<@&${roleId}>`).join('\n')}`
             : 'Se eliminaron todos los roles'
         )
-        .setColor(parseInt(session.data.color.replace('#', ''), 16));
+        .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
 
       await interaction.reply({ embeds: [successEmbed], ephemeral: true });
 
@@ -2953,7 +3010,7 @@ module.exports = {
       const successEmbed = new EmbedBuilder()
         .setTitle(`✅ ${titleText} Limpiados`)
         .setDescription('Se eliminaron todos los roles del template.')
-        .setColor(parseInt(session.data.color.replace('#', ''), 16));
+        .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
 
       await interaction.reply({ embeds: [successEmbed], ephemeral: true });
 
@@ -2985,7 +3042,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle(`⚔️ ${weaponGroup.displayName}`)
         .setDescription(`Detalles del grupo de armas`)
-        .setColor(parseInt(session.data.color.replace('#', ''), 16))
+        .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16))
         .addFields([
           {
             name: '📊 Información',
@@ -3145,7 +3202,7 @@ module.exports = {
       const successEmbed = new EmbedBuilder()
         .setTitle('✅ Grupos Eliminados')
         .setDescription(`Se eliminaron los siguientes grupos:\n${removedGroups.map(name => `• ${name}`).join('\n')}`)
-        .setColor(parseInt(session.data.color.replace('#', ''), 16));
+        .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
 
       await interaction.reply({ embeds: [successEmbed], ephemeral: true });
 
@@ -3176,7 +3233,7 @@ module.exports = {
       const successEmbed = new EmbedBuilder()
         .setTitle('✅ Grupo Eliminado')
         .setDescription(`Se eliminó el grupo: **${groupName}**`)
-        .setColor(parseInt(session.data.color.replace('#', ''), 16));
+        .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
 
       await interaction.reply({ embeds: [successEmbed], ephemeral: true });
 
