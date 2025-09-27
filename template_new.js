@@ -271,7 +271,7 @@ module.exports = {
     // Crear un embed con todas las opciones de edición
     const embed = new EmbedBuilder()
       .setTitle('🛠️ Editor de Template')
-      .setDescription(`**Template:** ${template.title}\n\nSelecciona qué deseas editar:`)
+      .setDescription(`**Template:** ${template.title || 'Template sin título'}\n\nSelecciona qué deseas editar:`)
       .setColor(template.color || '#0099ff');
 
     const editOptionsRow = new ActionRowBuilder()
@@ -400,12 +400,12 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle('📝 Editor de Templates')
-        .setDescription(`**${template.title}**\n\n¿Qué deseas editar?`)
+        .setDescription(`**${template.title || 'Template sin título'}**\n\n¿Qué deseas editar?`)
         .setColor(parseInt(template.color.replace('#', ''), 16))
         .addFields([
           {
             name: '📋 Información Básica',
-            value: `Título: \`${template.title}\`\nTiempo: \`${template.time}\`\nColor: \`${template.color}\``,
+            value: `Título: \`${template.title || 'Sin título'}\`\nTiempo: \`${template.time || 'No especificado'}\`\nColor: \`${template.color || '#0099ff'}\``,
             inline: true
           },
           {
@@ -628,14 +628,14 @@ module.exports = {
       // Crear embed de confirmación usando el sistema estandarizado
       const confirmEmbed = createErrorEmbed(
         "⚠️ Confirmar Eliminación de Template",
-        `¿Estás seguro de que quieres eliminar el template **"${template.title}"**?\n\n⚠️ **Esta acción no se puede deshacer**`,
+        `¿Estás seguro de que quieres eliminar el template **"${template.title || 'Template sin título'}"**?\n\n⚠️ **Esta acción no se puede deshacer**`,
         [
           {
             name: "📋 Información del Template",
             value: [
-              `**📝 Título:** ${template.title}`,
-              `**⏰ Duración:** ${template.time}`,
-              `**📄 Descripción:** ${template.description.length > 80 ? template.description.substring(0, 80) + '...' : template.description}`,
+              `**📝 Título:** ${template.title || 'Sin título'}`,
+              `**⏰ Duración:** ${template.time || 'No especificada'}`,
+              `**📄 Descripción:** ${template.description && template.description.length > 0 ? (template.description.length > 80 ? template.description.substring(0, 80) + '...' : template.description) : 'Sin descripción'}`,
               `**👥 Roles configurados:** ${template.roles?.length || 0}`,
               `**⚔️ Grupos de armas:** ${Object.keys(template.weapons || {}).length}`
             ].join('\n'),
@@ -1582,9 +1582,9 @@ module.exports = {
         const editorWeapons = (weaponConfig?.data || []).map(w => ({
           id: w.id,
           name: w.name,
-          quantity: w.units,
+          quantity: w.units || w.quantity, // Soportar ambos campos
           image: w.image || '',
-          emoji: w.emoji,
+          emoji: w.emojiId || w.emoji, // Mapear emojiId a emoji
           url: w.url || '',
           sendBuildToPrivate: !!w.sendBuildToPrivate
         }));
@@ -1633,6 +1633,7 @@ module.exports = {
         const editorGroup = convertCreationGroupToEditorGroup(updatedData.newWeaponGroup);
         editSession.data.weapons.push(editorGroup);
         editSession.hasChanges = true;
+        console.log(`[DEBUG] Nuevo grupo añadido. Total grupos: ${editSession.data.weapons.length}`);
       }
 
       // Manejar actualización de grupo existente
@@ -1642,6 +1643,26 @@ module.exports = {
           const editorGroup = convertCreationGroupToEditorGroup(updatedData.editedWeaponGroup, existing);
           editSession.data.weapons[updatedData.groupIndex] = editorGroup;
           editSession.hasChanges = true;
+          console.log(`[DEBUG] Grupo ${updatedData.groupIndex} actualizado exitosamente`);
+        } else {
+          console.warn(`[WARNING] Intento de actualizar grupo inexistente en índice ${updatedData.groupIndex}`);
+        }
+      }
+
+      // Manejar adición de armas a grupo existente
+      if (updatedData.addWeaponsToGroup !== undefined && updatedData.groupIndex !== undefined) {
+        if (editSession.data.weapons && editSession.data.weapons[updatedData.groupIndex]) {
+          const existingGroup = editSession.data.weapons[updatedData.groupIndex];
+          const newWeapons = convertCreationGroupToEditorGroup(updatedData.addWeaponsToGroup);
+          
+          // Añadir las nuevas armas al grupo existente
+          if (existingGroup.categories && existingGroup.categories[0]) {
+            existingGroup.categories[0].weapons.push(...newWeapons.categories[0].weapons);
+            editSession.hasChanges = true;
+            console.log(`[DEBUG] Armas añadidas al grupo ${updatedData.groupIndex}. Total armas: ${existingGroup.categories[0].weapons.length}`);
+          }
+        } else {
+          console.warn(`[WARNING] Intento de añadir armas a grupo inexistente en índice ${updatedData.groupIndex}`);
         }
       }
 
@@ -1779,8 +1800,9 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle('⚔️ Editor de Grupos de Armas')
-        .setDescription('Gestiona los grupos de armas de tu template')
-        .setColor(parseInt(template.color.replace('#', ''), 16));
+        .setDescription('**Organiza las armas de tu template en grupos**\n\n• **Seleccionar Grupo:** Elige un grupo existente para editarlo\n• **Crear Nuevo:** Añade un grupo de armas completamente nuevo\n• **Eliminar:** Quita grupos que ya no necesites')
+        .setColor(parseInt(template.color.replace('#', ''), 16))
+        .setFooter({ text: '📍 Editor Principal > Grupos de Armas' });
 
       // Mostrar grupos existentes
       if (template.weapons && template.weapons.length > 0) {
@@ -1793,7 +1815,7 @@ module.exports = {
 
         embed.addFields([
           {
-            name: 'Grupos Actuales',
+            name: '📋 Grupos Configurados',
             value: weaponsList,
             inline: false
           }
@@ -1826,19 +1848,19 @@ module.exports = {
           .addComponents(
             new ButtonBuilder()
               .setCustomId(`template_edit_weapons_add_new_${sessionId}`)
-              .setLabel('➕ Añadir Nuevo Grupo')
+              .setLabel('Crear Nuevo Grupo')
               .setStyle(ButtonStyle.Success)
               .setEmoji('➕'),
             new ButtonBuilder()
               .setCustomId(`template_edit_weapons_delete_${sessionId}`)
-              .setLabel('🗑️ Eliminar Grupo')
+              .setLabel('Eliminar Grupo')
               .setStyle(ButtonStyle.Danger)
               .setEmoji('🗑️'),
             new ButtonBuilder()
               .setCustomId(`template_edit_back_${sessionId}`)
-              .setLabel('⬅️ Volver al Editor')
+              .setLabel('← Volver al Editor Principal')
               .setStyle(ButtonStyle.Secondary)
-              .setEmoji('⬅️')
+              .setEmoji('🏠')
           );
 
         if (interaction.deferred) {
@@ -1855,8 +1877,8 @@ module.exports = {
         }
       } else {
         embed.addFields([{
-          name: 'Grupos Actuales',
-          value: 'Sin grupos configurados',
+          name: '📋 Estado Actual',
+          value: '🚫 **Sin grupos configurados**\n\nComienza creando tu primer grupo de armas. Los grupos te permiten organizar las armas por roles o estrategias específicas.',
           inline: false
         }]);
 
@@ -1865,14 +1887,14 @@ module.exports = {
           .addComponents(
             new ButtonBuilder()
               .setCustomId(`template_edit_weapons_add_new_${sessionId}`)
-              .setLabel('➕ Añadir Primer Grupo')
+              .setLabel('🎯 Crear Primer Grupo')
               .setStyle(ButtonStyle.Success)
               .setEmoji('➕'),
             new ButtonBuilder()
               .setCustomId(`template_edit_back_${sessionId}`)
-              .setLabel('⬅️ Volver al Editor')
+              .setLabel('← Volver al Editor Principal')
               .setStyle(ButtonStyle.Secondary)
-              .setEmoji('⬅️')
+              .setEmoji('🏠')
           );
 
         if (interaction.deferred) {
@@ -2217,11 +2239,12 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle(`⚔️ Editar Grupo ${groupIndex + 1}`)
-        .setDescription('Administra las armas de este grupo. Puedes añadir más armas, eliminar existentes o modificar cantidades.')
+        .setDescription('**Gestiona las armas de este grupo**\n\n• **Añadir Armas:** Selecciona nuevas armas de diferentes categorías\n• **Quitar Armas:** Elimina armas específicas del grupo\n• **Guardar:** Confirma todos los cambios realizados')
         .setColor(0x00FFFF)
+        .setFooter({ text: `📍 Editor Principal > Grupos de Armas > Grupo ${groupIndex + 1}` })
         .addFields([
           {
-            name: 'Contenido Actual',
+            name: '📊 Resumen del Grupo',
             value: `**${totalWeapons}** armas configuradas\n**Categorías:** ${categoryNames}`,
             inline: false
           }
@@ -2241,7 +2264,7 @@ module.exports = {
 
         if (weaponsList.length > 0) {
           embed.addFields([{
-            name: 'Armas Configuradas',
+            name: '🗡️ Armas Configuradas',
             value: weaponsList.join('\n'),
             inline: false
           }]);
@@ -2253,17 +2276,17 @@ module.exports = {
         .addComponents(
           new ButtonBuilder()
             .setCustomId(`group_edit_add_weapons_${tempSessionId}`)
-            .setLabel('➕ Añadir Armas')
+            .setLabel('Añadir Armas')
             .setStyle(ButtonStyle.Success)
             .setEmoji('➕'),
           new ButtonBuilder()
             .setCustomId(`group_edit_remove_weapons_${tempSessionId}`)
-            .setLabel('🗑️ Quitar Armas')
+            .setLabel('Quitar Armas')
             .setStyle(ButtonStyle.Danger)
             .setEmoji('🗑️'),
           new ButtonBuilder()
             .setCustomId(`group_edit_finish_${tempSessionId}`)
-            .setLabel('✅ Guardar Cambios')
+            .setLabel('Guardar Cambios')
             .setStyle(ButtonStyle.Primary)
             .setEmoji('✅')
         );
@@ -2272,9 +2295,9 @@ module.exports = {
         .addComponents(
           new ButtonBuilder()
             .setCustomId(`group_edit_back_${tempSessionId}`)
-            .setLabel('← Volver al Editor')
+            .setLabel('← Volver al Editor Principal')
             .setStyle(ButtonStyle.Secondary)
-            .setEmoji('⬅️')
+            .setEmoji('🏠')
         );
 
       // Preferimos actualizar el mensaje original si la interacción proviene de un componente
@@ -2361,8 +2384,9 @@ module.exports = {
 
       const backButton = new ButtonBuilder()
         .setCustomId(`group_edit_back_to_edit_${tempSessionId}`)
-        .setLabel('← Volver a Edición')
-        .setStyle(ButtonStyle.Secondary);
+        .setLabel('← Volver a Editar Grupo')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('⚔️');
 
       const buttonRow = new ActionRowBuilder().addComponents(backButton);
 
@@ -2469,18 +2493,18 @@ module.exports = {
 
       // Botones de acción después de eliminar
       const buttonRow = new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder()
-            .setCustomId(`group_edit_back_to_edit_${tempSessionId}`)
-            .setLabel('← Volver a Editar Grupo')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('⬅️'),
-          new ButtonBuilder()
-            .setCustomId(`group_edit_remove_weapons_${tempSessionId}`)
-            .setLabel('🗑️ Quitar Más Armas')
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji('🗑️')
-        );
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId(`group_edit_back_to_edit_${tempSessionId}`)
+              .setLabel('← Continuar Editando')
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji('✏️'),
+            new ButtonBuilder()
+              .setCustomId(`group_edit_remove_weapons_${tempSessionId}`)
+              .setLabel('Quitar Más Armas')
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji('🗑️')
+          );
 
       // Actualizar el mensaje original del select con el resultado
       if (!interaction.deferred && !interaction.replied) {
@@ -2600,6 +2624,13 @@ module.exports = {
   async saveTemplateChanges(interaction, sessionId) {
     const session = templateEditSessions.get(sessionId);
 
+    if (!session) {
+      return await interaction.reply({
+        content: 'Sesión de edición expirada o inválida.',
+        ephemeral: true
+      });
+    }
+
     if (!session.hasChanges) {
       return await interaction.reply({
         content: 'No hay cambios para guardar.',
@@ -2610,8 +2641,12 @@ module.exports = {
     try {
       const templateService = require('../../services/templateService');
 
+      console.log(`[DEBUG] Guardando template ${session.templateId} con datos:`, JSON.stringify(session.data, null, 2));
+
       // Actualizar el template en la base de datos
       await templateService.updateTemplate(session.templateId, session.data);
+
+      console.log(`[DEBUG] Template ${session.templateId} guardado exitosamente`);
 
       const successEmbed = new EmbedBuilder()
         .setTitle('✅ Template Actualizado')
@@ -2632,7 +2667,8 @@ module.exports = {
 
     } catch (error) {
       console.error('[ERROR] Error al guardar template:', error);
-      const errorEmbed = createErrorEmbed("Error", "No se pudo guardar el template. Inténtalo nuevamente.");
+      console.error('[ERROR] Session data:', JSON.stringify(session.data, null, 2));
+      const errorEmbed = createErrorEmbed("Error", `No se pudo guardar el template: ${error.message}`);
       await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
   },

@@ -422,7 +422,14 @@ const getEvents = () => {
       }
 
       if (interaction.customId.startsWith("template_weapon_config_modal_")) {
+        // Este es para modales de creación de templates, no para edición
         await templateCommand.handleBackToMain(interaction);
+        return;
+      }
+
+      if (interaction.customId.startsWith("weapon_config_modal_")) {
+        // Este es para modales de edición de armas en grupos existentes
+        await templateCommand.handleModalSubmit(interaction);
         return;
       }
 

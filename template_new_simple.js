@@ -279,11 +279,11 @@ module.exports = {
 
     // Crear embed de información del template
     const embed = new EmbedBuilder()
-      .setTitle(`✏️ Editando: ${template.title}`)
+      .setTitle(`✏️ Editando: ${template.title || 'Template sin título'}`)
       .setDescription('Selecciona qué aspecto del template quieres editar:')
       .addFields([
-        { name: '📝 Información Básica', value: `Título: ${template.title}\nDuración: ${template.time}`, inline: true },
-        { name: '📄 Descripción', value: template.description.length > 100 ? template.description.substring(0, 100) + '...' : template.description, inline: true },
+        { name: '📝 Información Básica', value: `Título: ${template.title || 'Sin título'}\nDuración: ${template.time || 'No especificada'}`, inline: true },
+        { name: '📄 Descripción', value: template.description && template.description.length > 0 ? (template.description.length > 100 ? template.description.substring(0, 100) + '...' : template.description) : 'Sin descripción', inline: true },
         { name: '⚔️ Grupos de Armas', value: `${Object.keys(template.weapons || {}).length} grupo(s)`, inline: true }
       ])
       .setColor(template.color || '#00FFFF')

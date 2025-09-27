@@ -808,6 +808,7 @@ async function showEmojiWeaponSelection(interaction, sessionId, category) {
       .setTitle('🎯 Seleccionar Arma para Emoji')
       .setDescription(`Elige el arma específica cuyo emoji representará el grupo **${session.tempGroupConfig.displayName}**`)
       .setColor(0x00FFFF)
+      .setFooter({ text: '📍 Editor Principal > Grupos de Armas > Configurar Grupo > Emoji' })
       .addFields([
         {
           name: 'ℹ️ Emoji del Grupo',
@@ -975,7 +976,8 @@ async function showMultipleWeaponSelection(interaction, sessionId) {
     const embed = new EmbedBuilder()
       .setTitle('⚔️ Seleccionar Armas del Grupo')
       .setDescription(`Agregar armas al grupo **${session.tempGroupConfig.displayName}**\n\nPuedes mezclar armas de diferentes categorías.`)
-      .setColor(0x00FFFF);
+      .setColor(0x00FFFF)
+      .setFooter({ text: '📍 Editor Principal > Grupos de Armas > Configurar Grupo > Seleccionar Categorías' });
 
     // Mostrar armas ya seleccionadas con cantidades
     if (session.tempGroupConfig.weapons.length > 0) {
@@ -1541,7 +1543,8 @@ async function showCategoryWeapons(interaction, sessionId, category) {
     const embed = new EmbedBuilder()
       .setTitle(`⚔️ Armas de ${categoryWeapons[0].categoryDisplayName}`)
       .setDescription(`Selecciona **una arma** para agregar al grupo **${session.tempGroupConfig.displayName}**\n\n⚠️ **Solo puedes agregar una arma a la vez. Para agregar más armas, repite el proceso.**`)
-      .setColor(0x00FFFF);
+      .setColor(0x00FFFF)
+      .setFooter({ text: `📍 Editor Principal > Grupos de Armas > Configurar Grupo > ${categoryWeapons[0].categoryDisplayName}` });
 
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId(`template_add_weapons_${sessionId}`)

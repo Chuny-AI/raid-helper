@@ -63,13 +63,55 @@ const createTemplate = async (templateData, serverId) => {
  */
 const updateTemplate = async (templateId, updateData) => {
   try {
-    return await Template.findByIdAndUpdate(
+    console.log(`[DEBUG] updateTemplate - Actualizando template ${templateId}`);
+    console.log(`[DEBUG] updateTemplate - Datos recibidos:`, JSON.stringify(updateData, null, 2));
+    
+    // Validar que el templateId sea válido
+    if (!templateId) {
+      throw new Error('Template ID es requerido');
+    }
+    
+    // Validar estructura de weapons si está presente
+    if (updateData.weapons !== undefined) {
+      console.log(`[DEBUG] updateTemplate - Validando estructura de weapons`);
+      console.log(`[DEBUG] updateTemplate - weapons type:`, typeof updateData.weapons);
+      console.log(`[DEBUG] updateTemplate - weapons isArray:`, Array.isArray(updateData.weapons));
+      
+      if (Array.isArray(updateData.weapons)) {
+        console.log(`[DEBUG] updateTemplate - weapons array length:`, updateData.weapons.length);
+        updateData.weapons.forEach((group, index) => {
+          console.log(`[DEBUG] updateTemplate - Grupo ${index}:`, {
+            name: group.name,
+            emoji: group.emoji,
+            categoriesCount: group.categories ? group.categories.length : 0
+          });
+        });
+      }
+    }
+    
+    const result = await Template.findByIdAndUpdate(
       templateId,
       updateData,
       { new: true }
     );
+    
+    if (!result) {
+      throw new Error(`Template con ID ${templateId} no encontrado`);
+    }
+    
+    console.log(`[DEBUG] updateTemplate - Template actualizado exitosamente`);
+    console.log(`[DEBUG] updateTemplate - Resultado:`, {
+      id: result._id,
+      title: result.title,
+      weaponsType: typeof result.weapons,
+      weaponsLength: Array.isArray(result.weapons) ? result.weapons.length : 'N/A'
+    });
+    
+    return result;
   } catch (error) {
     console.error('[ERROR] Error en updateTemplate:', error);
+    console.error('[ERROR] Template ID:', templateId);
+    console.error('[ERROR] Update data:', JSON.stringify(updateData, null, 2));
     throw error;
   }
 };

@@ -1923,12 +1923,19 @@ module.exports = {
       const { client } = require('../../utils/client');
       const renderEmoji = (emojiLike) => {
         if (!emojiLike) return '⚔️';
+        // Si es unicode (contiene caracteres no dígitos o es corto), devolver tal cual
         if (typeof emojiLike === 'string' && !/^\d{15,20}$/.test(emojiLike)) return emojiLike;
         const id = String(emojiLike);
-        const globalEmoji = client?.emojis?.cache?.get(id);
-        if (globalEmoji) return globalEmoji.toString();
-        const guildEmoji = interaction.guild?.emojis?.cache?.get(id);
-        return guildEmoji ? guildEmoji.toString() : `<:e:${id}>`;
+        try {
+          // Buscar en cache global del cliente primero
+          const globalEmoji = client?.emojis?.cache?.get(id);
+          if (globalEmoji) return globalEmoji.toString();
+          // Fallback: intentar en el guild actual
+          const guildEmoji = interaction.guild?.emojis?.cache?.get(id);
+          if (guildEmoji) return guildEmoji.toString();
+        } catch { }
+        // Fallback mejorado: usar formato correcto para emoji personalizado
+        return `<:weapon:${id}>`;
       };
 
       const embed = new EmbedBuilder()
@@ -2132,6 +2139,27 @@ module.exports = {
   // Mostrar interfaz completa de edición de grupo
   async showGroupEditInterface(interaction, sessionId, weaponGroup, groupIndex) {
     try {
+      // Helper para mostrar emojis correctamente
+      const renderEmoji = (emojiLike, client, guild) => {
+        if (!emojiLike) return '⚔️';
+        // Si es unicode (contiene caracteres no dígitos o es corto), devolver tal cual
+        if (typeof emojiLike === 'string' && (emojiLike.length <= 3 || /[^\d]/.test(emojiLike))) {
+          return emojiLike;
+        }
+        // Si es un ID numérico, buscar el emoji
+        const id = String(emojiLike);
+        // Buscar en el cache global del cliente
+        let emoji = client?.emojis?.cache?.get(id);
+        if (emoji) return emoji.toString();
+        // Buscar en el cache del guild si está disponible
+        if (guild && guild.emojis && guild.emojis.cache) {
+          emoji = guild.emojis.cache.get(id);
+          if (emoji) return emoji.toString();
+        }
+        // Fallback: formato directo de Discord
+        return `<:weapon:${id}>`;
+      };
+
       const totalWeapons = weaponGroup.categories ?
         weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0) : 0;
       const categoryNames = weaponGroup.categories ?
@@ -2150,7 +2178,7 @@ module.exports = {
       }
 
       const embed = createInfoEmbed(
-        `${weaponGroup.defaultEmoji || '⚔️'} ${weaponGroup.name || weaponGroup.displayName || `Grupo ${groupIndex + 1}`} - Editor de Armas`,
+        `${renderEmoji(weaponGroup.defaultEmoji, interaction.client, interaction.guild)} ${weaponGroup.name || weaponGroup.displayName || `Grupo ${groupIndex + 1}`} - Editor de Armas`,
         'Selecciona una acción para modificar este grupo de armas.',
         [
           {
@@ -2472,6 +2500,32 @@ module.exports = {
         // Volver a la interface principal de edición
         return await this.showEditWeapons(interaction, tempSessionId);
 
+      } else if (customId.includes('group_edit_back_to_edit_')) {
+        // Volver al editor principal desde una sesión de grupo
+        const tempSessionId = customId.replace('group_edit_back_to_edit_', '');
+        console.log('[DEBUG] handleGroupEditButton - back to edit tempSessionId:', tempSessionId);
+
+        const validSession = getValidSession(tempSessionId, interaction.user.id, interaction.guild.id);
+        if (!validSession) {
+          return await interaction.reply({ content: 'Sesión expirada. Por favor reinicia la edición.', ephemeral: true });
+        }
+
+        // Volver a la interface principal de edición
+        return await this.showEditWeapons(interaction, tempSessionId);
+
+      } else if (customId.includes('group_edit_back_')) {
+        // Volver al editor principal desde una sesión de grupo
+        const tempSessionId = customId.replace('group_edit_back_', '');
+        console.log('[DEBUG] handleGroupEditButton - back tempSessionId:', tempSessionId);
+
+        const validSession = getValidSession(tempSessionId, interaction.user.id, interaction.guild.id);
+        if (!validSession) {
+          return await interaction.reply({ content: 'Sesión expirada. Por favor reinicia la edición.', ephemeral: true });
+        }
+
+        // Volver a la interface principal de edición
+        return await this.showEditWeapons(interaction, tempSessionId);
+
       } else {
         console.warn('[WARN] CustomId de grupo no reconocido:', customId);
         await interaction.reply({ content: 'Acción no reconocida.', ephemeral: true });
@@ -2491,11 +2545,32 @@ module.exports = {
   // Mostrar interfaz de edición para un grupo específico
   async showGroupEditInterface(interaction, tempSessionId, weaponGroup, groupIndex) {
     try {
+      // Helper para mostrar emojis correctamente
+      const renderEmoji = (emojiLike, client, guild) => {
+        if (!emojiLike) return '⚔️';
+        // Si es unicode (contiene caracteres no dígitos o es corto), devolver tal cual
+        if (typeof emojiLike === 'string' && (emojiLike.length <= 3 || /[^\d]/.test(emojiLike))) {
+          return emojiLike;
+        }
+        // Si es un ID numérico, buscar el emoji
+        const id = String(emojiLike);
+        // Buscar en el cache global del cliente
+        let emoji = client?.emojis?.cache?.get(id);
+        if (emoji) return emoji.toString();
+        // Buscar en el cache del guild si está disponible
+        if (guild && guild.emojis && guild.emojis.cache) {
+          emoji = guild.emojis.cache.get(id);
+          if (emoji) return emoji.toString();
+        }
+        // Fallback: formato directo de Discord
+        return `<:weapon:${id}>`;
+      };
+
       const totalWeapons = weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0);
       const categoryNames = weaponGroup.categories.map(cat => cat.name).join(', ');
 
       const embed = new EmbedBuilder()
-        .setTitle(`${weaponGroup.defaultEmoji || '⚔️'} Editar ${weaponGroup.name || `Grupo ${groupIndex + 1}`}`)
+        .setTitle(`${renderEmoji(weaponGroup.defaultEmoji, interaction.client, interaction.guild)} Editar ${weaponGroup.name || `Grupo ${groupIndex + 1}`}`)
         .setDescription('Administra las armas de este grupo. Puedes añadir más armas, eliminar existentes o modificar cantidades.')
         .setColor(0x00FFFF)
         .addFields([
@@ -2532,17 +2607,17 @@ module.exports = {
         .addComponents(
           new ButtonBuilder()
             .setCustomId(`group_edit_add_weapons_${tempSessionId}_${groupIndex}`)
-            .setLabel('➕ Añadir Armas')
+            .setLabel('Añadir Armas')
             .setStyle(ButtonStyle.Success)
             .setEmoji('➕'),
           new ButtonBuilder()
             .setCustomId(`group_edit_remove_weapons_${tempSessionId}_${groupIndex}`)
-            .setLabel('🗑️ Quitar Armas')
+            .setLabel('Quitar Armas')
             .setStyle(ButtonStyle.Danger)
             .setEmoji('🗑️'),
           new ButtonBuilder()
             .setCustomId(`group_edit_finish_${tempSessionId}`)
-            .setLabel('✅ Guardar Cambios')
+            .setLabel('Guardar Cambios')
             .setStyle(ButtonStyle.Primary)
             .setEmoji('✅')
         );
@@ -2551,7 +2626,7 @@ module.exports = {
         .addComponents(
           new ButtonBuilder()
             .setCustomId(`group_edit_back_${tempSessionId}`)
-            .setLabel('← Volver al Editor')
+            .setLabel('Volver al Editor')
             .setStyle(ButtonStyle.Secondary)
             .setEmoji('⬅️')
         );
@@ -2821,12 +2896,19 @@ module.exports = {
     const { client } = require('../../utils/client');
     const renderEmoji = (emojiLike) => {
       if (!emojiLike) return '⚔️';
+      // Si es unicode (contiene caracteres no dígitos o es corto), devolver tal cual
       if (typeof emojiLike === 'string' && !/^\d{15,20}$/.test(emojiLike)) return emojiLike;
       const id = String(emojiLike);
-      const globalEmoji = client?.emojis?.cache?.get(id);
-      if (globalEmoji) return globalEmoji.toString();
-      const guildEmoji = interaction.guild?.emojis?.cache?.get(id);
-      return guildEmoji ? guildEmoji.toString() : `<:e:${id}>`;
+      try {
+        // Buscar en cache global del cliente primero
+        const globalEmoji = client?.emojis?.cache?.get(id);
+        if (globalEmoji) return globalEmoji.toString();
+        // Fallback: intentar en el guild actual
+        const guildEmoji = interaction.guild?.emojis?.cache?.get(id);
+        if (guildEmoji) return guildEmoji.toString();
+      } catch { }
+      // Fallback mejorado: usar formato correcto para emoji personalizado
+      return `<:weapon:${id}>`;
     };
     try {
       let weaponsInfo = '';
@@ -3272,23 +3354,44 @@ async function handleGroupButton(interaction, customId) {
     if (customId.includes('group_add_weapon_')) {
       // Format: group_add_weapon_sessionId_groupIndex
       action = 'add_weapon';
-      sessionId = parts[3];
-      groupIndex = parseInt(parts[4]);
+      // Extraer sessionId y groupIndex correctamente
+      const match = customId.match(/group_add_weapon_(.+)_(\d+)$/);
+      if (match) {
+        sessionId = match[1];
+        groupIndex = parseInt(match[2]);
+      } else {
+        throw new Error(`Formato de customId group_add_weapon no válido: ${customId}`);
+      }
     } else if (customId.includes('group_edit_weapon_')) {
       // Format: group_edit_weapon_sessionId_groupIndex
       action = 'edit_weapon';
-      sessionId = parts[3];
-      groupIndex = parseInt(parts[4]);
+      const match = customId.match(/group_edit_weapon_(.+)_(\d+)$/);
+      if (match) {
+        sessionId = match[1];
+        groupIndex = parseInt(match[2]);
+      } else {
+        throw new Error(`Formato de customId group_edit_weapon no válido: ${customId}`);
+      }
     } else if (customId.includes('group_remove_weapon_')) {
       // Format: group_remove_weapon_sessionId_groupIndex
       action = 'remove_weapon';
-      sessionId = parts[3];
-      groupIndex = parseInt(parts[4]);
+      const match = customId.match(/group_remove_weapon_(.+)_(\d+)$/);
+      if (match) {
+        sessionId = match[1];
+        groupIndex = parseInt(match[2]);
+      } else {
+        throw new Error(`Formato de customId group_remove_weapon no válido: ${customId}`);
+      }
     } else if (customId.includes('group_delete_')) {
       // Format: group_delete_sessionId_groupIndex
       action = 'delete';
-      sessionId = parts[2];
-      groupIndex = parseInt(parts[3]);
+      const match = customId.match(/group_delete_(.+)_(\d+)$/);
+      if (match) {
+        sessionId = match[1];
+        groupIndex = parseInt(match[2]);
+      } else {
+        throw new Error(`Formato de customId group_delete no válido: ${customId}`);
+      }
     } else {
       throw new Error(`Formato de customId no reconocido: ${customId}`);
     }
@@ -4533,111 +4636,55 @@ async function showWeaponCategorySelectionForEdit(interaction, sessionId) {
 
     console.log('[DEBUG] showWeaponCategorySelectionForEdit - Sesión válida encontrada');
 
-    // Cargar categorías disponibles
-    const UserCategory = require('../../database/models/UserCategory');
-    console.log('[DEBUG] showWeaponCategorySelectionForEdit - Cargando categorías para guild:', interaction.guild.id);
+    // Usar la misma función que template create para cargar categorías
+    const { getWeaponCategories } = require('../../services/weaponService');
+    const fs = require('fs');
+    const path = require('path');
 
-    // Obtener todos los miembros del guild para buscar sus categorías
-    const guildMembers = await interaction.guild.members.fetch();
-    const userIds = Array.from(guildMembers.keys());
-
-    const categories = await UserCategory.find({ userId: { $in: userIds } }).sort({ displayName: 1 });
-    console.log('[DEBUG] showWeaponCategorySelectionForEdit - Categorías encontradas:', categories.length);
-    if (categories.length > 0) {
-      console.log('[DEBUG] Primera categoría encontrada:', categories[0].displayName, 'ID:', categories[0]._id);
-    }
-
-    if (!categories.length) {
-      console.log('[DEBUG] showWeaponCategorySelectionForEdit - No hay UserCategories, intentando Weapon model...');
-
-      // Fallback 1: Usar el Weapon model del sistema
+    async function getWeaponCategoriesWithFallback() {
       try {
-        const Weapon = require('../../database/models/Weapon');
-        const weapons = await Weapon.find({ isActive: true }).sort({ category: 1, name: 1 });
-        console.log('[DEBUG] Armas del modelo Weapon encontradas:', weapons.length);
+        // Intentar primero desde la base de datos
+        const dbCategories = await getWeaponCategories();
+        console.log(`[DEBUG] getWeaponCategoriesWithFallback: Found ${dbCategories.length} categories in database`);
 
-        if (weapons.length > 0) {
-          // Agrupar armas por categoría y obtener información de categoría
-          const weaponsByCategory = {};
-          const categoryInfo = {};
-
-          weapons.forEach(weapon => {
-            if (!weaponsByCategory[weapon.category]) {
-              weaponsByCategory[weapon.category] = [];
-              // Guardar información de la categoría (tomar del primer arma de la categoría)
-              categoryInfo[weapon.category] = {
-                displayName: weapon.categoryDisplayName,
-                defaultEmoji: weapon.categoryDefaultEmoji
-              };
-            }
-            weaponsByCategory[weapon.category].push({
-              name: weapon.name,
-              code: weapon.code || weapon.name,
-              quantity: weapon.quantity || 1,
-              emoji: weapon.emojiId || '⚔️'
-            });
-          });
-
-          // Convertir a formato de categorías
-          const categoriesArray = [];
-          for (const [categoryName, weaponList] of Object.entries(weaponsByCategory)) {
-            categoriesArray.push({
-              _id: `weapon_${categoryName}`,
-              displayName: categoryInfo[categoryName].displayName,
-              defaultEmoji: categoryInfo[categoryName].defaultEmoji,
-              weapons: weaponList
-            });
-          }
-          categories.push(...categoriesArray);
-          console.log('[DEBUG] Categorías creadas desde Weapon model:', categoriesArray.length);
+        if (dbCategories.length > 0) {
+          return dbCategories;
         }
-      } catch (weaponError) {
-        console.error('[DEBUG] Error cargando desde Weapon model:', weaponError);
-      }
 
-      // Fallback 2: Si no hay Weapon model, usar weapons.json
-      if (!categories.length) {
-        console.log('[DEBUG] Intentando cargar desde weapons.json...');
-        try {
-          const fs = require('fs');
-          const path = require('path');
-          const weaponsPath = path.join(__dirname, '../../weapons/weapons.json');
+        // Si no hay categorías en la base de datos, leer desde el archivo JSON
+        console.log(`[DEBUG] getWeaponCategoriesWithFallback: No categories in database, trying JSON file`);
+        const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
 
-          if (fs.existsSync(weaponsPath)) {
-            const weaponsData = JSON.parse(fs.readFileSync(weaponsPath, 'utf8'));
-            console.log('[DEBUG] Cargando armas del sistema para categorías:', Object.keys(weaponsData).length);
+        if (!fs.existsSync(weaponsFilePath)) {
+          console.log(`[ERROR] getWeaponCategoriesWithFallback: JSON file not found at ${weaponsFilePath}`);
+          return [];
+        }
 
-            // Convertir a formato esperado
-            categories = [];
-            for (const [categoryName, weapons] of Object.entries(weaponsData)) {
-              categories.push({
-                _id: `system_${categoryName}`,
-                name: categoryName,
-                weapons: weapons.map(weapon => ({
-                  name: weapon.name,
-                  code: weapon.code || weapon.name,
-                  quantity: weapon.quantity || 1,
-                  emoji: weapon.emoji || '⚔️'
-                }))
-              });
-            }
-          } else {
-            return await interaction.reply({
-              content: 'No hay categorías de armas disponibles. Usa `/upload_weapons` para cargar armas primero.',
-              ephemeral: true
-            });
-          }
-        } catch (error) {
-          console.error('[DEBUG] Error en fallback de armas del sistema:', error);
-          return await interaction.reply({
-            content: 'No hay categorías de armas disponibles. Usa `/upload_weapons` para cargar armas primero.',
-            ephemeral: true
+        const weaponsData = JSON.parse(fs.readFileSync(weaponsFilePath, 'utf8'));
+        const categories = [];
+
+        // Extraer categorías del formato JSON
+        for (const [category, categoryData] of Object.entries(weaponsData.weapons)) {
+          categories.push({
+            key: category,
+            displayName: categoryData.displayName,
+            defaultEmoji: categoryData.defaultEmoji
           });
         }
+
+        console.log(`[DEBUG] getWeaponCategoriesWithFallback: Loaded ${categories.length} categories from JSON file`);
+        return categories;
+
+      } catch (error) {
+        console.error('[ERROR] getWeaponCategoriesWithFallback:', error);
+        return [];
       }
     }
 
-    // Verificar si finalmente tenemos categorías
+    const categories = await getWeaponCategoriesWithFallback();
+    console.log('[DEBUG] showWeaponCategorySelectionForEdit - Categorías encontradas:', categories.length);
+
+    // Verificar si tenemos categorías
     if (!categories.length) {
       return await interaction.reply({
         content: 'No hay categorías de armas disponibles. Usa `/upload_weapons` para cargar armas primero.',
@@ -4647,12 +4694,12 @@ async function showWeaponCategorySelectionForEdit(interaction, sessionId) {
 
     // Crear select menu con las categorías
     const categoryOptions = categories.slice(0, 25).map(category => {
-      console.log('[DEBUG] Procesando categoría:', category.displayName, 'weapons:', category.weapons?.length || 0);
+      console.log('[DEBUG] Procesando categoría:', category.displayName || category.key);
 
       return {
-        label: category.displayName,
-        value: category._id.toString(),
-        description: `${category.weapons?.length || 0} armas disponibles`,
+        label: category.displayName || category.key,
+        value: category.key || category._id?.toString(),
+        description: `Categoría de armas`,
         emoji: category.defaultEmoji || '⚔️'
       };
     });
@@ -4705,73 +4752,81 @@ async function handleCategorySelectForGroup(interaction) {
       return await interaction.reply({ content: 'Sesión expirada. Por favor reinicia la edición.', ephemeral: true });
     }
 
-    // Cargar las armas de la categoría
-    let category = null;
+    // Usar la misma función que template create para cargar armas
+    const { getAllWeapons } = require('../../services/weaponService');
+    const fs = require('fs');
+    const path = require('path');
 
-    if (categoryId.startsWith('weapon_') || categoryId.startsWith('system_')) {
-      // Es una categoría del sistema, cargar desde el modelo Weapon o weapons.json
-      console.log('[DEBUG] Cargando categoría del sistema:', categoryId);
-
+    async function getWeaponsWithFallback() {
       try {
-        if (categoryId.startsWith('weapon_')) {
-          // Cargar desde modelo Weapon
-          const Weapon = require('../../database/models/Weapon');
-          const categoryName = categoryId.replace('weapon_', '');
-          const weapons = await Weapon.find({ category: categoryName, isActive: true }).sort({ name: 1 });
+        // Intentar primero desde la base de datos
+        const dbWeapons = await getAllWeapons();
+        console.log(`[DEBUG] getWeaponsWithFallback: Found ${dbWeapons.length} weapons in database`);
 
-          if (weapons.length > 0) {
-            // Usar la información real de la primera arma para la categoría
-            const firstWeapon = weapons[0];
-            category = {
-              _id: categoryId,
-              displayName: firstWeapon.categoryDisplayName,
-              defaultEmoji: firstWeapon.categoryDefaultEmoji,
-              weapons: weapons.map(weapon => ({
+        if (dbWeapons.length > 0) {
+          return dbWeapons;
+        }
+
+        // Si no hay armas en la base de datos, leer desde el archivo JSON
+        console.log(`[DEBUG] getWeaponsWithFallback: No weapons in database, trying JSON file`);
+        const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
+
+        if (!fs.existsSync(weaponsFilePath)) {
+          console.log(`[ERROR] getWeaponsWithFallback: JSON file not found at ${weaponsFilePath}`);
+          return [];
+        }
+
+        const weaponsData = JSON.parse(fs.readFileSync(weaponsFilePath, 'utf8'));
+        const weapons = [];
+
+        // Extraer armas del formato JSON
+        for (const [category, categoryData] of Object.entries(weaponsData.weapons)) {
+          if (categoryData.weapons) {
+            categoryData.weapons.forEach(weapon => {
+              weapons.push({
                 name: weapon.name,
-                code: weapon.code || weapon.name,
-                quantity: weapon.quantity || 1,
-                emoji: weapon.emojiId || '⚔️'
-              }))
-            };
-          }
-        } else if (categoryId.startsWith('system_')) {
-          // Cargar desde weapons.json
-          const fs = require('fs');
-          const path = require('path');
-          const weaponsPath = path.join(__dirname, '../../weapons/weapons.json');
-
-          if (fs.existsSync(weaponsPath)) {
-            const weaponsData = JSON.parse(fs.readFileSync(weaponsPath, 'utf8'));
-            const categoryName = categoryId.replace('system_', '');
-            const weapons = weaponsData[categoryName];
-
-            if (weapons) {
-              category = {
-                _id: categoryId,
-                displayName: categoryName,
-                weapons: weapons.map(weapon => ({
-                  name: weapon.name,
-                  code: weapon.code || weapon.name,
-                  quantity: weapon.quantity || 1,
-                  emoji: weapon.emoji || '⚔️'
-                }))
-              };
-            }
+                category: category,
+                categoryDisplayName: categoryData.displayName,
+                emojiId: weapon.emojiId,
+                code: weapon.code || weapon.name
+              });
+            });
           }
         }
+
+        console.log(`[DEBUG] getWeaponsWithFallback: Loaded ${weapons.length} weapons from JSON file`);
+        return weapons;
+
       } catch (error) {
-        console.error('[DEBUG] Error cargando categoría del sistema:', error);
-      }
-    } else {
-      // Es una UserCategory normal
-      try {
-        const UserCategory = require('../../database/models/UserCategory');
-        category = await UserCategory.findById(categoryId);
-      } catch (error) {
-        console.error('[DEBUG] Error cargando UserCategory:', error);
-        category = null;
+        console.error('[ERROR] getWeaponsWithFallback:', error);
+        return [];
       }
     }
+
+    // Cargar todas las armas y filtrar por categoría
+    const allWeapons = await getWeaponsWithFallback();
+    const categoryWeapons = allWeapons.filter(weapon => weapon.category === categoryId);
+
+    console.log(`[DEBUG] handleCategorySelectForGroup: Found ${categoryWeapons.length} weapons in category ${categoryId}`);
+
+    if (categoryWeapons.length === 0) {
+      return await interaction.reply({
+        content: 'No se encontraron armas en esta categoría.',
+        ephemeral: true
+      });
+    }
+
+    // Crear la estructura de categoría
+    const category = {
+      _id: categoryId,
+      displayName: categoryWeapons[0].categoryDisplayName || categoryId,
+      weapons: categoryWeapons.map(weapon => ({
+        name: weapon.name,
+        code: weapon.code || weapon.name,
+        quantity: 1,
+        emoji: weapon.emojiId || '⚔️'
+      }))
+    };
 
     if (!category || !category.weapons?.length) {
       return await interaction.reply({
@@ -4826,91 +4881,81 @@ async function handleWeaponSelectForGroup(interaction) {
       return await interaction.reply({ content: 'Sesión expirada. Por favor reinicia la edición.', ephemeral: true });
     }
 
-    // Cargar la categoría y las armas seleccionadas usando el mismo sistema de fallback
-    let category = null;
-    let weapons = [];
+    // Usar la misma función que template create para cargar armas
+    const { getAllWeapons } = require('../../services/weaponService');
+    const fs = require('fs');
+    const path = require('path');
 
-    // Si categoryId es un ObjectId válido, intentar UserCategory
-    if (categoryId.match(/^[0-9a-fA-F]{24}$/)) {
+    async function getWeaponsWithFallback() {
       try {
-        const UserCategory = require('../../database/models/UserCategory');
-        category = await UserCategory.findOne({
-          _id: categoryId,
-          userId: interaction.user.id
-        });
-        if (category && category.weapons?.length) {
-          weapons = category.weapons;
-          console.log('[DEBUG] Categoría cargada desde UserCategory:', category.displayName);
+        // Intentar primero desde la base de datos
+        const dbWeapons = await getAllWeapons();
+        console.log(`[DEBUG] getWeaponsWithFallback: Found ${dbWeapons.length} weapons in database`);
+
+        if (dbWeapons.length > 0) {
+          return dbWeapons;
         }
-      } catch (error) {
-        console.error('[DEBUG] Error cargando desde UserCategory:', error);
-      }
-    }
 
-    // Fallback: Si no encontró en UserCategory, buscar en Weapon model
-    if (!weapons.length) {
-      try {
-        const Weapon = require('../../database/models/Weapon');
-        const categoryName = categoryId.replace('weapon_', '');
-        const weaponsFromModel = await Weapon.find({
-          category: categoryName,
-          isActive: true
-        }).sort({ name: 1 });
+        // Si no hay armas en la base de datos, leer desde el archivo JSON
+        console.log(`[DEBUG] getWeaponsWithFallback: No weapons in database, trying JSON file`);
+        const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
 
-        if (weaponsFromModel.length > 0) {
-          weapons = weaponsFromModel.map(weapon => ({
-            name: weapon.name,
-            code: weapon.code || weapon.name,
-            emojiId: weapon.emojiId || '⚔️'
-          }));
-
-          // Crear categoría temporal
-          category = {
-            displayName: weaponsFromModel[0].categoryDisplayName || categoryName,
-            weapons: weapons
-          };
-          console.log('[DEBUG] Categoría cargada desde Weapon model:', categoryName, 'armas:', weapons.length);
+        if (!fs.existsSync(weaponsFilePath)) {
+          console.log(`[ERROR] getWeaponsWithFallback: JSON file not found at ${weaponsFilePath}`);
+          return [];
         }
-      } catch (error) {
-        console.error('[DEBUG] Error cargando desde Weapon model:', error);
-      }
-    }
 
-    // Fallback final: weapons.json
-    if (!weapons.length) {
-      try {
-        const fs = require('fs');
-        const path = require('path');
-        const weaponsPath = path.join(__dirname, '../../weapons/weapons.json');
+        const weaponsData = JSON.parse(fs.readFileSync(weaponsFilePath, 'utf8'));
+        const weapons = [];
 
-        if (fs.existsSync(weaponsPath)) {
-          const weaponsData = JSON.parse(fs.readFileSync(weaponsPath, 'utf8'));
-          const categoryName = categoryId.replace('system_', '');
-
-          if (weaponsData[categoryName]) {
-            weapons = weaponsData[categoryName];
-            category = {
-              displayName: categoryName,
-              weapons: weapons
-            };
-            console.log('[DEBUG] Categoría cargada desde weapons.json:', categoryName);
+        // Extraer armas del formato JSON
+        for (const [category, categoryData] of Object.entries(weaponsData.weapons)) {
+          if (categoryData.weapons) {
+            categoryData.weapons.forEach(weapon => {
+              weapons.push({
+                name: weapon.name,
+                category: category,
+                categoryDisplayName: categoryData.displayName,
+                emojiId: weapon.emojiId,
+                code: weapon.code || weapon.name
+              });
+            });
           }
         }
+
+        console.log(`[DEBUG] getWeaponsWithFallback: Loaded ${weapons.length} weapons from JSON file`);
+        return weapons;
+
       } catch (error) {
-        console.error('[DEBUG] Error cargando desde weapons.json:', error);
+        console.error('[ERROR] getWeaponsWithFallback:', error);
+        return [];
       }
     }
 
-    if (!weapons.length) {
+    // Cargar todas las armas y filtrar por categoría
+    const allWeapons = await getWeaponsWithFallback();
+    const categoryWeapons = allWeapons.filter(weapon => weapon.category === categoryId);
+
+    if (categoryWeapons.length === 0) {
       return await interaction.reply({
-        content: 'No se encontró la categoría de armas o no tiene armas disponibles.',
+        content: 'No se encontraron armas en esta categoría.',
+        ephemeral: true
+      });
+    }
+
+    // Obtener las armas seleccionadas
+    const selectedWeapons = selectedWeaponIndexes.map(index => categoryWeapons[index]).filter(Boolean);
+
+    if (selectedWeapons.length === 0) {
+      return await interaction.reply({
+        content: 'No se encontraron las armas seleccionadas.',
         ephemeral: true
       });
     }
 
     // Ahora es selección individual (selectedWeaponIndexes solo tiene 1 elemento)
     const selectedWeaponIndex = selectedWeaponIndexes[0];
-    const selectedWeapon = weapons[selectedWeaponIndex];
+    const selectedWeapon = categoryWeapons[selectedWeaponIndex];
 
     if (!selectedWeapon) {
       return await interaction.reply({
@@ -4932,8 +4977,12 @@ async function handleWeaponSelectForGroup(interaction) {
 
     // Guardar información temporal del arma seleccionada para el modal
     session.tempWeaponData = {
-      weapon: selectedWeapon,
-      categoryName: category.displayName,
+      weapon: {
+        name: selectedWeapon.name,
+        code: selectedWeapon.code || selectedWeapon.name,
+        emojiId: selectedWeapon.emojiId || '⚔️'
+      },
+      categoryName: selectedWeapon.categoryDisplayName || categoryId,
       groupIndex: groupIndex
     };
 
@@ -4960,19 +5009,10 @@ async function handleWeaponSelectForGroup(interaction) {
       .setPlaceholder('https://ejemplo.com')
       .setRequired(false);
 
-    const privateInput = new TextInputBuilder()
-      .setCustomId('private')
-      .setLabel('Enviar al privado? (sí/no)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('no')
-      .setValue('no')
-      .setRequired(false);
-
     const quantityRow = new ActionRowBuilder().addComponents(quantityInput);
     const linkRow = new ActionRowBuilder().addComponents(linkInput);
-    const privateRow = new ActionRowBuilder().addComponents(privateInput);
 
-    modal.addComponents(quantityRow, linkRow, privateRow);
+    modal.addComponents(quantityRow, linkRow);
 
     await interaction.showModal(modal);
 
@@ -4994,16 +5034,23 @@ async function handleWeaponConfigModal(interaction) {
   try {
     const sessionId = interaction.customId.replace('weapon_config_modal_', '');
     console.log('[DEBUG] handleWeaponConfigModal - sessionId:', sessionId);
+    console.log('[DEBUG] handleWeaponConfigModal - interaction.user.id:', interaction.user.id);
+    console.log('[DEBUG] handleWeaponConfigModal - interaction.guild.id:', interaction.guild.id);
 
     const validSession = getValidSession(sessionId, interaction.user.id, interaction.guild.id);
     if (!validSession) {
+      console.log('[DEBUG] handleWeaponConfigModal - No valid session found');
       return await interaction.reply({ content: 'Sesión expirada. Por favor reinicia la edición.', ephemeral: true });
     }
 
     const session = validSession.session;
     const tempData = session.tempWeaponData;
+    
+    console.log('[DEBUG] handleWeaponConfigModal - tempData:', JSON.stringify(tempData, null, 2));
+    console.log('[DEBUG] handleWeaponConfigModal - session.data.weapons length:', session.data.weapons?.length);
 
     if (!tempData) {
+      console.log('[DEBUG] handleWeaponConfigModal - No tempData found');
       return await interaction.reply({
         content: 'No se encontraron los datos temporales del arma.',
         ephemeral: true
@@ -5013,11 +5060,17 @@ async function handleWeaponConfigModal(interaction) {
     // Obtener valores del modal
     const quantity = parseInt(interaction.fields.getTextInputValue('quantity')) || 1;
     const link = interaction.fields.getTextInputValue('link') || '';
-    const privateValue = interaction.fields.getTextInputValue('private').toLowerCase();
-    const isPrivate = privateValue === 'sí' || privateValue === 'si' || privateValue === 'yes' || privateValue === 'y';
+    
+    console.log('[DEBUG] handleWeaponConfigModal - quantity:', quantity);
+    console.log('[DEBUG] handleWeaponConfigModal - link:', link);
+    
+    // Lógica automática: privado si hay enlace, no privado si no hay enlace
+    const isPrivate = link.trim() !== '';
+    console.log('[DEBUG] handleWeaponConfigModal - isPrivate:', isPrivate);
 
     // Validar cantidad
     if (quantity < 1 || quantity > 99) {
+      console.log('[DEBUG] handleWeaponConfigModal - Invalid quantity:', quantity);
       return await interaction.reply({
         content: 'La cantidad debe ser un número entre 1 y 99.',
         ephemeral: true
@@ -5025,38 +5078,97 @@ async function handleWeaponConfigModal(interaction) {
     }
 
     const weaponGroup = session.data.weapons[tempData.groupIndex];
+    console.log('[DEBUG] handleWeaponConfigModal - weaponGroup:', JSON.stringify(weaponGroup, null, 2));
 
-    // Buscar o crear la categoría en el grupo
-    let targetCategory = weaponGroup.categories.find(cat => cat.name === tempData.categoryName);
-    if (!targetCategory) {
-      targetCategory = {
-        name: tempData.categoryName,
-        weapons: []
-      };
-      weaponGroup.categories.push(targetCategory);
-    }
-
-    // Verificar si el arma ya existe
-    const existingWeapon = targetCategory.weapons.find(w => w.name === tempData.weapon.name);
-    if (existingWeapon) {
+    if (!weaponGroup) {
+      console.log('[DEBUG] handleWeaponConfigModal - No weaponGroup found at index:', tempData.groupIndex);
       return await interaction.reply({
-        content: `El arma "${tempData.weapon.name}" ya existe en este grupo. Usa la función de editar para modificarla.`,
+        content: 'No se encontró el grupo de armas especificado.',
         ephemeral: true
       });
     }
 
-    // Añadir el arma con la configuración
-    targetCategory.weapons.push({
-      name: tempData.weapon.name,
-      code: tempData.weapon.code || '',
-      quantity: quantity,
-      link: link,
-      private: isPrivate
-    });
+    // Manejar diferentes estructuras de weaponGroup
+    if (weaponGroup.categories) {
+      // Estructura nueva: { categories: [{ name, weapons: [...] }] }
+      console.log('[DEBUG] handleWeaponConfigModal - Using categories structure');
+      let targetCategory = weaponGroup.categories.find(cat => cat.name === tempData.categoryName);
+      if (!targetCategory) {
+        console.log('[DEBUG] handleWeaponConfigModal - Creating new category:', tempData.categoryName);
+        targetCategory = {
+          name: tempData.categoryName,
+          weapons: []
+        };
+        weaponGroup.categories.push(targetCategory);
+      }
+
+      // Verificar si el arma ya existe
+      const existingWeapon = targetCategory.weapons.find(w => w.name === tempData.weapon.name);
+      if (existingWeapon) {
+        console.log('[DEBUG] handleWeaponConfigModal - Weapon already exists:', tempData.weapon.name);
+        return await interaction.reply({
+          content: `El arma "${tempData.weapon.name}" ya existe en este grupo. Usa la función de editar para modificarla.`,
+          ephemeral: true
+        });
+      }
+
+      // Añadir el arma con la configuración
+      const newWeapon = {
+        name: tempData.weapon.name,
+        code: tempData.weapon.code || '',
+        quantity: quantity,
+        link: link,
+        private: isPrivate
+      };
+      console.log('[DEBUG] handleWeaponConfigModal - Adding weapon to category:', JSON.stringify(newWeapon, null, 2));
+      targetCategory.weapons.push(newWeapon);
+
+    } else if (weaponGroup.data) {
+      // Estructura antigua: { data: [...] }
+      console.log('[DEBUG] handleWeaponConfigModal - Using data structure');
+      // Verificar si el arma ya existe
+      const existingWeapon = weaponGroup.data.find(w => w.name === tempData.weapon.name);
+      if (existingWeapon) {
+        console.log('[DEBUG] handleWeaponConfigModal - Weapon already exists in data:', tempData.weapon.name);
+        return await interaction.reply({
+          content: `El arma "${tempData.weapon.name}" ya existe en este grupo. Usa la función de editar para modificarla.`,
+          ephemeral: true
+        });
+      }
+
+      // Añadir el arma directamente al array data
+      const newWeapon = {
+        name: tempData.weapon.name,
+        code: tempData.weapon.code || '',
+        units: quantity, // En estructura antigua se usa 'units' en lugar de 'quantity'
+        url: link,
+        sendBuildToPrivate: isPrivate
+      };
+      console.log('[DEBUG] handleWeaponConfigModal - Adding weapon to data:', JSON.stringify(newWeapon, null, 2));
+      weaponGroup.data.push(newWeapon);
+
+    } else {
+      // Si no tiene ninguna estructura conocida, crear la estructura categories
+      console.log('[DEBUG] handleWeaponConfigModal - Creating new categories structure');
+      const newWeapon = {
+        name: tempData.weapon.name,
+        code: tempData.weapon.code || '',
+        quantity: quantity,
+        link: link,
+        private: isPrivate
+      };
+      weaponGroup.categories = [{
+        name: tempData.categoryName,
+        weapons: [newWeapon]
+      }];
+      console.log('[DEBUG] handleWeaponConfigModal - Created new structure with weapon:', JSON.stringify(newWeapon, null, 2));
+    }
 
     // Limpiar datos temporales
+    console.log('[DEBUG] handleWeaponConfigModal - Clearing tempWeaponData');
     delete session.tempWeaponData;
     session.hasChanges = true;
+    console.log('[DEBUG] handleWeaponConfigModal - Set hasChanges to true');
 
     // Mostrar confirmación y volver al editor
     const embed = new EmbedBuilder()
@@ -5085,10 +5197,21 @@ async function handleWeaponConfigModal(interaction) {
 
   } catch (error) {
     console.error('Error en handleWeaponConfigModal:', error);
-    await interaction.reply({
-      content: 'Ocurrió un error al procesar la configuración del arma.',
-      ephemeral: true
-    });
+    console.error('Stack trace:', error.stack);
+    console.error('Session data:', JSON.stringify(session?.data, null, 2));
+    console.error('Temp data:', JSON.stringify(session?.tempWeaponData, null, 2));
+    
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: 'Ocurrió un error al procesar la configuración del arma. Revisa los logs para más detalles.',
+        ephemeral: true
+      });
+    } else {
+      await interaction.followUp({
+        content: 'Ocurrió un error al procesar la configuración del arma. Revisa los logs para más detalles.',
+        ephemeral: true
+      });
+    }
   }
 }
 
