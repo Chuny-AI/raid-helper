@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRow
 const { getTemplatesByServer, getTemplateByName, updateTemplate, createTemplate, deleteTemplate, getTemplateNames } = require('../../services/templateService');
 const { isServerPremium, getOrCreateServer } = require('../../services/serverService');
 const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, createPremiumEmbed, safeReply } = require('../../utils/errorEmbeds');
+const { checkPremiumAccessWithOwnerBypass } = require('../../middleware/roleCheck');
 
 // Store temporal para manejar el estado del proceso de edición
 const templateEditSessions = new Map();
@@ -168,10 +169,21 @@ module.exports = {
   // =============== TEMPLATE LIST ===============
   async executeList(interaction) {
     try {
+      // VALIDACIÓN 1: Verificar premium del servidor
       const isPremium = await isServerPremium(interaction.guild.id);
       if (!isPremium) {
         const premiumEmbed = createPremiumEmbed();
         return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
+      }
+
+      // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
+      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      if (!hasAccess) {
+        const errorEmbed = createErrorEmbed(
+          "🔒 Sin Permisos",
+          "No tienes permisos para usar este comando. Necesitas tener un rol autorizado o ser administrador."
+        );
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
       }
 
       const guildId = interaction.guild.id;
@@ -218,11 +230,22 @@ module.exports = {
     }
   },  // =============== TEMPLATE CREATE ===============
   async executeCreate(interaction) {
+    // VALIDACIÓN 1: Verificar premium del servidor
     const isPremium = await isServerPremium(interaction.guild.id);
     if (!isPremium) {
       const premiumEmbed = createPremiumEmbed();
       return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
     }
+
+    // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
+      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      if (!hasAccess) {
+        const errorEmbed = createErrorEmbed(
+          "🔒 Sin Permisos",
+          "No tienes permisos para usar este comando. Necesitas tener un rol autorizado o ser administrador."
+        );
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
 
     // Mostrar directamente el modal simplificado
     await this.showTemplateModal(interaction);
@@ -269,10 +292,21 @@ module.exports = {
   // =============== TEMPLATE EDIT ===============
   async executeEdit(interaction) {
     try {
+      // VALIDACIÓN 1: Verificar premium del servidor
       const isPremium = await isServerPremium(interaction.guild.id);
       if (!isPremium) {
         const premiumEmbed = createPremiumEmbed();
         return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
+      }
+
+      // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
+      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      if (!hasAccess) {
+        const errorEmbed = createErrorEmbed(
+          "🔒 Sin Permisos",
+          "No tienes permisos para usar este comando. Necesitas tener un rol autorizado o ser administrador."
+        );
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
       }
 
       const templateName = interaction.options.getString("template");
@@ -313,7 +347,17 @@ module.exports = {
                     defaultEmoji: weaponGroup.defaultEmoji || '⚔️',
                     categories: [{
                       name: weaponGroup.category || 'General',
-                      weapons: weaponGroup.data
+                      weapons: weaponGroup.data.map(weapon => ({
+                        id: weapon.id || Date.now() + Math.random(),
+                        name: weapon.name,
+                        quantity: weapon.units || weapon.quantity || 1,
+                        units: weapon.units || weapon.quantity || 1, // Compatibilidad
+                        emoji: weapon.emojiId || weapon.emoji || '⚔️',
+                        emojiId: weapon.emojiId || weapon.emoji || '⚔️', // Preservar emojiId
+                        image: weapon.image || '',
+                        url: weapon.url || '',
+                        sendBuildToPrivate: weapon.sendBuildToPrivate || false
+                      }))
                     }]
                   };
                 }
@@ -606,10 +650,21 @@ module.exports = {
   // =============== TEMPLATE DELETE ===============
   async executeDelete(interaction) {
     try {
+      // VALIDACIÓN 1: Verificar premium del servidor
       const isPremium = await isServerPremium(interaction.guild.id);
       if (!isPremium) {
         const premiumEmbed = createPremiumEmbed();
         return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
+      }
+
+      // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
+      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      if (!hasAccess) {
+        const errorEmbed = createErrorEmbed(
+          "🔒 Sin Permisos",
+          "No tienes permisos para usar este comando. Necesitas tener un rol autorizado o ser administrador."
+        );
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
       }
 
       const templateName = interaction.options.getString("template");
@@ -675,10 +730,21 @@ module.exports = {
   // =============== TEMPLATE CLONE ===============
   async executeClone(interaction) {
     try {
+      // VALIDACIÓN 1: Verificar premium del servidor
       const isPremium = await isServerPremium(interaction.guild.id);
       if (!isPremium) {
         const premiumEmbed = createPremiumEmbed();
         return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
+      }
+
+      // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
+      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      if (!hasAccess) {
+        const errorEmbed = createErrorEmbed(
+          "🔒 Sin Permisos",
+          "No tienes permisos para usar este comando. Necesitas tener un rol autorizado o ser administrador."
+        );
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
       }
 
       const templateName = interaction.options.getString("template");
@@ -3691,9 +3757,12 @@ templateModule.handleAddWeaponModalSubmit = async function (interaction) {
 
     // Añadir el arma
     const newWeapon = {
+      id: Date.now() + Math.random(),
       name: weaponName,
       quantity: weaponQuantity,
+      units: weaponQuantity, // Compatibilidad
       emoji: weaponEmoji,
+      emojiId: weaponEmoji, // Preservar emojiId
       image: '',
       url: '',
       sendBuildToPrivate: false
@@ -4232,12 +4301,21 @@ templateModule.handleEditWeaponModalSubmit = async function (interaction) {
     const weaponGroup = session.data.weapons[groupIndex];
     const weapon = weaponGroup.categories[categoryIndex].weapons[weaponIndex];
 
+    // Preservar el ID original si existe
+    const originalId = weapon.id;
+    const originalEmojiId = weapon.emojiId;
+
     weapon.name = weaponName;
     weapon.quantity = weaponQuantity;
     weapon.emoji = weaponEmoji;
     // Compatibilidad
     weapon.units = weaponQuantity;
-    weapon.emojiId = weaponEmoji;
+    // Preservar emojiId original si existe, sino usar el nuevo emoji
+    weapon.emojiId = originalEmojiId || weaponEmoji;
+    // Preservar ID original
+    if (originalId) {
+      weapon.id = originalId;
+    }
 
     // Marcar que hay cambios para poder guardar
     session.hasChanges = true;
@@ -5114,10 +5192,17 @@ async function handleWeaponConfigModal(interaction) {
 
       // Añadir el arma con la configuración
       const newWeapon = {
+        id: Date.now() + Math.random(),
         name: tempData.weapon.name,
         code: tempData.weapon.code || '',
         quantity: quantity,
+        units: quantity, // Compatibilidad
+        emoji: tempData.weapon.emojiId || '⚔️',
+        emojiId: tempData.weapon.emojiId || '⚔️', // Preservar emojiId
+        image: '',
+        url: link,
         link: link,
+        sendBuildToPrivate: isPrivate,
         private: isPrivate
       };
       console.log('[DEBUG] handleWeaponConfigModal - Adding weapon to category:', JSON.stringify(newWeapon, null, 2));
@@ -5138,9 +5223,14 @@ async function handleWeaponConfigModal(interaction) {
 
       // Añadir el arma directamente al array data
       const newWeapon = {
+        id: Date.now() + Math.random(),
         name: tempData.weapon.name,
         code: tempData.weapon.code || '',
         units: quantity, // En estructura antigua se usa 'units' en lugar de 'quantity'
+        quantity: quantity, // Compatibilidad
+        emoji: tempData.weapon.emojiId || '⚔️',
+        emojiId: tempData.weapon.emojiId || '⚔️', // Preservar emojiId
+        image: '',
         url: link,
         sendBuildToPrivate: isPrivate
       };
@@ -5151,10 +5241,17 @@ async function handleWeaponConfigModal(interaction) {
       // Si no tiene ninguna estructura conocida, crear la estructura categories
       console.log('[DEBUG] handleWeaponConfigModal - Creating new categories structure');
       const newWeapon = {
+        id: Date.now() + Math.random(),
         name: tempData.weapon.name,
         code: tempData.weapon.code || '',
         quantity: quantity,
+        units: quantity, // Compatibilidad
+        emoji: tempData.weapon.emojiId || '⚔️',
+        emojiId: tempData.weapon.emojiId || '⚔️', // Preservar emojiId
+        image: '',
+        url: link,
         link: link,
+        sendBuildToPrivate: isPrivate,
         private: isPrivate
       };
       weaponGroup.categories = [{

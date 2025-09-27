@@ -7,8 +7,6 @@
     "dev": "nodemon --env-file=.env index.js",
     "register": "node --env-file=.env register-commands.js",
     "destroy-node-instances": "taskkill /F /IM node.exe",
-    "cleanup-db": "node --env-file=.env cleanup-database.js",
-    "check-roles": "node --env-file=.env check-authorized-roles.js",
     "delete-global": "node --env-file=.env delete-global-commands.js",
     "check-commands": "node --env-file=.env check-commands.js"
   },
@@ -25,7 +23,6 @@
     "discord.js": "^14.16.2",
     "express": "^5.1.0",
     "mongoose": "^8.0.3",
-    "node-schedule": "^2.1.1",
-    "npm": "^10.8.3"
+    "node-schedule": "^2.1.1"
   }
 }
