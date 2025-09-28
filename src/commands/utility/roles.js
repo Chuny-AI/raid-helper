@@ -1,7 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const { getAuthorizedRoles, addAuthorizedRole, removeAuthorizedRole, clearAuthorizedRoles } = require("../../services/authorizedRoleService");
-const { getOrCreateServer } = require("../../services/serverService");
+const { getOrCreateServer, isServerPremium } = require("../../services/serverService");
 const { checkOwner } = require("../../middleware/ownerCheck");
+const { checkPremiumAccessWithOwnerBypass } = require("../../middleware/roleCheck");
 const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
@@ -46,23 +47,41 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      const { isServerPremium } = require('../../services/serverService');
+      // JERARQUÍA DE VALIDACIONES:
+      // 1. Verificar estado premium del servidor
+      // 2. Verificar permisos de administrador o propietario
+      // 3. Verificar usuarios autorizados (si aplica)
+
+      // 1. PRIMERA PRIORIDAD: Verificar estado premium
       const isPremium = await isServerPremium(interaction.guild.id);
-
       if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
-      }
-
-      const isOwner = await checkOwner(interaction);
-      if (!isOwner) {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-          return interaction.reply({
-            content: "❌ Solo el propietario del bot y los administradores pueden gestionar roles autorizados.",
-            ephemeral: true,
-          });
+        // Solo el propietario puede usar comandos en servidores no premium
+        const isOwner = await checkOwner(interaction);
+        if (!isOwner) {
+          const premiumEmbed = createPremiumEmbed();
+          return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
         }
       }
+
+      // 2. SEGUNDA PRIORIDAD: Verificar permisos de administrador o propietario
+      const isOwner = await checkOwner(interaction);
+      const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+      
+      if (!isOwner && !isAdmin) {
+        const errorEmbed = createErrorEmbed(
+          "Acceso Denegado",
+          "Solo el propietario del bot y los administradores pueden gestionar roles autorizados.",
+          [{
+            name: "Permisos Requeridos",
+            value: "• Propietario del bot\n• Administrador del servidor",
+            inline: false
+          }]
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
+
+      // 3. TERCERA PRIORIDAD: Validaciones adicionales completadas
+      // En este punto el usuario tiene los permisos necesarios
 
       const guildId = interaction.guild.id;
       const subcommand = interaction.options.getSubcommand();

@@ -14,7 +14,7 @@ El proyecto se desarrolla únicamente en **JavaScript** (no TypeScript).
 - Todas las variables se encuentran en el archivo `.env`.  
 - Node.js ya maneja el acceso a estas variables a través de `--env-file=.env`.  
 
-- ⚠️ **Copilot no debe sugerir instalar ni usar `dotenv`.**
+- ⚠️ **El proyecto NO utiliza `dotenv`. Todas las variables de entorno se cargan usando `--env-file=.env` de Node.js nativo.**
 
 ---
 

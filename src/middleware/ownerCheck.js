@@ -1,3 +1,5 @@
+const { createErrorEmbed, safeReply } = require('../utils/errorEmbeds');
+
 /**
  * Middleware para verificar si el usuario es el propietario del bot
  * @param {Object} interaction - La interacción de Discord
@@ -21,20 +23,32 @@ const checkOwner = async (interaction) => {
     const isOwner = interaction.user.id === botOwnerId;
     
     if (!isOwner) {
-      await interaction.reply({
-        content: "❌ Solo el propietario del bot puede usar este comando.",
-        ephemeral: true,
-      });
+      const errorEmbed = createErrorEmbed(
+        "Acceso Denegado",
+        "Solo el propietario del bot puede usar este comando.",
+        [{
+          name: "Permisos Requeridos",
+          value: "• Propietario del bot",
+          inline: false
+        }]
+      );
+      await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
       return false;
     }
     
     return true;
   } catch (error) {
     console.error('[ERROR] Error en checkOwner:', error);
-    await interaction.reply({
-      content: "❌ Error verificando permisos del propietario.",
-      ephemeral: true,
-    });
+    const errorEmbed = createErrorEmbed(
+      "Error del Sistema",
+      "Error verificando permisos del propietario.",
+      [{
+        name: "Solución",
+        value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
+        inline: false
+      }]
+    );
+    await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
     return false;
   }
 };

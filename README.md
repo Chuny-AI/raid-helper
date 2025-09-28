@@ -1,76 +1,69 @@
-# 🤖 Chuny BOT
+# 🏛️ Avalon Raid Helper
 
-**Bot de Discord especializado para la gestión de actividades y raids en Albion Online**
+**Bot de Discord para gestión de raids y actividades de Albion Online**
 
-[![Discord.js](https://img.shields.io/badge/Discord.js-v14.16.2-blue.svg)](https://discord.js.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-v22.12.0-green.svg)](https://nodejs.org/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Database-green.svg)](https://www.mongodb.com/)
-[![License](https://img.shields.io/badge/License-Custom-red.svg)](LICENSE)
+## 📖 Documentación
+
+Para obtener información completa sobre todos los comandos disponibles, consulta:
+
+**[📚 COMANDOS.md](./COMANDOS.md)** - Documentación completa de todos los comandos
+
+## 🚀 Inicio Rápido
+
+### Instalación
+
+1. Clona el repositorio
+2. Instala las dependencias: `npm install`
+3. Configura las variables de entorno en `.env`
+4. Ejecuta el bot: `npm start`
+
+### Variables de Entorno
+
+```env
+TOKEN=tu_token_del_bot
+CLIENT_ID=id_del_cliente
+GUILD_ID=id_del_servidor
+MONGODB_URI=uri_de_mongodb
+```
+
+## 🎯 Características Principales
+
+- **Sistema de Templates**: Crea y gestiona plantillas de raid personalizadas
+- **Notificaciones de Raid**: Envía notificaciones organizadas con selección de armas
+- **Sistema de Claims**: Reclama actividades y recursos de Albion Online
+- **Economía del Servidor**: Gestiona dinero virtual y recompensas
+- **Decodificación de Archivos**: Analiza datos de herramientas de Albion Online
+- **Gestión de Roles**: Controla permisos y accesos
+- **Calculadora de Botín**: Divide ganancias entre jugadores
+
+## 📋 Comandos Principales
+
+| Comando | Descripción |
+|---------|-------------|
+| `/template` | Gestión completa de plantillas de raid |
+| `/raid` | Envío de notificaciones de actividades |
+| `/claim` | Sistema de reclamación de actividades |
+| `/economy` | Gestión de economía del servidor |
+| `/roles` | Administración de roles autorizados |
+
+**Ver documentación completa:** [COMANDOS.md](./COMANDOS.md)
+
+## 🔧 Scripts Disponibles
+
+```bash
+npm start          # Ejecutar en producción
+npm run dev        # Ejecutar en desarrollo
+npm run register   # Registrar comandos slash
+```
+
+## 📞 Soporte
+
+Para obtener ayuda o reportar problemas, contacta con el equipo de desarrollo.
 
 ---
 
-## 📋 Descripción
-
-Chuny BOT es un bot de Discord diseñado específicamente para comunidades de Albion Online. Facilita la organización de raids, gestión de plantillas de actividades, sistema de claims, decodificación de dungeons y mucho más.
-
-### ✨ Características Principales
-
-- 🎯 **Sistema de Raids**: Crea notificaciones de actividades usando plantillas personalizables
-- 📝 **Gestión de Plantillas**: Editor completo para crear y modificar plantillas de raids
-- 🏆 **Sistema de Claims**: Reserva actividades y recursos con tiempo limitado
-- 🔓 **Decodificación de Dungeons**: Herramientas para decodificar información de dungeons
-- ⚔️ **Base de Datos de Armas**: Catálogo completo de armas de Albion Online
-- 💎 **Sistema Premium**: Funcionalidades avanzadas para servidores premium
-- 🔐 **Control de Permisos**: Sistema granular de roles y autorizaciones
-- 📊 **División de Botín**: Calculadora automática para repartir ganancias
-
----
-
-## 🚀 Instalación Rápida
-
-### Prerrequisitos
-
-- [Node.js](https://nodejs.org/) v22.12.0 o superior
-- [MongoDB](https://www.mongodb.com/) (local o MongoDB Atlas)
-- Una aplicación de Discord con permisos de bot
-
-### Pasos de Instalación
-
-1. **Clona el repositorio**
-   ```bash
-   git clone https://github.com/M8-Babbage/avalon-raid-helper.git
-   cd avalon-raid-helper
-   ```
-
-2. **Instala las dependencias**
-   ```bash
-   npm install
-   ```
-
-3. **Configura las variables de entorno**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edita el archivo `.env` con tus credenciales:
-   ```env
-   CLIENT_ID=tu_client_id_del_bot
-   TOKEN=tu_token_del_bot
-   MONGODB_URI=tu_uri_de_mongodb
-   BOT_OWNER_ID=tu_discord_user_id
-   GUILD_ID=id_del_servidor_de_pruebas
-   GUILD_COMMANDS=true
-   ```
-
-4. **Registra los comandos**
-   ```bash
-   npm run register
-   ```
-
-5. **Inicia el bot**
-   ```bash
-   npm start
-   ```
+**Versión:** 1.0.0  
+**Licencia:** ISC
 
 ---
 

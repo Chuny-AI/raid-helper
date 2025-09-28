@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getAllWeapons, createWeapon, deleteWeapon } = require("../../services/weaponService");
-const { checkOwner } = require("../../middleware/ownerCheck");
+const { isOwner } = require("../../middleware/ownerCheck");
+const { isServerPremium } = require("../../services/serverService");
 const { createErrorEmbed, createSuccessEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
 const Weapon = require("../../database/models/Weapon");
 const fs = require('fs');
@@ -16,19 +17,38 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      const { isServerPremium } = require('../../services/serverService');
+      // JERARQUÍA DE VALIDACIONES:
+      // 1. Verificar estado premium del servidor
+      // 2. Verificar que es el propietario del bot
+      // 3. Proceder con la carga de armas
+
+      // 1. PRIMERA PRIORIDAD: Verificar estado premium
       const isPremium = await isServerPremium(interaction.guild.id);
-
       if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
+        // Solo el propietario puede usar comandos en servidores no premium
+        const ownerCheck = await isOwner(interaction);
+        if (!ownerCheck) {
+          const premiumEmbed = createPremiumEmbed();
+          return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
+        }
       }
 
-      const isOwner = await checkOwner(interaction);
-      if (!isOwner) {
-        return;
+      // 2. SEGUNDA PRIORIDAD: Verificar que es el propietario del bot
+      const ownerCheck = await isOwner(interaction);
+      if (!ownerCheck) {
+        const errorEmbed = createErrorEmbed(
+          "Acceso Denegado",
+          "Solo el propietario del bot puede usar este comando.",
+          [{
+            name: "Permisos Requeridos",
+            value: "• Propietario del bot",
+            inline: false
+          }]
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
       }
 
+      // 3. TERCERA PRIORIDAD: Proceder con la carga de armas
       await interaction.deferReply({ ephemeral: true });
 
       try {

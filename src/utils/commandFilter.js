@@ -14,13 +14,13 @@ const commandVisibilityMap = {
   'upload_weapons': 'owner',
   'show_all_weapons': 'premium_roles_admin',
   'show_all_categories': 'premium_roles_admin',
-  'roles': 'admin_owner',
+  'roles': 'premium_admin_owner',
   'premium': 'owner',
   'status': 'all',
   'migrate': 'premium_roles_admin',
   'economy': 'premium_roles_admin',
-  'split': 'premium_only',
-  'claim': 'premium_only',
+  'split': 'premium_roles_admin',
+  'claim': 'premium_roles_admin',
   'claim-config': 'premium_roles_admin',
   'decode-file': 'decode_roles',
   'decode-users': 'owner'
@@ -83,7 +83,7 @@ const filterCommand = async (interaction) => {
       if (!isAdmin) {
         try {
           const embed = createErrorEmbed(
-            "❌ Permisos Insuficientes",
+            "Permisos Insuficientes",
             "Tienes acceso premium, pero este comando requiere permisos de administrador."
           );
           await safeReply(interaction, { embeds: [embed], ephemeral: true });
@@ -105,7 +105,7 @@ const filterCommand = async (interaction) => {
       console.log(`[FILTER] Comando ${commandName} decode_roles, ¿autorizado?: ${hasDecodeAccess}`);
       if (!hasDecodeAccess) {
         const embed = createErrorEmbed(
-          '❌ Acceso Denegado',
+          'Acceso Denegado',
           'Este comando está restringido al propietario del bot o usuarios autorizados.'
         );
         await safeReply(interaction, { embeds: [embed], ephemeral: true });
@@ -132,7 +132,7 @@ const filterCommand = async (interaction) => {
       console.log(`[FILTER] No es owner, ¿es admin?: ${isAdmin}`);
       if (!isAdmin) {
         const embed = createErrorEmbed(
-          "❌ Acceso Denegado",
+          "Acceso Denegado",
           "Solo el propietario del bot y los administradores pueden usar este comando."
         );
         await safeReply(interaction, { embeds: [embed], ephemeral: true });
@@ -150,7 +150,7 @@ const filterCommand = async (interaction) => {
       console.log(`[FILTER] ¿Es owner?: ${isOwner}`);
       if (!isOwner) {
         const embed = createErrorEmbed(
-          "❌ Acceso Denegado",
+          "Acceso Denegado",
           "Solo el propietario del bot puede usar este comando."
         );
         await safeReply(interaction, { embeds: [embed], ephemeral: true });
@@ -158,6 +158,54 @@ const filterCommand = async (interaction) => {
         return false;
       }
       console.log(`[FILTER] Comando ${commandName} PERMITIDO (es owner)`);
+      return true;
+    }
+
+    if (commandType === 'premium_admin_owner') {
+      console.log(`[FILTER] Comando ${commandName} es premium_admin_owner`);
+
+      // PRIMERA PRIORIDAD: Verificar estado premium
+      const hasPremium = await shouldShowPremiumCommand(interaction);
+      console.log(`[FILTER] ¿Tiene premium?: ${hasPremium}`);
+
+      if (!hasPremium) {
+        // Solo el propietario puede usar comandos en servidores no premium
+        const isOwner = await shouldShowOwnerCommand(interaction);
+        console.log(`[FILTER] No tiene premium, ¿es owner?: ${isOwner}`);
+        if (!isOwner) {
+          try {
+            const embed = createPremiumEmbed();
+            await safeReply(interaction, { embeds: [embed], ephemeral: true });
+            console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de premium`);
+          } catch (error) {
+            console.error(`[FILTER] Error enviando mensaje premium para ${commandName}:`, error);
+          }
+          return false;
+        }
+      }
+
+      // SEGUNDA PRIORIDAD: Verificar si es owner (acceso total)
+      const isOwner = await shouldShowOwnerCommand(interaction);
+      console.log(`[FILTER] ¿Es owner?: ${isOwner}`);
+      if (isOwner) {
+        console.log(`[FILTER] Comando ${commandName} PERMITIDO (es owner)`);
+        return true;
+      }
+
+      // TERCERA PRIORIDAD: Si no es owner, verificar admin
+      const isAdmin = await shouldShowAdminCommand(interaction);
+      console.log(`[FILTER] No es owner, ¿es admin?: ${isAdmin}`);
+      if (!isAdmin) {
+        const embed = createErrorEmbed(
+          "Acceso Denegado",
+          "Solo el propietario del bot y los administradores pueden usar este comando."
+        );
+        await safeReply(interaction, { embeds: [embed], ephemeral: true });
+        console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de permisos admin/owner`);
+        return false;
+      }
+
+      console.log(`[FILTER] Comando ${commandName} PERMITIDO (es admin)`);
       return true;
     }
 
