@@ -2120,43 +2120,31 @@ module.exports = {
         return false;
       }
 
-      // Helper: convierte un grupo en formato de creación ({displayName, data: [...]})
-      // al formato del editor ({categories: [{ name, weapons: [...] }]}).
+      // CORRECCIÓN: Convertir al formato correcto de MongoDB
+      // NO usar 'categories', usar directamente 'data' como en el formato original
       const convertCreationGroupToEditorGroup = (weaponConfig, existingGroup) => {
         console.log('[DEBUG] convertCreationGroupToEditorGroup: weaponConfig received:', JSON.stringify(weaponConfig, null, 2));
 
         const editorWeapons = (weaponConfig?.data || []).map(w => ({
           id: w.id,
           name: w.name,
-          quantity: w.units,
+          units: w.units, // Mantener 'units' como en el formato original
           image: w.image || '',
-          emojiId: w.emojiId, // Preservar emojiId original
-          emoji: w.emoji || `<:weapon:${w.emojiId}>`, // Formato de emoji para mostrar
+          emoji: w.emoji, // Usar 'emoji' directamente
           url: w.url || '',
-          sendBuildToPrivate: !!w.sendBuildToPrivate
+          sendBuildToPrivate: w.sendBuildToPrivate !== false // Default true
         }));
 
         console.log('[DEBUG] convertCreationGroupToEditorGroup: editorWeapons created:', JSON.stringify(editorWeapons, null, 2));
 
-        // Intentar preservar nombres de categorías existentes si están disponibles
-        let categoryName = 'General';
-        if (existingGroup && Array.isArray(existingGroup.categories) && existingGroup.categories.length > 0) {
-          // Usar el primer nombre de categoría existente
-          categoryName = existingGroup.categories[0].name || 'General';
-        }
-
+        // FORMATO CORRECTO: Mantener la estructura original de MongoDB
         const result = {
-          name: weaponConfig?.displayName || 'Nuevo Grupo',
+          displayName: weaponConfig?.displayName || 'Nuevo Grupo',
           defaultEmoji: weaponConfig?.defaultEmoji || '⚔️',
-          categories: [
-            {
-              name: categoryName,
-              weapons: editorWeapons
-            }
-          ]
+          data: editorWeapons // Usar 'data' en lugar de 'categories'
         };
 
-        console.log('[DEBUG] convertCreationGroupToEditorGroup: final result:', JSON.stringify(result, null, 2));
+        console.log('[DEBUG] convertCreationGroupToEditorGroup: final result (CORRECT FORMAT):', JSON.stringify(result, null, 2));
         return result;
       };
 
@@ -2214,15 +2202,13 @@ module.exports = {
             sendBuildToPrivate: !!w.sendBuildToPrivate
           }));
 
-          // Añadir las nuevas armas a la primera categoría del grupo existente
-          if (existing.categories && existing.categories.length > 0) {
-            existing.categories[0].weapons = [...(existing.categories[0].weapons || []), ...newWeapons];
+          // CORRECCIÓN: Usar el formato correcto de MongoDB con 'data'
+          // Añadir las nuevas armas al array 'data' del grupo existente
+          if (existing.data && Array.isArray(existing.data)) {
+            existing.data = [...existing.data, ...newWeapons];
           } else {
-            // Si no hay categorías, crear una nueva
-            existing.categories = [{
-              name: 'General',
-              weapons: newWeapons
-            }];
+            // Si no hay data, crear el array
+            existing.data = newWeapons;
           }
           editSession.hasChanges = true;
         }
@@ -2248,8 +2234,13 @@ module.exports = {
     editorWeapons.forEach((group, index) => {
       const groupKey = `group_${index + 1}`;
 
-      // Recolectar todas las armas de todas las categorías
-      const allWeapons = [];
+      // CORRECCIÓN: Mantener el formato correcto de MongoDB
+      // El formato correcto es: { displayName, defaultEmoji, data: [...] }
+      // NO debe usar 'categories'
+
+      let allWeapons = [];
+
+      // Si el grupo tiene la estructura incorrecta con 'categories', convertirla
       if (group.categories && Array.isArray(group.categories)) {
         group.categories.forEach(category => {
           if (category.weapons && Array.isArray(category.weapons)) {
@@ -2257,24 +2248,38 @@ module.exports = {
               allWeapons.push({
                 id: weapon.id || Date.now() + Math.random(),
                 name: weapon.name,
-                units: weapon.quantity || 1,
+                units: weapon.quantity || weapon.units || 1,
                 image: weapon.image || '',
-                emojiId: weapon.emojiId || weapon.emoji, // Usar emojiId si existe, sino emoji como fallback
+                emoji: weapon.emojiId || weapon.emoji, // Usar emojiId como emoji
                 url: weapon.url || '',
-                sendBuildToPrivate: weapon.sendBuildToPrivate || false
+                sendBuildToPrivate: weapon.sendBuildToPrivate !== false // Default true
               });
             });
           }
         });
+      } 
+      // Si el grupo ya tiene la estructura correcta con 'data', usarla
+      else if (group.data && Array.isArray(group.data)) {
+        allWeapons = group.data.map(weapon => ({
+          id: weapon.id || Date.now() + Math.random(),
+          name: weapon.name,
+          units: weapon.units || 1,
+          image: weapon.image || '',
+          emoji: weapon.emoji,
+          url: weapon.url || '',
+          sendBuildToPrivate: weapon.sendBuildToPrivate !== false // Default true
+        }));
       }
 
+      // FORMATO CORRECTO DE MONGODB - SIN 'categories'
       dbFormat[groupKey] = {
-        displayName: group.name || 'Nuevo Grupo',
+        displayName: group.name || group.displayName || 'Nuevo Grupo',
         defaultEmoji: group.defaultEmoji || '⚔️',
         data: allWeapons
       };
     });
 
+    console.log('[DEBUG] convertEditorToDbFormat: Converted to correct MongoDB format:', JSON.stringify(dbFormat, null, 2));
     return dbFormat;
   },
 
