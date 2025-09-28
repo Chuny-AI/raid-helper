@@ -929,7 +929,7 @@ async function handleWeaponConfigSubmit(interaction) {
   const processedWeapons = session.processedWeapons || [];
   processedWeapons.push({
     name: currentWeapon.name,
-    emojiId: currentWeapon.emojiId,
+    emoji: currentWeapon.emoji || currentWeapon.emojiId, // Usar emoji si existe, sino emojiId como fallback
     image: currentWeapon.image || '',
     quantity: quantity,
     url: buildUrl,
@@ -1356,7 +1356,7 @@ async function handleWeaponSelection(interaction) {
       buildUrl: groupConfig.buildUrl,
       weapons: selectedWeapons.map(weapon => ({
         name: weapon.name,
-        emojiId: weapon.emojiId,
+        emoji: weapon.emoji || weapon.emojiId, // Usar emoji si existe, sino emojiId como fallback
         image: weapon.image || '',
         url: weapon.url || ''
       }))
@@ -1735,7 +1735,7 @@ async function handleSingleWeaponConfigSubmit(interaction) {
     // Agregar arma al grupo temporal
     const processedWeapon = {
       name: currentWeapon.name,
-      emojiId: currentWeapon.emojiId,
+      emoji: currentWeapon.emoji || currentWeapon.emojiId, // Usar emoji si existe, sino emojiId como fallback
       image: currentWeapon.image || '',
       quantity: quantity,
       url: buildUrl,
@@ -1811,7 +1811,7 @@ async function handleFinishGroup(interaction) {
       const weapon = tempConfig.weapons[i];
       console.log(`[DEBUG] handleFinishGroup: Weapon ${i}:`, {
         name: weapon.name,
-        emojiId: weapon.emojiId,
+        emoji: weapon.emoji || weapon.emojiId, // Mostrar emoji en lugar de emojiId
         quantity: weapon.quantity,
         url: weapon.url,
         sendBuildToPrivate: weapon.sendBuildToPrivate
@@ -1821,8 +1821,8 @@ async function handleFinishGroup(interaction) {
         console.log(`[ERROR] handleFinishGroup: Weapon ${i} missing name`);
         return await interaction.update({ content: `Error: Arma ${i + 1} no tiene nombre.`, embeds: [], components: [] });
       }
-      if (!weapon.emojiId) {
-        console.log(`[ERROR] handleFinishGroup: Weapon ${i} missing emojiId`);
+      if (!weapon.emoji && !weapon.emojiId) {
+        console.log(`[ERROR] handleFinishGroup: Weapon ${i} missing emoji`);
         return await interaction.update({ content: `Error: Arma ${i + 1} (${weapon.name}) no tiene emoji.`, embeds: [], components: [] });
       }
       if (!weapon.quantity || isNaN(weapon.quantity)) {
@@ -1840,7 +1840,7 @@ async function handleFinishGroup(interaction) {
         name: weapon.name,
         units: weapon.quantity,
         image: weapon.image || '',
-        emojiId: weapon.emojiId, // Guardar emojiId original para BD
+        emoji: weapon.emoji || weapon.emojiId, // Usar emoji si existe, sino emojiId como fallback
         url: weapon.url || '',
         sendBuildToPrivate: weapon.sendBuildToPrivate || false
       }))

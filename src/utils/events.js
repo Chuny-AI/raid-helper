@@ -179,7 +179,8 @@ const getEvents = () => {
 
       // Group selects para edición de grupos de armas
       if (interaction.customId.includes("select_weapon_") ||
-        interaction.customId.includes("back_to_group_")) {
+        interaction.customId.includes("back_to_group_") ||
+        interaction.customId.startsWith("modify_weapon_select_")) {
         console.log('[DEBUG] Events: Redirigiendo group select a templateCommand.handleSelectMenu');
         await templateCommand.handleSelectMenu(interaction);
         return;
@@ -342,7 +343,12 @@ const getEvents = () => {
       if (interaction.customId.startsWith("group_") ||
         interaction.customId.includes("_group_") ||
         interaction.customId.includes("back_to_group_") ||
-        interaction.customId.includes("confirm_delete_group_")) {
+        interaction.customId.includes("confirm_delete_group_") ||
+        interaction.customId.startsWith("delete_weapon_") ||
+        interaction.customId.startsWith("modify_units_") ||
+        interaction.customId.startsWith("add_url_") ||
+        interaction.customId.startsWith("confirm_delete_weapon_") ||
+        interaction.customId.startsWith("cancel_delete_weapon_")) {
         console.log('[DEBUG] Events: Redirigiendo group button a templateCommand.handleEditButton');
         await templateCommand.handleEditButton(interaction);
         return;
@@ -410,7 +416,10 @@ const getEvents = () => {
       // Group modals para edición de grupos de armas
       if (interaction.customId.includes("add_weapon_modal_") ||
         interaction.customId.includes("edit_weapon_modal_") ||
-        interaction.customId.includes("new_group_modal_")) {
+        interaction.customId.includes("new_group_modal_") ||
+        interaction.customId.startsWith("modify_weapon_modal_") ||
+        interaction.customId.startsWith("modify_units_modal_") ||
+        interaction.customId.startsWith("add_url_modal_")) {
         console.log('[DEBUG] Events: Redirigiendo group modal a templateCommand.handleModalSubmit');
         await templateCommand.handleModalSubmit(interaction);
         return;

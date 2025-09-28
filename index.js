@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { client } = require("./src/utils/client");
 const { getCommands } = require("./src/utils/commands");
 const { getEvents } = require("./src/utils/events");

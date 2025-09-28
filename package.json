@@ -21,6 +21,7 @@
   "description": "Chuny BOT - Discord bot para gestión de actividades",
   "dependencies": {
     "discord.js": "^14.16.2",
+    "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "mongoose": "^8.0.3",
     "node-schedule": "^2.1.1"

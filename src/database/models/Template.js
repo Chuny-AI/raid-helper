@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const weaponDataSchema = new mongoose.Schema({
-  emojiId: {
+  emoji: {
     type: String,
     required: true
   },
