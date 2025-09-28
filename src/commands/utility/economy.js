@@ -1,12 +1,12 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { createErrorEmbed, createPremiumEmbed } = require('../../utils/errorEmbeds');
+const { createErrorEmbed, createPremiumEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require('../../utils/errorEmbeds');
 const EconomyService = require('../../services/economyService');
-const { isServerPremiumSilent } = require('../../middleware/premiumCheckSilent');
-const { checkPremiumAccessWithOwnerBypass } = require('../../middleware/roleCheck');
+const { isServerPremium } = require('../../services/serverService');
+const { checkEconomyPermission, checkSpecificEconomyPermission, getEconomyPermissionInfo } = require('../../middleware/roleCheck');
 
 /**
  * Comando de economía con subcomandos para gestionar dinero de usuarios
- * Requiere permisos de administrador o roles autorizados
+ * Requiere PREMIUM + roles con permisos ECONOMY en la base de datos
  */
 module.exports = {
   data: new SlashCommandBuilder()
@@ -14,7 +14,7 @@ module.exports = {
     .setDescription('Gestiona la economía del servidor')
     .addSubcommand(subcommand =>
       subcommand
-        .setName('add-money')
+        .setName('add')
         .setDescription('Añade dinero a un usuario')
         .addUserOption(option =>
           option
@@ -40,7 +40,7 @@ module.exports = {
     )
     .addSubcommand(subcommand =>
       subcommand
-        .setName('remove-money')
+        .setName('remove')
         .setDescription('Elimina dinero de un usuario')
         .addUserOption(option =>
           option
@@ -78,10 +78,10 @@ module.exports = {
     .addSubcommand(subcommand =>
       subcommand
         .setName('top')
-        .setDescription('Muestra el top 10 de usuarios con más dinero')
+        .setDescription('Muestra el top de usuarios con más dinero')
         .addIntegerOption(option =>
           option
-            .setName('limite')
+            .setName('cantidad')
             .setDescription('Número de usuarios a mostrar (máximo 20)')
             .setRequired(false)
             .setMinValue(1)
@@ -91,86 +91,158 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar premium ANTES de defer para poder usar ephemeral
-      const isPremium = await isServerPremiumSilent(interaction);
-      if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        await interaction.reply({
-          embeds: [premiumEmbed],
-          ephemeral: true
-        });
-        return;
-      }
-
-      // Solo defer si es premium
-      await interaction.deferReply();
+      // FLUJO SECUENCIAL PARA COMANDO ECONOMY:
+      // 1. Verificar estado premium del servidor PRIMERO
+      // 2. Si no premium → Mostrar embed premium y DETENER ejecución
+      // 3. Solo con premium → Validar roles de economía
+      // 4. Ejecutar subcomando correspondiente
 
       const subcommand = interaction.options.getSubcommand();
-      const serverId = interaction.guild.id;
+      const guildId = interaction.guild.id;
 
-      // Solo verificar permisos administrativos para comandos de gestión
-      if (subcommand === 'add-money' || subcommand === 'remove-money') {
-        const hasAdminPermission = await checkPremiumAccessWithOwnerBypass(interaction);
-        if (!hasAdminPermission) {
-          return;
+      // 1. PRIMERA PRIORIDAD: Verificar estado premium ANTES que cualquier otra validación
+      // TODOS los comandos (excepto status) requieren OBLIGATORIAMENTE premium
+      const isPremium = await isServerPremium(guildId);
+      if (!isPremium) {
+        // ÚNICO bypass permitido: propietario del bot
+        let botOwnerId;
+        const application = interaction.client.application;
+        if (application && application.owner) {
+          botOwnerId = application.owner.id;
+        } else {
+          botOwnerId = process.env.BOT_OWNER_ID;
+        }
+
+        // SIN EXCEPCIONES: Ni administradores ni usuarios normales pueden usar comandos sin premium
+        if (interaction.user.id !== botOwnerId) {
+          // NO PREMIUM: Mostrar embed premium y DETENER ejecución
+          const premiumEmbed = createPremiumEmbed();
+          return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
         }
       }
 
+      // 2. SEGUNDA PRIORIDAD: Solo con premium confirmado, validar roles de economía
+      let hasPermission = false;
+      let requiredPermission = 'ECONOMY';
+
       switch (subcommand) {
-        case 'add-money':
-          await this.handleAddMoney(interaction, serverId);
+        case 'add':
+          requiredPermission = 'ECONOMY_ADD';
+          hasPermission = await checkSpecificEconomyPermission(interaction, requiredPermission) || 
+                         await checkEconomyPermission(interaction, 'ECONOMY');
           break;
-        case 'remove-money':
-          await this.handleRemoveMoney(interaction, serverId);
+        case 'remove':
+          requiredPermission = 'ECONOMY_REMOVE';
+          hasPermission = await checkSpecificEconomyPermission(interaction, requiredPermission) || 
+                         await checkEconomyPermission(interaction, 'ECONOMY');
           break;
         case 'balance':
-          await this.handleBalance(interaction, serverId);
+          // BALANCE: Permitir a todos los usuarios ver su propio balance en servidores premium
+          // Solo verificar permisos si intentan ver el balance de otro usuario
+          const targetUser = interaction.options.getUser('usuario');
+          if (!targetUser || targetUser.id === interaction.user.id) {
+            // Ver su propio balance - permitido para todos en servidores premium
+            hasPermission = true;
+          } else {
+            // Ver balance de otro usuario - requiere permisos ECONOMY_VIEW
+            requiredPermission = 'ECONOMY_VIEW';
+            hasPermission = await checkSpecificEconomyPermission(interaction, requiredPermission) || 
+                           await checkEconomyPermission(interaction, 'ECONOMY');
+          }
           break;
         case 'top':
-          await this.handleTop(interaction, serverId);
+          requiredPermission = 'ECONOMY_VIEW';
+          hasPermission = await checkSpecificEconomyPermission(interaction, requiredPermission) || 
+                         await checkEconomyPermission(interaction, 'ECONOMY');
           break;
         default:
-          throw new Error('Subcomando no reconocido');
+          hasPermission = await checkEconomyPermission(interaction, 'ECONOMY');
       }
 
-    } catch (error) {
-      console.error('[ECONOMY] Error en comando economy:', error);
+      // 3. TERCERA PRIORIDAD: Solo mostrar error de roles si ya se confirmó premium
+      if (!hasPermission) {
+        const permissionInfo = await getEconomyPermissionInfo(interaction);
+        
+        // Mensaje específico para balance de otros usuarios
+        const targetUser = interaction.options.getUser('usuario');
+        const isViewingOtherUser = subcommand === 'balance' && targetUser && targetUser.id !== interaction.user.id;
+        
+        let errorTitle = "Permisos de Economía Insuficientes";
+        let errorDescription = "No tienes permisos para usar comandos de economía.";
+        
+        if (isViewingOtherUser) {
+          errorTitle = "Permisos Insuficientes para Ver Balance Ajeno";
+          errorDescription = "No tienes permisos para ver el balance de otros usuarios. Puedes ver tu propio balance sin restricciones.";
+        }
+        
+        const errorEmbed = createErrorEmbed(
+          errorTitle,
+          errorDescription,
+          [
+            {
+              name: "Permisos Requeridos",
+              value: isViewingOtherUser 
+                ? `• Servidor Premium ✅\n• Rol con permiso \`ECONOMY_VIEW\` o \`ECONOMY\` para ver balances ajenos`
+                : `• Servidor Premium ✅\n• Rol con permiso \`${requiredPermission}\` o \`ECONOMY\``,
+              inline: false
+            },
+            {
+              name: "Tu Estado Actual",
+              value: `**Razón:** ${permissionInfo.reason}\n**Permisos:** ${permissionInfo.permissions.length > 0 ? permissionInfo.permissions.join(', ') : 'Ninguno'}`,
+              inline: false
+            },
+            {
+              name: "Solución",
+              value: isViewingOtherUser 
+                ? "Para ver tu propio balance usa `/economy balance` sin especificar usuario. Para ver balances ajenos, contacta con un administrador."
+                : "Contacta con un administrador para que te asigne un rol con permisos de economía.",
+              inline: false
+            }
+          ]
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
 
+      // 4. CUARTA PRIORIDAD: Ejecutar el subcomando correspondiente
+      await interaction.deferReply();
+
+      switch (subcommand) {
+        case 'add':
+          await this.handleAddMoney(interaction, guildId);
+          break;
+        case 'remove':
+          await this.handleRemoveMoney(interaction, guildId);
+          break;
+        case 'balance':
+          await this.handleBalance(interaction, guildId);
+          break;
+        case 'top':
+          await this.handleTop(interaction, guildId);
+          break;
+        default:
+          const errorEmbed = createErrorEmbed(
+            "Subcomando No Válido",
+            "El subcomando especificado no es válido."
+          );
+          await interaction.editReply({ embeds: [errorEmbed] });
+      }
+    } catch (error) {
+      console.error('[ERROR] Error en comando economy:', error);
       const errorEmbed = createErrorEmbed(
-        'Error en Economía',
-        'Hubo un error al procesar el comando de economía.',
+        "Error del Sistema",
+        "Hubo un error ejecutando el comando de economía.",
         [{
-          name: '🔧 Solución',
-          value: 'Verifica los parámetros ingresados y vuelve a intentarlo.',
-          inline: false
-        }, {
-          name: '🆘 Error Técnico',
-          value: `\`${error.message}\``,
-          inline: false
-        }, {
-          name: '🔗 Mis Redes Sociales',
-          value: '¡Sígueme para estar al día con las últimas actualizaciones!',
-          inline: false
-        }, {
-          name: '🎮 Twitch',
-          value: '[@chuny_dev](https://www.twitch.tv/chuny_dev)',
-          inline: true
-        }, {
-          name: '💬 Discord',
-          value: '[Mi Canal](https://discord.gg/6fFHsmewSn)',
-          inline: true
-        }, {
-          name: '👤 Contacto Directo',
-          value: `<@${process.env.BOT_OWNER_ID}>`,
-          inline: true
-        }, {
-          name: '💡 ¿Necesitas Ayuda?',
-          value: `Contacta directamente a <@${process.env.BOT_OWNER_ID}> o únete a mi servidor de Discord para soporte.`,
+          name: "Solución",
+          value: "Intenta ejecutar el comando de nuevo. Si el problema persiste, contacta al soporte.",
           inline: false
         }]
       );
-
-      await interaction.editReply({ embeds: [errorEmbed] });
+      
+      if (interaction.deferred) {
+        await interaction.editReply({ embeds: [errorEmbed] });
+      } else {
+        await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
     }
   },
 
@@ -180,65 +252,53 @@ module.exports = {
     const reason = interaction.options.getString('razon') || 'No especificada';
 
     if (targetUser.bot) {
-      throw new Error('No puedes añadir dinero a un bot');
+      const errorEmbed = createErrorEmbed(
+        "Usuario No Válido",
+        "No puedes añadir dinero a un bot."
+      );
+      await interaction.editReply({ embeds: [errorEmbed] });
+      return;
     }
 
-    const result = await EconomyService.addMoney(targetUser.id, serverId, amount);
+    try {
+      const result = await EconomyService.addMoney(targetUser.id, serverId, amount);
 
-    const addMoneyEmbed = new EmbedBuilder()
-      .setTitle('💰 Dinero Añadido')
-      .setDescription(`Se ha añadido dinero exitosamente a **${targetUser.displayName}**`)
-      .setColor('#00FF00')
-      .addFields([
-        {
-          name: '👤 Usuario',
-          value: `${targetUser}`,
-          inline: true
-        },
-        {
-          name: '💵 Cantidad Añadida',
-          value: EconomyService.formatCurrency(amount),
-          inline: true
-        },
-        {
-          name: '🏦 Nuevo Balance',
-          value: EconomyService.formatCurrency(result.newBalance),
-          inline: true
-        },
-        {
-          name: '📝 Razón',
-          value: reason,
-          inline: false
-        },
-        {
-          name: '🔗 Mis Redes Sociales',
-          value: '¡Sígueme para estar al día con las últimas actualizaciones!',
-          inline: false
-        },
-        {
-          name: '🎮 Twitch',
-          value: '[@chuny_dev](https://www.twitch.tv/chuny_dev)',
-          inline: true
-        },
-        {
-          name: '💬 Discord',
-          value: '[Mi Canal](https://discord.gg/6fFHsmewSn)',
-          inline: true
-        },
-        {
-          name: '👤 Contacto Directo',
-          value: `<@${process.env.BOT_OWNER_ID}>`,
-          inline: true
-        }
-      ])
-      .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
-      .setFooter({
-        text: "Chuny BOT - Economía",
-        iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless"
-      })
-      .setTimestamp();
+      const embed = createSuccessEmbed(
+        "Dinero Añadido",
+        `Se ha añadido dinero exitosamente a **${targetUser.displayName}**`,
+        [
+          {
+            name: "👤 Usuario",
+            value: `${targetUser}`,
+            inline: true
+          },
+          {
+            name: "💵 Cantidad Añadida",
+            value: EconomyService.formatCurrency(amount),
+            inline: true
+          },
+          {
+            name: "🏦 Nuevo Balance",
+            value: EconomyService.formatCurrency(result.newBalance),
+            inline: true
+          },
+          {
+            name: "📝 Razón",
+            value: reason,
+            inline: false
+          }
+        ]
+      );
 
-    await interaction.editReply({ embeds: [addMoneyEmbed] });
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error('[ERROR] Error añadiendo dinero:', error);
+      const errorEmbed = createErrorEmbed(
+        "Error Añadiendo Dinero",
+        `Error al añadir dinero: ${error.message}`
+      );
+      await interaction.editReply({ embeds: [errorEmbed] });
+    }
   },
 
   async handleRemoveMoney(interaction, serverId) {
@@ -247,225 +307,149 @@ module.exports = {
     const reason = interaction.options.getString('razon') || 'No especificada';
 
     if (targetUser.bot) {
-      throw new Error('No puedes eliminar dinero de un bot');
+      const errorEmbed = createErrorEmbed(
+        "Usuario No Válido",
+        "No puedes eliminar dinero de un bot."
+      );
+      await interaction.editReply({ embeds: [errorEmbed] });
+      return;
     }
 
-    const result = await EconomyService.removeMoney(targetUser.id, serverId, amount);
+    try {
+      const result = await EconomyService.removeMoney(targetUser.id, serverId, amount);
 
-    const removeMoneyEmbed = new EmbedBuilder()
-      .setTitle('💸 Dinero Eliminado')
-      .setDescription(`Se ha eliminado dinero exitosamente de **${targetUser.displayName}**`)
-      .setColor('#FFA500')
-      .addFields([
-        {
-          name: '👤 Usuario',
-          value: `${targetUser}`,
-          inline: true
-        },
-        {
-          name: '💵 Cantidad Eliminada',
-          value: EconomyService.formatCurrency(amount),
-          inline: true
-        },
-        {
-          name: '🏦 Nuevo Balance',
-          value: EconomyService.formatCurrency(result.newBalance),
-          inline: true
-        },
-        {
-          name: '📝 Razón',
-          value: reason,
-          inline: false
-        },
-        {
-          name: '🔗 Mis Redes Sociales',
-          value: '¡Sígueme para estar al día con las últimas actualizaciones!',
-          inline: false
-        },
-        {
-          name: '🎮 Twitch',
-          value: '[@chuny_dev](https://www.twitch.tv/chuny_dev)',
-          inline: true
-        },
-        {
-          name: '💬 Discord',
-          value: '[Mi Canal](https://discord.gg/6fFHsmewSn)',
-          inline: true
-        },
-        {
-          name: '👤 Contacto Directo',
-          value: `<@${process.env.BOT_OWNER_ID}>`,
-          inline: true
-        }
-      ])
-      .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
-      .setFooter({
-        text: "Chuny BOT - Economía",
-        iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless"
-      })
-      .setTimestamp();
+      const embed = createSuccessEmbed(
+        "Dinero Eliminado",
+        `Se ha eliminado dinero exitosamente de **${targetUser.displayName}**`,
+        [
+          {
+            name: "👤 Usuario",
+            value: `${targetUser}`,
+            inline: true
+          },
+          {
+            name: "💵 Cantidad Eliminada",
+            value: EconomyService.formatCurrency(amount),
+            inline: true
+          },
+          {
+            name: "🏦 Nuevo Balance",
+            value: EconomyService.formatCurrency(result.newBalance),
+            inline: true
+          },
+          {
+            name: "📝 Razón",
+            value: reason,
+            inline: false
+          }
+        ]
+      );
 
-    await interaction.editReply({ embeds: [removeMoneyEmbed] });
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error('[ERROR] Error eliminando dinero:', error);
+      const errorEmbed = createErrorEmbed(
+        "Error Eliminando Dinero",
+        `Error al eliminar dinero: ${error.message}`
+      );
+      await interaction.editReply({ embeds: [errorEmbed] });
+    }
   },
 
   async handleBalance(interaction, serverId) {
     const targetUser = interaction.options.getUser('usuario') || interaction.user;
 
     if (targetUser.bot) {
-      throw new Error('Los bots no tienen balance');
-    }
-
-    // Obtener balance; el servicio garantiza creación si no existe
-    const balanceResult = await EconomyService.getBalance(targetUser.id, serverId);
-    console.log(`[DEBUG] handleBalance balanceResult=`, balanceResult);
-
-    const numericBalance = Number(balanceResult?.balance ?? 0) || 0;
-    console.log(`[DEBUG] handleBalance numericBalance=`, numericBalance);
-
-    const formattedBalance = EconomyService.formatCurrency(numericBalance);
-    console.log(`[DEBUG] handleBalance formattedBalance=`, formattedBalance);
-
-    const balanceEmbed = new EmbedBuilder()
-      .setTitle('💰 Balance del Usuario')
-      .setDescription(`Balance actual de **${targetUser.displayName}**`)
-      .setColor('#0099FF')
-      .addFields([
-        {
-          name: '👤 Usuario',
-          value: `${targetUser}`,
-          inline: true
-        },
-        {
-          name: '🏦 Balance Total',
-          value: formattedBalance,
-          inline: true
-        },
-        {
-          name: '📅 Consulta',
-          value: new Date().toLocaleString('es-ES'),
-          inline: true
-        },
-        {
-          name: '🔗 Mis Redes Sociales',
-          value: '¡Sígueme para estar al día con las últimas actualizaciones!',
-          inline: false
-        },
-        {
-          name: '🎮 Twitch',
-          value: '[@chuny_dev](https://www.twitch.tv/chuny_dev)',
-          inline: true
-        },
-        {
-          name: '💬 Discord',
-          value: '[Mi Canal](https://discord.gg/6fFHsmewSn)',
-          inline: true
-        },
-        {
-          name: '👤 Contacto Directo',
-          value: `<@${process.env.BOT_OWNER_ID}>`,
-          inline: true
-        }
-      ])
-      .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
-      .setFooter({
-        text: "Chuny BOT - Economía",
-        iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless"
-      })
-      .setTimestamp();
-
-    await interaction.editReply({ embeds: [balanceEmbed] });
-  },
-
-  async handleTop(interaction, serverId) {
-    const limit = interaction.options.getInteger('limite') || 10;
-    const topUsers = await EconomyService.getTopBalances(serverId, limit);
-
-    if (topUsers.length === 0) {
-      const noDataEmbed = new EmbedBuilder()
-        .setTitle('📊 Top Usuarios - Sin Datos')
-        .setDescription('No hay datos de economía para este servidor.')
-        .setColor('#FFA500')
-        .addFields([
-          {
-            name: '🔗 Mis Redes Sociales',
-            value: '¡Sígueme para estar al día con las últimas actualizaciones!',
-            inline: false
-          },
-          {
-            name: '🎮 Twitch',
-            value: '[@chuny_dev](https://www.twitch.tv/chuny_dev)',
-            inline: true
-          },
-          {
-            name: '💬 Discord',
-            value: '[Mi Canal](https://discord.gg/6fFHsmewSn)',
-            inline: true
-          },
-          {
-            name: '👤 Contacto Directo',
-            value: `<@${process.env.BOT_OWNER_ID}>`,
-            inline: true
-          }
-        ])
-        .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
-        .setFooter({
-          text: "Chuny BOT - Economía",
-          iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless"
-        })
-        .setTimestamp();
-
-      await interaction.editReply({ embeds: [noDataEmbed] });
+      const errorEmbed = createErrorEmbed(
+        "Usuario No Válido",
+        "Los bots no tienen balance."
+      );
+      await interaction.editReply({ embeds: [errorEmbed] });
       return;
     }
 
-    const topEmbed = new EmbedBuilder()
-      .setTitle(`📊 Top ${limit} Usuarios - Economía`)
-      .setDescription('Usuarios con más dinero en el servidor')
-      .setColor('#FFD700')
-      .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless");
+    try {
+      const balanceResult = await EconomyService.getBalance(targetUser.id, serverId);
+      const numericBalance = Number(balanceResult?.balance ?? 0) || 0;
+      const formattedBalance = EconomyService.formatCurrency(numericBalance);
 
-    let ranking = '';
-    const medals = ['🥇', '🥈', '🥉'];
+      const embed = createInfoEmbed(
+        "Balance del Usuario",
+        `Balance actual de **${targetUser.displayName}**`,
+        [
+          {
+            name: "👤 Usuario",
+            value: `${targetUser}`,
+            inline: true
+          },
+          {
+            name: "🏦 Balance Total",
+            value: formattedBalance,
+            inline: true
+          },
+          {
+            name: "📅 Consulta",
+            value: new Date().toLocaleString('es-ES'),
+            inline: true
+          }
+        ]
+      );
 
-    for (let i = 0; i < topUsers.length; i++) {
-      const user = topUsers[i];
-      const medal = i < 3 ? medals[i] : `**${i + 1}.**`;
-      ranking += `${medal} <@${user.userId}> - ${EconomyService.formatCurrency(user.balance)}\n`;
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error('[ERROR] Error obteniendo balance:', error);
+      const errorEmbed = createErrorEmbed(
+        "Error Obteniendo Balance",
+        `Error al obtener el balance: ${error.message}`
+      );
+      await interaction.editReply({ embeds: [errorEmbed] });
     }
+  },
 
-    topEmbed.addFields([
-      {
-        name: '🏆 Ranking',
-        value: ranking,
-        inline: false
-      },
-      {
-        name: '🔗 Mis Redes Sociales',
-        value: '¡Sígueme para estar al día con las últimas actualizaciones!',
-        inline: false
-      },
-      {
-        name: '🎮 Twitch',
-        value: '[@chuny_dev](https://www.twitch.tv/chuny_dev)',
-        inline: true
-      },
-      {
-        name: '💬 Discord',
-        value: '[Mi Canal](https://discord.gg/6fFHsmewSn)',
-        inline: true
-      },
-      {
-        name: '👤 Contacto Directo',
-        value: `<@${process.env.BOT_OWNER_ID}>`,
-        inline: true
+  async handleTop(interaction, serverId) {
+    const limit = interaction.options.getInteger('cantidad') || 10;
+
+    try {
+      const topUsers = await EconomyService.getTopBalances(serverId, limit);
+
+      if (topUsers.length === 0) {
+        const embed = createInfoEmbed(
+          "Top Usuarios - Sin Datos",
+          "No hay datos de economía para este servidor."
+        );
+        await interaction.editReply({ embeds: [embed] });
+        return;
       }
-    ])
-      .setFooter({
-        text: "Chuny BOT - Economía",
-        iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless"
-      })
-      .setTimestamp();
 
-    await interaction.editReply({ embeds: [topEmbed] });
+      let ranking = '';
+      const medals = ['🥇', '🥈', '🥉'];
+
+      for (let i = 0; i < topUsers.length; i++) {
+        const medal = medals[i] || `${i + 1}.`;
+        const balance = EconomyService.formatCurrency(topUsers[i].balance);
+        ranking += `${medal} <@${topUsers[i].userId}> - ${balance}\n`;
+      }
+
+      const embed = createInfoEmbed(
+        `Top ${limit} Usuarios - Economía`,
+        "Usuarios con más dinero en el servidor",
+        [
+          {
+            name: "🏆 Ranking",
+            value: ranking,
+            inline: false
+          }
+        ]
+      );
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error('[ERROR] Error obteniendo top usuarios:', error);
+      const errorEmbed = createErrorEmbed(
+        "Error Obteniendo Top",
+        `Error al obtener el top de usuarios: ${error.message}`
+      );
+      await interaction.editReply({ embeds: [errorEmbed] });
+    }
   }
 };

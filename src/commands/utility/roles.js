@@ -48,16 +48,17 @@ module.exports = {
   async execute(interaction) {
     try {
       // JERARQUÍA DE VALIDACIONES:
-      // 1. Verificar estado premium del servidor
+      // 1. Verificar estado premium del servidor (OBLIGATORIO para todos excepto propietario)
       // 2. Verificar permisos de administrador o propietario
       // 3. Verificar usuarios autorizados (si aplica)
 
-      // 1. PRIMERA PRIORIDAD: Verificar estado premium
+      // 1. PRIMERA PRIORIDAD: Verificar estado premium (OBLIGATORIO)
       const isPremium = await isServerPremium(interaction.guild.id);
       if (!isPremium) {
-        // Solo el propietario puede usar comandos en servidores no premium
+        // ÚNICO bypass permitido: propietario del bot
         const isOwner = await checkOwner(interaction);
         if (!isOwner) {
+          // SIN EXCEPCIONES: Ni administradores pueden usar comandos sin premium
           const premiumEmbed = createPremiumEmbed();
           return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
         }

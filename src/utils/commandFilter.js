@@ -18,7 +18,8 @@ const commandVisibilityMap = {
   'premium': 'owner',
   'status': 'all',
   'migrate': 'premium_roles_admin',
-  'economy': 'premium_roles_admin',
+  'economy': 'premium_economy_roles',
+  'economy-roles': 'premium_admin_owner',
   'split': 'premium_roles_admin',
   'claim': 'premium_roles_admin',
   'claim-config': 'premium_roles_admin',
@@ -207,6 +208,35 @@ const filterCommand = async (interaction) => {
 
       console.log(`[FILTER] Comando ${commandName} PERMITIDO (es admin)`);
       return true;
+    }
+
+    if (commandType === 'premium_economy_roles') {
+      console.log(`[FILTER] Comando ${commandName} es premium_economy_roles`);
+
+      // PRIMERA PRIORIDAD: Verificar estado premium ANTES que permisos de economía
+      const hasPremium = await shouldShowPremiumCommand(interaction);
+      console.log(`[FILTER] ¿Tiene premium?: ${hasPremium}`);
+
+      if (!hasPremium) {
+        // Verificar si es propietario (único bypass permitido)
+        const isOwner = await shouldShowOwnerCommand(interaction);
+        console.log(`[FILTER] No tiene premium, ¿es owner?: ${isOwner}`);
+        if (!isOwner) {
+          try {
+            const embed = createPremiumEmbed();
+            await safeReply(interaction, { embeds: [embed], ephemeral: true });
+            console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de premium`);
+          } catch (error) {
+            console.error(`[FILTER] Error enviando mensaje premium para ${commandName}:`, error);
+          }
+          return false;
+        }
+      }
+
+      // SEGUNDA PRIORIDAD: Solo con premium confirmado, verificar permisos de economía
+       // Nota: La validación específica de roles de economía se maneja en el comando individual
+       console.log(`[FILTER] Comando ${commandName} PERMITIDO (tiene premium, validación de roles en comando)`);
+       return true;
     }
 
     return true;

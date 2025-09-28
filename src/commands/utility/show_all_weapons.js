@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getAllWeapons, getWeaponCategories } = require("../../services/weaponService");
-const { createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
+const { createInfoEmbed, createErrorEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
+const { isServerPremium } = require("../../services/serverService");
+const { isOwner } = require("../../middleware/ownerCheck");
 
 /**
  * Comando para mostrar todas las armas en la base de datos
@@ -12,6 +14,24 @@ module.exports = {
 
   async execute(interaction) {
     try {
+      // JERARQUÍA DE VALIDACIONES:
+      // 1. Verificar estado premium del servidor
+      // 2. Proceder con la ejecución del comando
+
+      const guildId = interaction.guild.id;
+
+      // 1. PRIMERA PRIORIDAD: Verificar estado premium
+      const isPremium = await isServerPremium(guildId);
+      if (!isPremium) {
+        // Solo el propietario puede usar comandos en servidores no premium
+        const ownerCheck = await isOwner(interaction);
+        if (!ownerCheck) {
+          const premiumEmbed = createPremiumEmbed();
+          return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
+        }
+      }
+
+      // 2. SEGUNDA PRIORIDAD: Ejecutar el comando
       await interaction.deferReply({ ephemeral: true });
 
       const weapons = await getAllWeapons();
@@ -71,10 +91,11 @@ module.exports = {
         }]
       );
 
-      await safeReply(interaction, {
-        embeds: [errorEmbed],
-        ephemeral: true,
-      });
+      if (interaction.deferred) {
+        await interaction.editReply({ embeds: [errorEmbed] });
+      } else {
+        await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
     }
   },
 };
