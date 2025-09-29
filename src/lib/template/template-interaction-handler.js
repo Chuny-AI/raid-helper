@@ -23,7 +23,13 @@ async function handleTemplateButton(interaction) {
 async function handleTemplateModal(interaction) {
   const customId = interaction.customId;
 
-  if (customId.startsWith('template_edit_') || customId.includes('add_weapon_modal_') || customId.includes('edit_weapon_modal_') || customId.includes('new_group_modal_')) {
+  if (customId.startsWith('template_edit_') ||
+      customId.includes('add_weapon_modal_') ||
+      customId.includes('edit_weapon_modal_') ||
+      customId.includes('new_group_modal_') ||
+      customId.includes('modify_weapon_full_modal_') ||
+      customId.includes('modify_units_modal_') ||
+      customId.includes('add_url_modal_')) {
     await templateUnified.handleModalSubmit(interaction);
   } else if (customId.startsWith('template_')) {
     await templateCreate.handleModalSubmit(interaction);

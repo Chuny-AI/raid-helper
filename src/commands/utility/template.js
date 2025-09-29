@@ -22,8 +22,325 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 /**
- * Función helper para validar y renovar sesiones
+ * Función helper para obtener un grupo de armas de manera segura
+ * Maneja tanto estructura de objeto (MongoDB) como array (legacy)
  */
+function getWeaponGroupFromSession(session, groupIndex) {
+  if (!session || !session.data || !session.data.weapons) {
+    return null;
+  }
+  
+  // Si es array (legacy)
+  if (Array.isArray(session.data.weapons)) {
+    return session.data.weapons[groupIndex] || null;
+  }
+  
+  // Si es objeto (MongoDB - como 000002.json)
+  if (typeof session.data.weapons === 'object') {
+    const entries = Object.entries(session.data.weapons);
+    const entry = entries[groupIndex];
+    return entry ? entry[1] : null; // entry[0] es la clave, entry[1] es el grupo
+  }
+  
+  return null;
+}
+
+/**
+ * Función para limpiar y preparar datos para MongoDB
+ * Elimina campos problemáticos y asegura estructura correcta
+ */
+function cleanForMongoDB(data) {
+  if (!data) return data;
+  
+  // Crear copia profunda para evitar modificar el original
+  const cleaned = JSON.parse(JSON.stringify(data));
+  
+  // Eliminar campos problemáticos
+  if (cleaned._id) delete cleaned._id;
+  if (cleaned.__v) delete cleaned.__v;
+  
+  // Limpiar armas
+  if (cleaned.weapons) {
+    if (Array.isArray(cleaned.weapons)) {
+      // Legacy array structure - convertir a objeto
+      const weaponsObj = {};
+      cleaned.weapons.forEach((group, index) => {
+        const key = group.displayName || group.name || `group_${index}`;
+        weaponsObj[key] = {
+          displayName: group.displayName || group.name || key,
+          defaultEmoji: group.defaultEmoji || '⚔️',
+          data: group.data || group.weapons || []
+        };
+        
+        // Limpiar cada arma en el grupo
+        if (weaponsObj[key].data && Array.isArray(weaponsObj[key].data)) {
+          weaponsObj[key].data = weaponsObj[key].data.map(weapon => {
+            const cleanWeapon = {
+              name: weapon.name || '',
+              units: weapon.units || weapon.quantity || 1,
+              url: weapon.url || weapon.link || '',
+              emoji: weapon.emoji || weapon.emojiId || '⚔️'
+            };
+            
+            // Solo añadir campos opcionales si existen
+            if (weapon.image) cleanWeapon.image = weapon.image;
+            if (weapon.private !== undefined) cleanWeapon.private = weapon.private;
+            if (weapon.sendBuildToPrivate !== undefined) cleanWeapon.sendBuildToPrivate = weapon.sendBuildToPrivate;
+            
+            return cleanWeapon;
+          });
+        }
+      });
+      cleaned.weapons = weaponsObj;
+    } else if (typeof cleaned.weapons === 'object') {
+      // MongoDB object structure - limpiar cada grupo
+      Object.keys(cleaned.weapons).forEach(key => {
+        const group = cleaned.weapons[key];
+        if (group.data && Array.isArray(group.data)) {
+          group.data = group.data.map(weapon => {
+            const cleanWeapon = {
+              name: weapon.name || '',
+              units: weapon.units || weapon.quantity || 1,
+              url: weapon.url || weapon.link || '',
+              emoji: weapon.emoji || weapon.emojiId || '⚔️'
+            };
+            
+            // Solo añadir campos opcionales si existen
+            if (weapon.image) cleanWeapon.image = weapon.image;
+            if (weapon.private !== undefined) cleanWeapon.private = weapon.private;
+            if (weapon.sendBuildToPrivate !== undefined) cleanWeapon.sendBuildToPrivate = weapon.sendBuildToPrivate;
+            
+            return cleanWeapon;
+          });
+        }
+      });
+    }
+  }
+  
+  return cleaned;
+}
+
+/**
+ * Función mejorada para obtener y validar un grupo de armas
+ * Incluye manejo de errores detallado y logging
+ */
+async function getAndValidateWeaponGroup(session, groupIndex, interaction, operation = 'operación') {
+  console.log(`[DEBUG] getAndValidateWeaponGroup - Validando grupo ${groupIndex} para ${operation}`);
+  
+  if (!session || !session.data || !session.data.weapons) {
+    console.log(`[ERROR] getAndValidateWeaponGroup - No hay datos de armas en la sesión`);
+    return {
+      success: false,
+      error: 'No hay datos de armas en la sesión.',
+      suggestion: 'Reinicia la edición del template con /template edit.'
+    };
+  }
+  
+  // Obtener información sobre los grupos disponibles
+  let totalGroups = 0;
+  let groupNames = [];
+  let weaponGroup = null;
+  
+  if (Array.isArray(session.data.weapons)) {
+    // Legacy array structure
+    totalGroups = session.data.weapons.length;
+    groupNames = session.data.weapons.map((g, i) => `${i}: ${g.displayName || g.name || `Grupo ${i}`}`);
+    weaponGroup = session.data.weapons[groupIndex];
+    console.log(`[DEBUG] getAndValidateWeaponGroup - Estructura array: ${totalGroups} grupos`);
+  } else if (typeof session.data.weapons === 'object') {
+    // MongoDB object structure (000002.json)
+    const entries = Object.entries(session.data.weapons);
+    totalGroups = entries.length;
+    groupNames = entries.map(([key, group], i) => `${i}: ${group.displayName || group.name || key}`);
+    
+    if (groupIndex >= 0 && groupIndex < entries.length) {
+      weaponGroup = entries[groupIndex][1]; // entries[groupIndex] = [key, groupData]
+      console.log(`[DEBUG] getAndValidateWeaponGroup - Estructura objeto: ${totalGroups} grupos`);
+    }
+  }
+  
+  // Validar índice
+  if (groupIndex < 0 || groupIndex >= totalGroups) {
+    console.log(`[ERROR] getAndValidateWeaponGroup - Índice ${groupIndex} fuera de rango (0-${totalGroups - 1})`);
+    return {
+      success: false,
+      error: `Grupo de armas no encontrado. Índice ${groupIndex} está fuera de rango (0-${totalGroups - 1}).`,
+      suggestion: `Grupos disponibles: ${groupNames.join(', ')}`
+    };
+  }
+  
+  // Validar que se pudo obtener el grupo
+  if (!weaponGroup) {
+    console.log(`[ERROR] getAndValidateWeaponGroup - No se pudo obtener el grupo en índice ${groupIndex}`);
+    return {
+      success: false,
+      error: 'No se pudo obtener el grupo de armas.',
+      suggestion: 'El grupo podría estar corrupto. Reinicia la edición.'
+    };
+  }
+  
+  // Validar estructura del grupo
+  const hasValidStructure = weaponGroup.data || weaponGroup.weapons || weaponGroup.categories;
+  if (!hasValidStructure) {
+    console.log(`[ERROR] getAndValidateWeaponGroup - Grupo sin estructura válida`);
+    return {
+      success: false,
+      error: 'El grupo de armas no tiene una estructura válida.',
+      suggestion: 'El grupo podría estar corrupto. Contacta al soporte.'
+    };
+  }
+  
+  console.log(`[DEBUG] getAndValidateWeaponGroup - Grupo validado exitosamente: ${weaponGroup.displayName || weaponGroup.name || `Grupo ${groupIndex}`}`);
+  
+  return {
+    success: true,
+    group: weaponGroup,
+    totalGroups: totalGroups,
+    groupName: weaponGroup.displayName || weaponGroup.name || `Grupo ${groupIndex}`
+  };
+}
+function validateWeaponGroupExists(session, groupIndex, interaction) {
+  if (!session || !session.data || !session.data.weapons) {
+    return {
+      valid: false,
+      error: 'No hay datos de armas en la sesión.',
+      suggestion: 'Reinicia la edición del template con /template edit.'
+    };
+  }
+  
+  let totalGroups = 0;
+  let groupNames = [];
+  
+  if (Array.isArray(session.data.weapons)) {
+    // Legacy array structure
+    totalGroups = session.data.weapons.length;
+    groupNames = session.data.weapons.map((g, i) => `${i}: ${g.displayName || g.name || `Grupo ${i}`}`);
+  } else if (typeof session.data.weapons === 'object') {
+    // MongoDB object structure (000002.json)
+    const entries = Object.entries(session.data.weapons);
+    totalGroups = entries.length;
+    groupNames = entries.map(([key, group], i) => `${i}: ${group.displayName || group.name || key}`);
+  }
+  
+  if (groupIndex < 0 || groupIndex >= totalGroups) {
+    return {
+      valid: false,
+      error: `Grupo de armas no encontrado. Índice ${groupIndex} está fuera de rango (0-${totalGroups - 1}).`,
+      suggestion: `Grupos disponibles: ${groupNames.join(', ')}`
+    };
+  }
+  
+  const weaponGroup = getWeaponGroupFromSession(session, groupIndex);
+  if (!weaponGroup) {
+    return {
+      valid: false,
+      error: 'No se pudo obtener el grupo de armas.',
+      suggestion: 'El grupo podría estar corrupto. Reinicia la edición.'
+    };
+  }
+  
+  return {
+    valid: true,
+    group: weaponGroup,
+    totalGroups: totalGroups
+  };
+}
+function updateWeaponInGroup(weaponGroup, weaponIndex, updatedData) {
+  if (!weaponGroup || weaponIndex < 0) return false;
+  
+  // Estructura con array 'data' (MongoDB - 000002.json)
+  if (weaponGroup.data && Array.isArray(weaponGroup.data)) {
+    if (weaponIndex < weaponGroup.data.length) {
+      weaponGroup.data[weaponIndex] = { ...weaponGroup.data[weaponIndex], ...updatedData };
+      return true;
+    }
+  }
+  
+  // Estructura con array 'weapons' (legacy)
+  if (weaponGroup.weapons && Array.isArray(weaponGroup.weapons)) {
+    if (weaponIndex < weaponGroup.weapons.length) {
+      weaponGroup.weapons[weaponIndex] = { ...weaponGroup.weapons[weaponIndex], ...updatedData };
+      return true;
+    }
+  }
+  
+  // Estructura con categorías (legacy)
+  if (weaponGroup.categories && Array.isArray(weaponGroup.categories)) {
+    let currentIndex = 0;
+    for (const category of weaponGroup.categories) {
+      if (category.weapons && Array.isArray(category.weapons)) {
+        if (weaponIndex >= currentIndex && weaponIndex < currentIndex + category.weapons.length) {
+          const localIndex = weaponIndex - currentIndex;
+          category.weapons[localIndex] = { ...category.weapons[localIndex], ...updatedData };
+          return true;
+        }
+        currentIndex += category.weapons.length;
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Función helper para obtener un arma específica del grupo
+ */
+function getWeaponFromGroup(weaponGroup, weaponIndex) {
+  if (!weaponGroup || weaponIndex < 0) return null;
+  
+  // Estructura con array 'data' (MongoDB - 000002.json)
+  if (weaponGroup.data && Array.isArray(weaponGroup.data)) {
+    return weaponGroup.data[weaponIndex] || null;
+  }
+  
+  // Estructura con array 'weapons' (legacy)
+  if (weaponGroup.weapons && Array.isArray(weaponGroup.weapons)) {
+    return weaponGroup.weapons[weaponIndex] || null;
+  }
+  
+  // Estructura con categorías (legacy)
+  if (weaponGroup.categories && Array.isArray(weaponGroup.categories)) {
+    let currentIndex = 0;
+    for (const category of weaponGroup.categories) {
+      if (category.weapons && Array.isArray(category.weapons)) {
+        if (weaponIndex >= currentIndex && weaponIndex < currentIndex + category.weapons.length) {
+          const localIndex = weaponIndex - currentIndex;
+          return category.weapons[localIndex];
+        }
+        currentIndex += category.weapons.length;
+      }
+    }
+  }
+  
+  return null;
+}
+function getWeaponGroupIndex(session, groupKeyOrIndex) {
+  if (!session || !session.data || !session.data.weapons) {
+    return -1;
+  }
+  
+  // Si es array, devolver el índice directamente
+  if (Array.isArray(session.data.weapons)) {
+    return typeof groupKeyOrIndex === 'number' ? groupKeyOrIndex : -1;
+  }
+  
+  // Si es objeto, buscar por clave o convertir índice
+  if (typeof session.data.weapons === 'object') {
+    const entries = Object.entries(session.data.weapons);
+    
+    // Si es número, devolver el índice
+    if (typeof groupKeyOrIndex === 'number') {
+      return groupKeyOrIndex >= 0 && groupKeyOrIndex < entries.length ? groupKeyOrIndex : -1;
+    }
+    
+    // Si es string (clave), buscar el índice
+    if (typeof groupKeyOrIndex === 'string') {
+      return entries.findIndex(([key]) => key === groupKeyOrIndex);
+    }
+  }
+  
+  return -1;
+}
 function getValidSession(sessionId, userId, guildId) {
   console.log(`[DEBUG] getValidSession - Buscando sesión: ${sessionId}`);
   console.log(`[DEBUG] getValidSession - Usuario: ${userId}, Guild: ${guildId}`);
@@ -369,11 +686,19 @@ module.exports = {
       }
 
       const { session } = validSession;
-      const weaponGroup = session.data.weapons[groupIndex];
-
-      if (!weaponGroup) {
-        return await interaction.reply({ content: 'Grupo de armas no encontrado.', ephemeral: true });
+      
+      // Validar que el grupo existe antes de operar
+      const validation = await getAndValidateWeaponGroup(session, groupIndex, interaction, 'seleccionar arma para modificar');
+      if (!validation.success) {
+        const errorEmbed = createErrorEmbed('Grupo no encontrado', validation.error);
+        if (validation.suggestion) {
+          errorEmbed.addFields([{ name: 'Sugerencia', value: validation.suggestion, inline: false }]);
+        }
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
       }
+
+      const weaponGroup = validation.group;
+      console.log(`[DEBUG] handleModifyWeaponSelect - Grupo validado: ${validation.groupName}`);
 
       console.log('[DEBUG] handleModifyWeaponSelect - weaponGroup structure:', {
         hasData: !!weaponGroup.data,
@@ -489,6 +814,11 @@ module.exports = {
         .setLabel('📊 Modificar Unidades')
         .setStyle(ButtonStyle.Primary);
 
+      const modifyFullButton = new ButtonBuilder()
+        .setCustomId(`modify_weapon_full_${sessionId}_${groupIndex}_${weaponIndex}`)
+        .setLabel('🔧 Modificar Completo')
+        .setStyle(ButtonStyle.Primary);
+
       const addUrlButton = new ButtonBuilder()
         .setCustomId(`add_url_${sessionId}_${groupIndex}_${weaponIndex}`)
         .setLabel('🔗 Añadir/Editar URL')
@@ -499,15 +829,107 @@ module.exports = {
         .setLabel('🔙 Volver al Grupo')
         .setStyle(ButtonStyle.Secondary);
 
-      const row1 = new ActionRowBuilder().addComponents(deleteButton, modifyUnitsButton, addUrlButton);
-      const row2 = new ActionRowBuilder().addComponents(backButton);
+      // Abrir directamente el modal de modificación completa
+      await handleModifyWeaponFull(interaction, sessionId, groupIndex, weaponIndex, targetWeapon);
+      console.log('[DEBUG] handleModifyWeaponSelect - Modal de modificación completa abierto exitosamente');
 
-      await interaction.reply({
-        embeds: [embed],
-        components: [row1, row2],
-        ephemeral: true
-      });
-      console.log('[DEBUG] handleModifyWeaponSelect - Modal shown successfully');
+    } catch (error) {
+      console.error('Error en handleModifyWeaponSelect:', error);
+      
+      // Solo responder si la interacción no ha sido respondida
+      if (!interaction.replied && !interaction.deferred) {
+        try {
+          const errorEmbed = createErrorEmbed('Error', 'No se pudo procesar la selección de arma.');
+          await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        } catch (replyError) {
+          console.error('Error al responder con mensaje de error:', replyError);
+        }
+      }
+    }
+  },
+
+  // Manejar selección de arma para modificar - SIMPLIFICADO
+  async handleModifyWeaponSelect(interaction) {
+    try {
+      console.log('[DEBUG] handleModifyWeaponSelect - customId:', interaction.customId);
+      console.log('[DEBUG] handleModifyWeaponSelect - values:', interaction.values);
+
+      // Extraer sessionId y groupIndex del customId
+      const match = interaction.customId.match(/modify_weapon_select_(.+)_(\d+)$/);
+      if (!match) {
+        throw new Error(`Formato de customId no válido: ${interaction.customId}`);
+      }
+
+      const sessionId = match[1];
+      const groupIndex = parseInt(match[2]);
+      
+      // El valor seleccionado contiene el índice original del arma
+      const selectedValue = interaction.values[0];
+      const weaponIndex = parseInt(selectedValue);
+
+      console.log('[DEBUG] handleModifyWeaponSelect - sessionId:', sessionId, 'groupIndex:', groupIndex, 'weaponIndex:', weaponIndex);
+
+      const validSession = getValidSession(sessionId, interaction.user.id, interaction.guild.id);
+      if (!validSession) {
+        return await interaction.reply({ content: 'Sesión expirada. Por favor reinicia la edición.', ephemeral: true });
+      }
+
+      const { session } = validSession;
+      
+      // Validar que el grupo existe antes de operar
+      const validation = await getAndValidateWeaponGroup(session, groupIndex, interaction, 'seleccionar arma para modificar');
+      if (!validation.success) {
+        const errorEmbed = createErrorEmbed('Grupo no encontrado', validation.error);
+        if (validation.suggestion) {
+          errorEmbed.addFields([{ name: 'Sugerencia', value: validation.suggestion, inline: false }]);
+        }
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
+
+      const weaponGroup = validation.group;
+      console.log(`[DEBUG] handleModifyWeaponSelect - Grupo validado: ${validation.groupName}`);
+
+      // Obtener todas las armas del grupo usando la misma lógica que handleModifyWeaponInGroup
+      let weaponFound = false;
+      let targetWeapon = null;
+      
+      if (weaponGroup.data && Array.isArray(weaponGroup.data)) {
+        // Estructura con array 'data' (como en 000001.json)
+        console.log('[DEBUG] handleModifyWeaponSelect - Using data array structure');
+        targetWeapon = weaponGroup.data[weaponIndex];
+        weaponFound = !!targetWeapon;
+      } else if (weaponGroup.categories && Array.isArray(weaponGroup.categories)) {
+        // Estructura alternativa con categorías
+        console.log('[DEBUG] handleModifyWeaponSelect - Using categories structure');
+        let currentIndex = 0;
+        for (const category of weaponGroup.categories) {
+          if (category.weapons && Array.isArray(category.weapons)) {
+            for (let i = 0; i < category.weapons.length; i++) {
+              if (currentIndex === weaponIndex) {
+                targetWeapon = category.weapons[i];
+                weaponFound = true;
+                break;
+              }
+              currentIndex++;
+            }
+            if (weaponFound) break;
+          }
+        }
+      } else if (weaponGroup.weapons && Array.isArray(weaponGroup.weapons)) {
+        // Estructura con array 'weapons'
+        console.log('[DEBUG] handleModifyWeaponSelect - Using weapons array structure');
+        targetWeapon = weaponGroup.weapons[weaponIndex];
+        weaponFound = !!targetWeapon;
+      }
+
+      console.log('[DEBUG] handleModifyWeaponSelect - weaponFound:', weaponFound, 'targetWeapon:', targetWeapon);
+
+      if (!weaponFound || !targetWeapon) {
+        return await interaction.reply({ content: 'Arma no encontrada.', ephemeral: true });
+      }
+
+      // Abrir directamente el modal completo de modificación
+      await handleModifyWeaponFull(interaction, sessionId, groupIndex, weaponIndex, targetWeapon);
 
     } catch (error) {
       console.error('Error en handleModifyWeaponSelect:', error);
@@ -873,6 +1295,7 @@ module.exports = {
       // Manejar botones de modificación de armas individuales
       if (customId.startsWith('delete_weapon_') || 
           customId.startsWith('modify_units_') || 
+          customId.startsWith('modify_weapon_full_') ||
           customId.startsWith('add_url_') ||
           customId.startsWith('confirm_delete_weapon_') ||
           customId.startsWith('cancel_delete_weapon_')) {
@@ -1232,6 +1655,21 @@ module.exports = {
       // Nuevos modales de acciones individuales de armas
       else if (interaction.customId.startsWith('modify_units_modal_')) {
         await this.handleModifyUnitsModalSubmit(interaction);
+        return;
+      }
+else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
+        // Asegurar que el handler exista en el módulo
+        if (typeof this.handleModifyWeaponFullModalSubmit === 'function') {
+          await this.handleModifyWeaponFullModalSubmit(interaction);
+        } else if (typeof templateModule?.handleModifyWeaponFullModalSubmit === 'function') {
+          await templateModule.handleModifyWeaponFullModalSubmit(interaction);
+        } else if (typeof handleModifyWeaponFullModalSubmit === 'function') {
+          await handleModifyWeaponFullModalSubmit(interaction);
+        } else {
+          console.error('Handler handleModifyWeaponFullModalSubmit no está definido');
+          const errorEmbed = createErrorEmbed('Error', 'No se pudo procesar el modal de modificación completa.');
+          return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
         return;
       }
       else if (interaction.customId.startsWith('add_url_modal_')) {
@@ -3636,9 +4074,9 @@ module.exports = {
     const { session } = validSession;
     
     console.log('[DEBUG] handleConfirmDeleteWeapon - session.data:', session.data);
-    console.log('[DEBUG] handleConfirmDeleteWeapon - groupIndex:', groupIndex, 'weapons length:', session.data.weapons ? session.data.weapons.length : 'undefined');
+    console.log('[DEBUG] handleConfirmDeleteWeapon - groupIndex:', groupIndex, 'weapons type:', typeof session.data.weapons);
     
-    const weaponGroup = session.data.weapons && session.data.weapons[groupIndex];
+    const weaponGroup = getWeaponGroupFromSession(session, groupIndex);
 
     if (!weaponGroup) {
       console.log('[ERROR] handleConfirmDeleteWeapon - weaponGroup not found. Available groups:', session.data.weapons);
@@ -3731,10 +4169,18 @@ module.exports = {
       return await interaction.reply({ content: 'No se encontraron armas seleccionadas.', ephemeral: true });
     }
 
-    const weaponGroup = session.data.weapons[groupIndex];
-    if (!weaponGroup) {
-      return await interaction.reply({ content: 'Grupo de armas no encontrado.', ephemeral: true });
+    // Validar que el grupo existe antes de operar
+    const validation = await getAndValidateWeaponGroup(session, groupIndex, interaction, 'añadir armas');
+    if (!validation.success) {
+      const errorEmbed = createErrorEmbed('Grupo no encontrado', validation.error);
+      if (validation.suggestion) {
+        errorEmbed.addFields([{ name: 'Sugerencia', value: validation.suggestion, inline: false }]);
+      }
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
+
+    const weaponGroup = validation.group;
+    console.log(`[DEBUG] Añadiendo armas al grupo: ${validation.groupName}`);
 
     let updatedCount = 0;
     const updates = [];
@@ -3878,7 +4324,7 @@ async function handleModifyUpdateQuantities(interaction) {
     }
 
     const { session } = validSession;
-    const weaponGroup = session.data.weapons[groupIndex];
+    const weaponGroup = getWeaponGroupFromSession(session, groupIndex);
 
     if (!weaponGroup) {
       return await interaction.reply({ content: 'Grupo de armas no encontrado.', ephemeral: true });
@@ -3978,7 +4424,7 @@ async function handleModifyUpdateQuantities(interaction) {
     }
 
     const { session } = validSession;
-    const weaponGroup = session.data.weapons[groupIndex];
+    const weaponGroup = getWeaponGroupFromSession(session, groupIndex);
 
     if (!weaponGroup) {
       return await interaction.reply({ content: 'Grupo de armas no encontrado.', ephemeral: true });
@@ -4465,12 +4911,12 @@ async function handleGroupButton(interaction, customId) {
         return await handleDeleteGroup(interaction, actualSessionId, groupIndex);
       case 'show_group_interface':
         // Necesitamos obtener el weaponGroup para pasarlo a showGroupEditInterface
-        const weaponGroup = session.data.weapons[groupIndex];
-        if (!weaponGroup) {
-          const errorEmbed = createErrorEmbed('Error', 'Grupo de armas no encontrado.');
-          return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-        }
-        return await showGroupEditInterface(interaction, actualSessionId, weaponGroup, groupIndex);
+      const weaponGroup = getWeaponGroupFromSession(session, groupIndex);
+      if (!weaponGroup) {
+        const errorEmbed = createErrorEmbed('Error', 'Grupo de armas no encontrado.');
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
+      return await showGroupEditInterface(interaction, actualSessionId, weaponGroup, groupIndex);
       default:
         throw new Error(`Acción no reconocida: ${action}`);
     }
@@ -5546,23 +5992,8 @@ templateModule.saveTemplateChanges = async function(interaction, sessionId) {
     // Limpiar los datos antes de guardar
     const cleanedData = cleanEmojiData(session.data);
     
-    // Asegurar estructura de weapons como objeto antes de guardar
-    if (cleanedData.weapons && Array.isArray(cleanedData.weapons)) {
-      const obj = {};
-      cleanedData.weapons.forEach((g, idx) => {
-        const base = (g.displayName || g.name || `grupo_${idx + 1}`).toString().trim().toLowerCase()
-          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        let key = base || `grupo_${idx + 1}`;
-        let c = 1;
-        while (obj[key]) { key = `${base}_${c++}`; }
-        obj[key] = g;
-      });
-      cleanedData.weapons = obj;
-    }
-
-    // Aplicar limpieza final de datos
-    const finalData = cleanEmojiData(cleanedData);
+    // Aplicar limpieza final de datos para MongoDB
+    const finalData = cleanForMongoDB(cleanedData);
     
     // Actualizar el template en la base de datos
     await updateTemplate(session.templateId, finalData);
@@ -6533,16 +6964,19 @@ async function handleRemoveWeaponsSelect(interaction) {
     }
 
     const session = validSession.session;
-    if (!session.data.weapons) {
-      return await interaction.reply({
-        content: 'No se encontró el grupo de armas especificado.',
-        ephemeral: true
-      });
+    
+    // Validar que el grupo existe antes de operar
+    const validation = await getAndValidateWeaponGroup(session, groupIndex, interaction, 'modificar armas');
+    if (!validation.success) {
+      const errorEmbed = createErrorEmbed('Grupo no encontrado', validation.error);
+      if (validation.suggestion) {
+        errorEmbed.addFields([{ name: 'Sugerencia', value: validation.suggestion, inline: false }]);
+      }
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
 
-    const weaponGroup = Array.isArray(session.data.weapons)
-      ? session.data.weapons[groupIndex]
-      : Object.entries(session.data.weapons)[groupIndex]?.[1];
+    const weaponGroup = validation.group;
+    console.log(`[DEBUG] Modificando armas en grupo: ${validation.groupName}`);
 
     if (!weaponGroup) {
       return await interaction.reply({
@@ -6670,12 +7104,19 @@ async function handleDirectWeaponSelect(interaction) {
     }
 
     const session = validSession.session;
-    if (!session.data.weapons || !session.data.weapons[groupIndex]) {
-      return await interaction.reply({
-        content: 'No se encontró el grupo de armas que se está editando.',
-        ephemeral: true
-      });
+    
+    // Validar que el grupo existe antes de operar
+    const validation = await getAndValidateWeaponGroup(session, groupIndex, interaction, 'modificar arma');
+    if (!validation.success) {
+      const errorEmbed = createErrorEmbed('Grupo no encontrado', validation.error);
+      if (validation.suggestion) {
+        errorEmbed.addFields([{ name: 'Sugerencia', value: validation.suggestion, inline: false }]);
+      }
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
+
+    const weaponGroup = validation.group;
+    console.log(`[DEBUG] Modificando arma en grupo: ${validation.groupName}`);
 
     // Parsear la selección: "categoryId_weaponName"
     const [categoryId, weaponName] = selectedWeaponData.split('_');
@@ -6826,7 +7267,19 @@ async function handleModifyWeaponInGroup(interaction, sessionId, groupIndex) {
     }
 
     const { session } = validSession;
-    const weaponGroup = session.data.weapons[groupIndex];
+    
+    // Validar que el grupo existe antes de operar
+    const validation = await getAndValidateWeaponGroup(session, groupIndex, interaction, 'eliminar arma');
+    if (!validation.success) {
+      const errorEmbed = createErrorEmbed('Grupo no encontrado', validation.error);
+      if (validation.suggestion) {
+        errorEmbed.addFields([{ name: 'Sugerencia', value: validation.suggestion, inline: false }]);
+      }
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+
+    const weaponGroup = validation.group;
+    console.log(`[DEBUG] Eliminando arma del grupo: ${validation.groupName}`);
 
     if (!weaponGroup) {
       return await interaction.reply({ content: 'Grupo de armas no encontrado.', ephemeral: true });
@@ -6969,45 +7422,20 @@ templateModule.handleModifyWeaponModalSubmit = async function (interaction) {
 
     const isPrivate = weaponPrivateStr === 'true' || weaponPrivateStr === '1';
 
-    // Actualizar el arma usando la misma lógica de estructura de datos que handleModifyWeaponSelect
-    const weaponGroup = session.data.weapons[groupIndex];
+    // Actualizar el arma usando el helper para obtener el grupo correctamente
+    const weaponGroup = getWeaponGroupFromSession(session, groupIndex);
+      
+    if (!weaponGroup) {
+      const errorEmbed = createErrorEmbed('Error', 'No se pudo encontrar el grupo de armas.');
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+    
     let weapon = null;
     let weaponFound = false;
 
-    console.log('[DEBUG] handleModifyWeaponModalSubmit - weaponGroup structure:', {
-      hasData: !!weaponGroup.data,
-      hasWeapons: !!weaponGroup.weapons,
-      hasCategories: !!weaponGroup.categories
-    });
-
-    if (weaponGroup.data && Array.isArray(weaponGroup.data)) {
-      // Estructura con array 'data' (como en 000001.json)
-      console.log('[DEBUG] handleModifyWeaponModalSubmit - Using data array structure');
-      weapon = weaponGroup.data[weaponIndex];
-      weaponFound = !!weapon;
-    } else if (weaponGroup.categories && Array.isArray(weaponGroup.categories)) {
-      // Estructura alternativa con categorías
-      console.log('[DEBUG] handleModifyWeaponModalSubmit - Using categories structure');
-      let currentIndex = 0;
-      for (const category of weaponGroup.categories) {
-        if (category.weapons && Array.isArray(category.weapons)) {
-          for (let i = 0; i < category.weapons.length; i++) {
-            if (currentIndex === weaponIndex) {
-              weapon = category.weapons[i];
-              weaponFound = true;
-              break;
-            }
-            currentIndex++;
-          }
-          if (weaponFound) break;
-        }
-      }
-    } else if (weaponGroup.weapons && Array.isArray(weaponGroup.weapons)) {
-      // Estructura con array 'weapons'
-      console.log('[DEBUG] handleModifyWeaponModalSubmit - Using weapons array structure');
-      weapon = weaponGroup.weapons[weaponIndex];
-      weaponFound = !!weapon;
-    }
+    // Obtener el arma usando el helper
+    weapon = getWeaponFromGroup(weaponGroup, weaponIndex);
+    weaponFound = !!weapon;
 
     console.log('[DEBUG] handleModifyWeaponModalSubmit - weaponFound:', weaponFound, 'weapon:', weapon);
 
@@ -7019,25 +7447,40 @@ templateModule.handleModifyWeaponModalSubmit = async function (interaction) {
     // Preservar el ID original si existe
     const originalId = weapon.id;
 
-    weapon.name = weaponName;
-    weapon.units = weaponQuantity; // Campo principal en la base de datos
-    weapon.quantity = weaponQuantity; // Compatibilidad
-    weapon.emojiId = weaponEmoji; // Campo principal en la base de datos
-    weapon.emoji = weaponEmoji; // Compatibilidad
-    weapon.url = weaponLink; // Campo principal en la base de datos
-    weapon.link = weaponLink; // Compatibilidad
-    weapon.sendBuildToPrivate = isPrivate; // Campo principal en la base de datos
-    weapon.private = isPrivate; // Compatibilidad
-    
+    // Crear objeto con los datos actualizados
+    const updatedData = {
+      name: weaponName,
+      units: weaponQuantity,
+      quantity: weaponQuantity, // Compatibilidad
+      emojiId: weaponEmoji,
+      emoji: weaponEmoji, // Compatibilidad
+      url: weaponLink,
+      link: weaponLink, // Compatibilidad
+      sendBuildToPrivate: isPrivate,
+      private: isPrivate // Compatibilidad
+    };
+
     // Preservar ID original
     if (originalId) {
-      weapon.id = originalId;
+      updatedData.id = originalId;
+    }
+
+    // Actualizar el arma usando el helper
+    const updated = updateWeaponInGroup(weaponGroup, weaponIndex, updatedData);
+    
+    if (!updated) {
+      const errorEmbed = createErrorEmbed('Error', 'No se pudo actualizar el arma en el grupo.');
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
 
     // Marcar que hay cambios para poder guardar
     session.hasChanges = true;
 
     console.log('[DEBUG] handleModifyWeaponModalSubmit - Weapon updated successfully:', weapon);
+
+    // Limpiar y validar datos antes de guardar
+    const cleanedData = cleanForMongoDB(session.data);
+    console.log('[DEBUG] handleModifyWeaponModalSubmit - Data cleaned for MongoDB:', JSON.stringify(cleanedData.weapons, null, 2));
 
     const successEmbed = createSuccessEmbed('Arma Actualizada', `**${weaponName}** ha sido actualizada exitosamente.`);
 
@@ -7082,6 +7525,14 @@ const handleWeaponActionButton = async function(interaction, customId) {
       action = parts[0] + '_' + parts[1] + '_' + parts[2]; // confirm_delete_weapon, cancel_delete_weapon
       // El sessionId puede contener guiones bajos, así que necesitamos reconstruirlo
       const actionParts = 3; // confirm_delete_weapon tiene 3 partes
+      const lastTwoParts = parts.slice(-2); // Los últimos 2 son groupIndex y weaponIndex
+      groupIndex = parseInt(lastTwoParts[0]);
+      weaponIndex = parseInt(lastTwoParts[1]);
+      sessionId = parts.slice(actionParts, -2).join('_'); // Todo lo que está entre la acción y los últimos 2 números
+    } else if (customId.startsWith('modify_weapon_full_')) {
+      action = parts[0] + '_' + parts[1] + '_' + parts[2]; // modify_weapon_full
+      // El sessionId puede contener guiones bajos, así que necesitamos reconstruirlo
+      const actionParts = 3; // modify_weapon_full tiene 3 partes
       const lastTwoParts = parts.slice(-2); // Los últimos 2 son groupIndex y weaponIndex
       groupIndex = parseInt(lastTwoParts[0]);
       weaponIndex = parseInt(lastTwoParts[1]);
@@ -7162,6 +7613,9 @@ const handleWeaponActionButton = async function(interaction, customId) {
       case 'modify_units':
         await handleModifyUnits(interaction, sessionId, groupIndex, weaponIndex, targetWeapon);
         break;
+      case 'modify_weapon_full':
+        await handleModifyWeaponFull(interaction, sessionId, groupIndex, weaponIndex, targetWeapon);
+        break;
       case 'add_url':
         await handleAddUrl(interaction, sessionId, groupIndex, weaponIndex, targetWeapon);
         break;
@@ -7230,6 +7684,201 @@ const handleModifyUnits = async function(interaction, sessionId, groupIndex, wea
   modal.addComponents(row);
 
   await interaction.showModal(modal);
+};
+
+// Función para manejar el modal completo de modificación de armas
+const handleModifyWeaponFullModalSubmit = async function (interaction) {
+  try {
+    const parts = interaction.customId.split('_'); // modify_weapon_full_modal_sessionId_groupIndex_weaponIndex
+    console.log('[DEBUG] handleModifyWeaponFullModalSubmit - parts:', parts);
+    
+    // El sessionId puede contener guiones bajos, así que necesitamos reconstruirlo
+    const actionParts = 4; // modify_weapon_full_modal tiene 4 partes
+    const lastTwoParts = parts.slice(-2); // Los últimos 2 son groupIndex y weaponIndex
+    const groupIndex = parseInt(lastTwoParts[0]);
+    const weaponIndex = parseInt(lastTwoParts[1]);
+    const sessionId = parts.slice(actionParts, -2).join('_'); // Todo lo que está entre la acción y los últimos 2 números
+
+    console.log('[DEBUG] handleModifyWeaponFullModalSubmit - sessionId:', sessionId, 'groupIndex:', groupIndex, 'weaponIndex:', weaponIndex);
+
+    const validSession = getValidSession(sessionId, interaction.user.id, interaction.guild.id);
+    if (!validSession) {
+      const errorEmbed = createErrorEmbed('Sesión expirada', 'La sesión de edición ha expirado.');
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+
+    const { session } = validSession;
+    
+    // Validar que el grupo existe antes de operar
+    const validation = await getAndValidateWeaponGroup(session, groupIndex, interaction, 'modificar arma completa');
+    if (!validation.success) {
+      const errorEmbed = createErrorEmbed('Grupo no encontrado', validation.error);
+      if (validation.suggestion) {
+        errorEmbed.addFields([{ name: 'Sugerencia', value: validation.suggestion, inline: false }]);
+      }
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+
+    const weaponGroup = validation.group;
+    console.log(`[DEBUG] handleModifyWeaponFullModalSubmit - Modificando arma completa en grupo: ${validation.groupName}`);
+
+    // Obtener valores del modal (solo campos editables)
+    const weaponQuantityStr = interaction.fields.getTextInputValue('weapon_quantity')?.trim();
+    const weaponLink = interaction.fields.getTextInputValue('weapon_link')?.trim() || '';
+
+    // Validaciones (solo para campos editables)
+    const weaponQuantity = parseInt(weaponQuantityStr);
+    if (isNaN(weaponQuantity) || weaponQuantity < 1) {
+      const errorEmbed = createErrorEmbed('Error de Validación', 'La cantidad debe ser un número mayor a 0.');
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+
+    // Obtener el arma usando el helper
+    const weapon = getWeaponFromGroup(weaponGroup, weaponIndex);
+    if (!weapon) {
+      const errorEmbed = createErrorEmbed('Error', 'No se pudo encontrar el arma para actualizar.');
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+
+    // Preservar todos los datos originales y solo actualizar los campos editables
+    const updatedData = {
+      // Preservar datos originales
+      name: weapon.name,
+      emojiId: weapon.emojiId || weapon.emoji,
+      emoji: weapon.emoji || weapon.emojiId,
+      // Actualizar solo campos editables
+      units: weaponQuantity,
+      quantity: weaponQuantity, // Compatibilidad
+      url: weaponLink,
+      link: weaponLink // Compatibilidad
+    };
+
+    // Preservar ID original si existe
+    if (weapon.id) {
+      updatedData.id = weapon.id;
+    }
+
+    // Actualizar el arma usando el helper
+    const updated = updateWeaponInGroup(weaponGroup, weaponIndex, updatedData);
+    
+    if (!updated) {
+      const errorEmbed = createErrorEmbed('Error', 'No se pudo actualizar el arma en el grupo.');
+      return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+
+    // Marcar que hay cambios para poder guardar
+    session.hasChanges = true;
+
+    console.log('[DEBUG] handleModifyWeaponFullModalSubmit - Arma actualizada exitosamente:', weapon);
+
+    // Re obtener el arma actualizada para mostrar valores correctos
+    const updatedWeapon = getWeaponFromGroup(weaponGroup, weaponIndex) || updatedData;
+
+    // Preparar EMBED de confirmación (solo para el usuario que modifica)
+    const successEmbed = new EmbedBuilder()
+      .setTitle(`📝 Grupo Actualizado: ${weaponGroup.displayName || weaponGroup.name || `Grupo ${groupIndex}`}`)
+      .setDescription(`El arma **${updatedWeapon.name}** ha sido actualizada.\n\nCambios guardados en el arma (temporalmente no en MongoDB).`)
+      .addFields([
+        { name: '📊 Cantidad', value: String(updatedWeapon.units || updatedWeapon.quantity || 1), inline: true },
+        { name: '🔗 URL', value: updatedWeapon.url || updatedWeapon.link || 'Sin URL', inline: true }
+      ])
+      .setColor('#00FF00')
+      .setTimestamp();
+
+    // Botón: Volver al editor de grupo
+    const backButton = new ButtonBuilder()
+      .setCustomId(`back_to_group_${sessionId}_${groupIndex}`)
+      .setLabel('🔙 Volver al Grupo')
+      .setStyle(ButtonStyle.Secondary);
+
+    const row = new ActionRowBuilder().addComponents(backButton);
+
+    // Responder solo al usuario (ephemeral) con los botones
+    await interaction.reply({ embeds: [successEmbed], components: [row], ephemeral: true });
+
+  } catch (error) {
+    console.error('Error en handleModifyWeaponFullModalSubmit:', error);
+    
+    // Manejo mejorado de errores para modales
+    let errorMessage = 'No se pudo procesar la modificación del arma.';
+    if (error.code === 10062) {
+      errorMessage = 'La interacción expiró. Por favor, inténtalo de nuevo.';
+    } else if (error.code === 40060) {
+      errorMessage = 'Error de interacción. La sesión puede haber expirado.';
+    }
+    
+    const errorEmbed = createErrorEmbed('Error', errorMessage);
+    
+    // Intentar responder solo si no se ha respondido
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      } else if (interaction.deferred) {
+        await interaction.followUp({ embeds: [errorEmbed], ephemeral: true });
+      }
+    } catch (replyError) {
+      console.error('Error al enviar mensaje de error:', replyError);
+    }
+  }
+};
+
+// Adjuntar el handler del modal completo al módulo si no está ya asignado
+try {
+  if (typeof templateModule !== 'undefined' && typeof templateModule.handleModifyWeaponFullModalSubmit !== 'function' && typeof handleModifyWeaponFullModalSubmit === 'function') {
+    templateModule.handleModifyWeaponFullModalSubmit = handleModifyWeaponFullModalSubmit;
+  }
+} catch (e) {
+  // Ignorar errores silenciosamente para no romper el flujo
+}
+
+const handleModifyWeaponFull = async function(interaction, sessionId, groupIndex, weaponIndex, targetWeapon) {
+  try {
+    console.log(`[DEBUG] handleModifyWeaponFull - Creando modal simplificado para ${targetWeapon.name}`);
+    
+    // Crear modal simplificado solo con campos editables
+    const modal = new ModalBuilder()
+      .setCustomId(`modify_weapon_full_modal_${sessionId}_${groupIndex}_${weaponIndex}`)
+      .setTitle(`🔧 Modificar: ${targetWeapon.name}`);
+
+    // Campo para las unidades/cantidad (editable)
+    const quantityInput = new TextInputBuilder()
+      .setCustomId('weapon_quantity')
+      .setLabel('📊 Cantidad/Unidades')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ej: 5')
+      .setValue(String(targetWeapon.units || targetWeapon.quantity || 1))
+      .setRequired(true);
+
+    // Campo para la URL (editable)
+    const urlInput = new TextInputBuilder()
+      .setCustomId('weapon_link')
+      .setLabel('🔗 URL de la Build')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('https://albionfreemarket.com/builds/details/...')
+      .setValue(targetWeapon.url || targetWeapon.link || '')
+      .setRequired(false);
+
+    // Crear filas para el modal (solo campos editables)
+    const quantityRow = new ActionRowBuilder().addComponents(quantityInput);
+    const urlRow = new ActionRowBuilder().addComponents(urlInput);
+
+    // Añadir solo las filas necesarias al modal
+    modal.addComponents(quantityRow, urlRow);
+
+    // Mostrar el modal
+    await interaction.showModal(modal);
+    console.log('[DEBUG] handleModifyWeaponFull - Modal simplificado mostrado exitosamente');
+    
+  } catch (error) {
+    console.error('Error en handleModifyWeaponFull:', error);
+    const errorEmbed = createErrorEmbed('Error', 'No se pudo abrir el modal de modificación.');
+    
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    } else {
+      await interaction.followUp({ embeds: [errorEmbed], ephemeral: true });
+    }
+  }
 };
 
 const handleAddUrl = async function(interaction, sessionId, groupIndex, weaponIndex, targetWeapon) {

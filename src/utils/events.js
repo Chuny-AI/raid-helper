@@ -418,6 +418,7 @@ const getEvents = () => {
         interaction.customId.includes("edit_weapon_modal_") ||
         interaction.customId.includes("new_group_modal_") ||
         interaction.customId.startsWith("modify_weapon_modal_") ||
+        interaction.customId.startsWith("modify_weapon_full_modal_") ||
         interaction.customId.startsWith("modify_units_modal_") ||
         interaction.customId.startsWith("add_url_modal_")) {
         console.log('[DEBUG] Events: Redirigiendo group modal a templateCommand.handleModalSubmit');
