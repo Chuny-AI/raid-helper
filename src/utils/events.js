@@ -560,7 +560,30 @@ const getEvents = () => {
           });
           return;
         }
+        // Eliminar al usuario de cualquier arma y de secciones especiales antes de volver a inscribirse
         deleteUserIfExistsOnCurrentField(embed, interaction);
+        // Asegurar visibilidad permanente de las secciones
+        const waitlistFieldName = '🕒 Lista de espera';
+        const cannotGoFieldName = '🚫 No puedo ir';
+        let waitlistField = embed.data.fields.find(f => f.name === waitlistFieldName);
+        let cannotGoField = embed.data.fields.find(f => f.name === cannotGoFieldName);
+        if (!waitlistField) {
+          waitlistField = { name: waitlistFieldName, value: '—', inline: false };
+          embed.data.fields.push(waitlistField);
+        }
+        if (!cannotGoField) {
+          cannotGoField = { name: cannotGoFieldName, value: '—', inline: false };
+          embed.data.fields.push(cannotGoField);
+        }
+        // Remover al usuario de ambas listas si está presente
+        if (typeof waitlistField.value === 'string' && waitlistField.value.includes(interaction.user.toString())) {
+          const lines = waitlistField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
+          waitlistField.value = lines.length > 0 ? lines.join('\n') : '—';
+        }
+        if (typeof cannotGoField.value === 'string' && cannotGoField.value.includes(interaction.user.toString())) {
+          const lines = cannotGoField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
+          cannotGoField.value = lines.length > 0 ? lines.join('\n') : '—';
+        }
         embed.data.fields.forEach((field) => {
           if (field.name.includes(weaponCategory)) {
             // Formatear el emoji correctamente para mostrar en texto
@@ -575,9 +598,7 @@ const getEvents = () => {
 
         // PRIMERO: Actualizar el embed inmediatamente para respuesta visual rápida
         try {
-          await interaction.message.edit({
-            embeds: [embed],
-          });
+          await interaction.message.edit({ embeds: [embed] });
         } catch (updateError) {
           console.error('[ERROR] Error actualizando el mensaje del evento:', updateError);
         }
@@ -665,6 +686,121 @@ const getEvents = () => {
             console.error('Error obteniendo URL del arma:', error);
           }
         });
+      }
+
+      // Botón: mover a Lista de espera (libera cupo)
+      if (customId.startsWith('raid_waitlist-')) {
+        // Acknowledge quickly to avoid interaction failure
+        try { await interaction.deferUpdate(); } catch (e) { }
+        const lastDashIndex = customId.lastIndexOf('-');
+        const getCustomEmbedId = customId.substring(lastDashIndex + 1);
+        const templateName = customId.substring('raid_waitlist-'.length, lastDashIndex);
+
+        try {
+          // Obtener el embed actual
+          const embedsList = embedsMap[templateName];
+          const currentEmbedEntry = embedsList?.find((entry) => entry.id.trim() === getCustomEmbedId);
+          if (!currentEmbedEntry) return;
+          const embed = currentEmbedEntry.embed;
+
+          // Quitar usuario de cualquier arma y decrementar unidades
+          deleteUserIfExistsOnCurrentField(embed, interaction);
+
+          // Asegurar campo de Lista de espera
+          const waitlistFieldName = '🕒 Lista de espera';
+          let waitlistField = embed.data.fields.find(f => f.name === waitlistFieldName);
+          if (!waitlistField) {
+            waitlistField = { name: waitlistFieldName, value: '', inline: false };
+            embed.data.fields.push(waitlistField);
+          }
+          // Añadir usuario a la lista si no está ya
+          if (!waitlistField.value.includes(interaction.user.toString())) {
+            waitlistField.value += (waitlistField.value ? '\n' : '') + `${interaction.user}`;
+          }
+
+          // Remover del apartado "No puedo ir" si estaba allí
+          const cannotGoFieldName = '🚫 No puedo ir';
+          const cannotGoField = embed.data.fields.find(f => f.name === cannotGoFieldName);
+          if (cannotGoField && typeof cannotGoField.value === 'string' && cannotGoField.value.includes(interaction.user.toString())) {
+            const lines = cannotGoField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
+            cannotGoField.value = lines.join('\n');
+          }
+
+          // Actualizar visualmente el mensaje
+          await interaction.message.edit({ embeds: [embed] });
+
+          // Actualizar recordatorio con los participantes y añadir interesado
+          try {
+            const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
+            const participants = extractParticipantsFromEmbed(embed);
+            updateReminderParticipants(getCustomEmbedId, participants);
+            addInterestedUser(getCustomEmbedId, interaction.user.id);
+          } catch (remErr) {
+            console.error('[ERROR] Actualizando recordatorio (waitlist):', remErr);
+          }
+
+          await interaction.followUp({ content: 'Has sido movido a la lista de espera.', ephemeral: true });
+        } catch (err) {
+          console.error('[ERROR] raid_waitlist handler:', err);
+          await interaction.followUp({ content: 'No se pudo mover a la lista de espera.', ephemeral: true });
+        }
+        return;
+      }
+
+      // Botón: marcar No puedo ir (mueve a Lista de espera y libera cupo)
+      if (customId.startsWith('raid_cannotgo-')) {
+        // Acknowledge quickly to avoid interaction failure
+        try { await interaction.deferUpdate(); } catch (e) { }
+        const lastDashIndex = customId.lastIndexOf('-');
+        const getCustomEmbedId = customId.substring(lastDashIndex + 1);
+        const templateName = customId.substring('raid_cannotgo-'.length, lastDashIndex);
+
+        try {
+          const embedsList = embedsMap[templateName];
+          const currentEmbedEntry = embedsList?.find((entry) => entry.id.trim() === getCustomEmbedId);
+          if (!currentEmbedEntry) return;
+          const embed = currentEmbedEntry.embed;
+
+          // Quitar usuario de cualquier arma y decrementar unidades
+          deleteUserIfExistsOnCurrentField(embed, interaction);
+
+          // Asegurar campo de "No puedo ir" (sección separada)
+          const cannotGoFieldName = '🚫 No puedo ir';
+          let cannotGoField = embed.data.fields.find(f => f.name === cannotGoFieldName);
+          if (!cannotGoField) {
+            cannotGoField = { name: cannotGoFieldName, value: '', inline: false };
+            embed.data.fields.push(cannotGoField);
+          }
+          if (!cannotGoField.value.includes(interaction.user.toString())) {
+            cannotGoField.value += (cannotGoField.value ? '\n' : '') + `${interaction.user}`;
+          }
+
+          // Remover del apartado "Lista de espera" si estaba allí
+          const waitlistFieldName = '🕒 Lista de espera';
+          const waitlistField = embed.data.fields.find(f => f.name === waitlistFieldName);
+          if (waitlistField && typeof waitlistField.value === 'string' && waitlistField.value.includes(interaction.user.toString())) {
+            const lines = waitlistField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
+            waitlistField.value = lines.join('\n');
+          }
+
+          await interaction.message.edit({ embeds: [embed] });
+
+          // Actualizar recordatorio con los participantes y añadir interesado
+          try {
+            const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
+            const participants = extractParticipantsFromEmbed(embed);
+            updateReminderParticipants(getCustomEmbedId, participants);
+            addInterestedUser(getCustomEmbedId, interaction.user.id);
+          } catch (remErr) {
+            console.error('[ERROR] Actualizando recordatorio (cannotgo):', remErr);
+          }
+
+          await interaction.followUp({ content: 'Has marcado que no puedes ir. Se actualizó tu estado.', ephemeral: true });
+        } catch (err) {
+          console.error('[ERROR] raid_cannotgo handler:', err);
+          await interaction.followUp({ content: 'No se pudo actualizar tu estado.', ephemeral: true });
+        }
+        return;
       }
     }
   });

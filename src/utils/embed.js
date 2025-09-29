@@ -28,6 +28,8 @@ const createEmbed = ({
   setCategoriesAndUnitsFromTemplate(embed, template);
   setImage(embed, image, template);
   pingRoles(embed, template, finalRoles);
+  // Asegurar que las secciones principales estén siempre visibles
+  ensureParticipationSections(embed);
   return embed;
 };
 
@@ -134,6 +136,34 @@ const setCategoriesAndUnitsFromTemplate = (embed, template) => {
     embed.addFields(fieldsArray);
   }
 };
+
+/**
+ * Asegura que las secciones "Lista de espera" y "No puedo ir" existan siempre
+ */
+const ensureParticipationSections = (embed) => {
+  try {
+    const waitlistFieldName = '🕒 Lista de espera';
+    const cannotGoFieldName = '🚫 No puedo ir';
+
+    const hasWaitlist = embed.data.fields?.some(f => f.name === waitlistFieldName);
+    const hasCannotGo = embed.data.fields?.some(f => f.name === cannotGoFieldName);
+
+    if (!hasWaitlist) {
+      embed.addFields({ name: waitlistFieldName, value: '—', inline: false });
+    }
+    if (!hasCannotGo) {
+      embed.addFields({ name: cannotGoFieldName, value: '—', inline: false });
+    }
+  } catch (e) {
+    // No romper si el embed aún no tiene fields
+    embed.addFields(
+      { name: '🕒 Lista de espera', value: '—', inline: false },
+      { name: '🚫 No puedo ir', value: '—', inline: false }
+    );
+  }
+};
+
+module.exports.embedsMap = embedsMap;
 
 /**
  * Setea la imagen del embed

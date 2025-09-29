@@ -447,16 +447,42 @@ module.exports = {
       let raidMessage;
       if (hasRolesToNotify) {
         console.log(`[DEBUG RAID] Publicando con reply() para mencionar roles`);
+        const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+        const extraRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`raid_waitlist-${templateName}-${interaction.id}`)
+            .setLabel('Lista de espera')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('🕒'),
+          new ButtonBuilder()
+            .setCustomId(`raid_cannotgo-${templateName}-${interaction.id}`)
+            .setLabel('No puedo ir')
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji('🚫')
+        );
         raidMessage = await interaction.reply({
           embeds: [embed],
-          components: [row],
+          components: [row, extraRow],
           content: notificationContent || undefined,
         });
       } else {
         console.log(`[DEBUG RAID] Publicando con safeReply() sin roles`);
+        const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+        const extraRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`raid_waitlist-${templateName}-${interaction.id}`)
+            .setLabel('Lista de espera')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('🕒'),
+          new ButtonBuilder()
+            .setCustomId(`raid_cannotgo-${templateName}-${interaction.id}`)
+            .setLabel('No puedo ir')
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji('🚫')
+        );
         raidMessage = await safeReply(interaction, {
           embeds: [embed],
-          components: [row],
+          components: [row, extraRow],
           content: notificationContent || undefined,
         });
       }
