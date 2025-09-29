@@ -1169,19 +1169,21 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle('📝 Editor de Templates')
-        .setDescription(`**${template.title}**\n\n¿Qué deseas editar?`)
+        .setDescription(`**${template.title || 'Sin título'}**\n\n¿Qué deseas editar?`)
         .setColor(0x00FFFF)
         .addFields([
           {
             name: '📋 Información Básica',
-            value: `Título: \`${template.title}\``,
+            value: `Título: \`${template.title || 'Sin título'}\``,
             inline: true
           },
           {
             name: '📝 Descripción',
-            value: template.description.length > 150
-              ? template.description.substring(0, 150) + '...'
-              : template.description,
+            value: (typeof template.description === 'string' && template.description.length > 0)
+              ? (template.description.length > 150
+                ? template.description.substring(0, 150) + '...'
+                : template.description)
+              : 'Sin descripción',
             inline: false
           },
           {
