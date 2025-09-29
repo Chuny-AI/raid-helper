@@ -596,6 +596,14 @@ const getEvents = () => {
           }
         });
 
+        // Actualizar contador de participantes (solo usuarios con arma)
+        try {
+          const { updateParticipantsCounter } = require('./embed');
+          updateParticipantsCounter(embed);
+        } catch (counterErr) {
+          console.error('[WARN] No se pudo actualizar el contador de participantes:', counterErr);
+        }
+
         // PRIMERO: Actualizar el embed inmediatamente para respuesta visual rápida
         try {
           await interaction.message.edit({ embeds: [embed] });
@@ -726,7 +734,13 @@ const getEvents = () => {
             cannotGoField.value = lines.join('\n');
           }
 
-          // Actualizar visualmente el mensaje
+          // Actualizar contador de participantes y visualmente el mensaje
+          try {
+            const { updateParticipantsCounter } = require('./embed');
+            updateParticipantsCounter(embed);
+          } catch (counterErr) {
+            console.error('[WARN] No se pudo actualizar el contador (waitlist):', counterErr);
+          }
           await interaction.message.edit({ embeds: [embed] });
 
           // Actualizar recordatorio con los participantes y añadir interesado
@@ -783,6 +797,13 @@ const getEvents = () => {
             waitlistField.value = lines.join('\n');
           }
 
+          // Actualizar contador de participantes y visualmente el mensaje
+          try {
+            const { updateParticipantsCounter } = require('./embed');
+            updateParticipantsCounter(embed);
+          } catch (counterErr) {
+            console.error('[WARN] No se pudo actualizar el contador (cannotgo):', counterErr);
+          }
           await interaction.message.edit({ embeds: [embed] });
 
           // Actualizar recordatorio con los participantes y añadir interesado

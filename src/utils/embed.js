@@ -30,6 +30,10 @@ const createEmbed = ({
   pingRoles(embed, template, finalRoles);
   // Asegurar que las secciones principales estén siempre visibles
   ensureParticipationSections(embed);
+  // Inicializar y mostrar contador de participantes activos
+  updateParticipantsCounter(embed);
+  // Agregar enlaces de redes sociales al final (debajo de "No puedo ir")
+  addSocialLinks(embed);
   return embed;
 };
 
@@ -57,29 +61,6 @@ const setFooter = (embed) => {
       iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setTimestamp();
-
-  embed.addFields(
-    {
-      name: "🔗 Mis Redes Sociales",
-      value: "¡Sígueme para estar al día con las últimas actualizaciones!",
-      inline: false
-    },
-    {
-      name: "🎮 Twitch",
-      value: "[@chuny_dev](https://www.twitch.tv/chuny_dev)",
-      inline: true
-    },
-    {
-      name: "💬 Discord",
-      value: "[Mi Canal](https://discord.gg/6fFHsmewSn)",
-      inline: true
-    },
-    {
-      name: "👤 Contacto Directo",
-      value: "<@464241835930419210>",
-      inline: true
-    }
-  );
 };
 
 /**
@@ -162,6 +143,96 @@ const ensureParticipationSections = (embed) => {
     );
   }
 };
+
+/**
+ * Cuenta los participantes activos (solo usuarios inscritos en armas)
+ * Excluye "Lista de espera" y "No puedo ir"
+ */
+const countActiveParticipants = (embed) => {
+  try {
+    const fields = embed?.data?.fields || [];
+    const waitlistFieldName = '🕒 Lista de espera';
+    const cannotGoFieldName = '🚫 No puedo ir';
+    const userRegex = /<@!?\d+>/g;
+    const uniqueUsers = new Set();
+
+    for (const field of fields) {
+      if (!field || typeof field.value !== 'string') continue;
+      // Contar solo en campos de armas que siguen el patrón "(X/Y):"
+      const isWeaponField = typeof field.name === 'string' && /\(\d+\/\d+\):/.test(field.name);
+      if (!isWeaponField) continue;
+      if (field.name === waitlistFieldName || field.name === cannotGoFieldName) continue;
+      const matches = field.value.match(userRegex);
+      if (matches) {
+        matches.forEach(m => uniqueUsers.add(m));
+      }
+    }
+    return uniqueUsers.size;
+  } catch (e) {
+    return 0;
+  }
+};
+
+/**
+ * Actualiza o inserta el contador de participantes encima de la lista de espera
+ */
+const updateParticipantsCounter = (embed) => {
+  try {
+    const fields = embed?.data?.fields || [];
+    const counterName = '👥 Participantes';
+    const waitlistFieldName = '🕒 Lista de espera';
+    const count = String(countActiveParticipants(embed));
+
+    // Remover cualquier contador previo
+    const filtered = fields.filter(f => f.name !== counterName);
+
+    // Calcular posición para insertar (antes de la lista de espera si existe)
+    const waitIdx = filtered.findIndex(f => f.name === waitlistFieldName);
+    const counterField = { name: counterName, value: count, inline: false };
+
+    if (waitIdx >= 0) {
+      filtered.splice(waitIdx, 0, counterField);
+    } else {
+      filtered.unshift(counterField);
+    }
+
+    embed.data.fields = filtered;
+  } catch (e) {
+    // Fallback: añadir al inicio
+    const count = String(countActiveParticipants(embed));
+    embed.addFields({ name: '👥 Participantes', value: count, inline: false });
+  }
+};
+
+/**
+ * Agrega enlaces de redes sociales al final del embed (debajo de "No puedo ir")
+ */
+const addSocialLinks = (embed) => {
+  embed.addFields(
+    {
+      name: "🔗 Mis Redes Sociales",
+      value: "¡Sígueme para estar al día con las últimas actualizaciones!",
+      inline: false
+    },
+    {
+      name: "🎮 Twitch",
+      value: "[@chuny_dev](https://www.twitch.tv/chuny_dev)",
+      inline: true
+    },
+    {
+      name: "💬 Discord",
+      value: "[Mi Canal](https://discord.gg/6fFHsmewSn)",
+      inline: true
+    },
+    {
+      name: "👤 Contacto Directo",
+      value: "<@464241835930419210>",
+      inline: true
+    }
+  );
+};
+
+module.exports.embedsMap = embedsMap;
 
 module.exports.embedsMap = embedsMap;
 
@@ -507,4 +578,5 @@ module.exports = {
   createGoToEventButton,
   createMassNotificationComponents,
   createReminderComponents,
+  updateParticipantsCounter,
 };
