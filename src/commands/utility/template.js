@@ -1233,11 +1233,6 @@ module.exports = {
       const actionRow = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
-            .setCustomId(`template_edit_preview_${sessionId}`)
-            .setLabel('Vista Previa')
-            .setStyle(ButtonStyle.Success)
-            .setEmoji('👁️'),
-          new ButtonBuilder()
             .setCustomId(`template_edit_save_${sessionId}`)
             .setLabel('Guardar Cambios')
             .setStyle(ButtonStyle.Success)
@@ -1387,9 +1382,9 @@ module.exports = {
         case 'image':
           await this.showEditImageModal(interaction, sessionId);
           break;
-        case 'preview':
-          await this.showEditPreview(interaction, sessionId);
-          break;
+        // case 'preview':
+        // Eliminado: la vista previa ya no es necesaria
+        // break;
         case 'save':
           await templateModule.saveTemplateChanges(interaction, sessionId);
           break;
@@ -2217,11 +2212,6 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
 
     const actionRow = new ActionRowBuilder()
       .addComponents(
-        new ButtonBuilder()
-          .setCustomId(`template_edit_preview_${sessionId}`)
-          .setLabel('👁️ Vista Previa')
-          .setStyle(ButtonStyle.Success)
-          .setEmoji('👁️'),
         new ButtonBuilder()
           .setCustomId(`template_edit_save_${sessionId}`)
           .setLabel('💾 Guardar Cambios')
@@ -3890,94 +3880,8 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
     }
   },
 
-  // Mostrar vista previa del template editado
-  async showEditPreview(interaction, sessionId) {
-    const session = templateEditSessions.get(sessionId);
-    const template = session.data;
-
-    // Crear embed de vista previa similar al template final
-    const previewEmbed = new EmbedBuilder()
-      .setTitle(`🎯 ${template.title || 'Sin título'}`)
-      .setDescription(template.description || 'Sin descripción')
-      .setColor(parseInt((template.color || '#0099ff').replace('#', ''), 16))
-      .addFields([
-        {
-          name: '⏱️ Duración',
-          value: template.time || 'No especificada',
-          inline: true
-        },
-        {
-          name: '🔔 Recordatorio',
-          value: template.reminder || '5m',
-          inline: true
-        },
-        {
-          name: '📢 Notificar Todos',
-          value: template.notifyAll ? 'Sí' : 'No',
-          inline: true
-        }
-      ]);
-
-    if (template.image) {
-      previewEmbed.setImage(template.image);
-    }
-
-    // Añadir información sobre armas y roles si existen (soporta array u objeto)
-    const { client } = require('../../utils/client');
-    const renderEmoji = (emojiLike) => {
-      if (!emojiLike) return '⚔️';
-      // Si es unicode (contiene caracteres no dígitos o es corto), devolver tal cual
-      if (typeof emojiLike === 'string' && !/^\d{15,20}$/.test(emojiLike)) return emojiLike;
-      const id = String(emojiLike);
-      try {
-        // Buscar en cache global del cliente primero
-        const globalEmoji = client?.emojis?.cache?.get(id);
-        if (globalEmoji) return globalEmoji.toString();
-        // Fallback: intentar en el guild actual
-        const guildEmoji = interaction.guild?.emojis?.cache?.get(id);
-        if (guildEmoji) return guildEmoji.toString();
-      } catch { }
-      // Fallback mejorado: usar formato correcto para emoji personalizado
-      return `<:weapon:${id}>`;
-    };
-    
-    try {
-      let weaponsInfo = '';
-      if (Array.isArray(template.weapons)) {
-        // Formato de editor: [{ categories: [{ name, weapons: [...] }] }]
-        weaponsInfo = template.weapons.map((group, idx) => {
-          const total = (group.categories || []).reduce((acc, c) => acc + ((c.weapons || []).length), 0);
-          const cats = (group.categories || []).map(c => c.name).join(', ') || '—';
-          const name = group.name || group.displayName || `Grupo ${idx + 1}`;
-          const emoji = renderEmoji(group.defaultEmoji);
-          return `• ${emoji} ${name}: ${total} armas (${cats})`;
-        }).join('\n');
-      } else if (template.weapons && typeof template.weapons === 'object') {
-        // Formato de creación: { key: { displayName, data: [...] }
-        weaponsInfo = Object.values(template.weapons).map(wc => {
-          const count = (wc.data || []).length;
-          return `• ${wc.displayName}: ${count} armas`;
-        }).join('\n');
-      }
-
-      // Crear el embed con la información
-      const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle('📋 Información del Template')
-        .setDescription(`**Nombre:** ${template.name}\n**ID:** ${template.id}`)
-        .addFields([
-          { name: '🏛️ Roles', value: rolesInfo || 'No hay roles configurados', inline: false },
-          { name: '⚔️ Armas', value: weaponsInfo || 'No hay armas configuradas', inline: false }
-        ]);
-
-      await interaction.reply({ embeds: [embed], ephemeral: true });
-
-    } catch (error) {
-      console.error('Error en handleTemplateInfo:', error);
-      const errorEmbed = createErrorEmbed('Error', 'No se pudo obtener la información del template.');
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-    }
-  },
+  // Mostrar vista previa del template editado (ELIMINADO)
+  // async showEditPreview(interaction, sessionId) { }
 
   // Función para manejar el select menu de actualización de cantidades
   handleUpdateQuantitySelect: async function(interaction) {

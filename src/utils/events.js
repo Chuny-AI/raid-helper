@@ -623,9 +623,24 @@ const getEvents = () => {
               // Si no hay id (datos legacy), intentar por nombre dentro de la categoría extraída
               if (!foundItem) {
                 for (const weapon of weaponGroups) {
-                  if (weapon.displayName === weaponCategory && weapon.data && Array.isArray(weapon.data)) {
-                    foundItem = weapon.data.find(item => item.name && item.name.trim().toLowerCase() === weaponCategory.trim().toLowerCase());
+                  if (weapon.displayName === weaponCategoryFromValue && weapon.data && Array.isArray(weapon.data)) {
+                    foundItem = weapon.data.find(item => item.name && item.name.trim().toLowerCase() === weaponCategoryFromValue.trim().toLowerCase());
                     if (foundItem) break;
+                  }
+                }
+              }
+
+              // Fallback adicional: usar el índice recibido cuando no hay id ni coincidencia por nombre
+              if (!foundItem) {
+                const idx = parseInt(indexPart);
+                if (!isNaN(idx)) {
+                  for (const weapon of weaponGroups) {
+                    if (weapon.displayName === weaponCategoryFromValue && weapon.data && Array.isArray(weapon.data)) {
+                      if (idx >= 0 && idx < weapon.data.length) {
+                        foundItem = weapon.data[idx];
+                        break;
+                      }
+                    }
                   }
                 }
               }
