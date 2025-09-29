@@ -34,7 +34,24 @@ const filterCommand = async (interaction) => {
     }
 
     const commandName = interaction.commandName;
-    const commandType = commandVisibilityMap[commandName];
+    let commandType = commandVisibilityMap[commandName];
+
+    // Reglas específicas por subcomando
+    if (commandName === 'claim') {
+      let subcommand = null;
+      try {
+        subcommand = interaction.options.getSubcommand();
+      } catch (_) {}
+
+      // Permitir `claim setup` con premium + roles autorizados (sin requerir admin)
+      if (subcommand === 'setup') {
+        commandType = 'premium_authorized_roles';
+      } else if (subcommand === 'create' || subcommand === 'cancel' || subcommand === 'complete') {
+        // Crear/cancelar/completar: requerir solo premium (sin admin). 
+        // Las reglas de permisos por ownership/roles se aplican dentro de claim.js
+        commandType = 'premium_only';
+      }
+    }
 
     console.log(`[FILTER] Comando: ${commandName}, Tipo: ${commandType}`);
 

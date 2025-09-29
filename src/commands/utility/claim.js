@@ -1,6 +1,7 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 const ClaimService = require('../../services/claimService');
 const { createErrorEmbed, createSuccessEmbed } = require('../../utils/errorEmbeds');
+const { checkAuthorizedRole } = require('../../middleware/roleCheck');
 
 /**
  * Comando para crear claims de actividades de Albion Online
@@ -62,6 +63,11 @@ module.exports = {
             .setDescription('ID del claim a cancelar')
             .setRequired(true)
         )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('setup')
+        .setDescription('Configura automáticamente la categoría y canales para el sistema de claims')
     ),
 
   async execute(interaction) {
@@ -107,6 +113,9 @@ module.exports = {
         case 'cancel':
           await this.handleCancelClaim(interaction);
           break;
+        case 'setup':
+          await this.handleSetupClaims(interaction);
+          break;
       }
     } catch (error) {
       console.error('[ERROR] Error en comando claim:', error);
@@ -149,10 +158,10 @@ module.exports = {
       const config = await ClaimChannelService.getChannelConfig(interaction.guild.id);
 
       const missingChannels = [];
-      if (!config || !config.claimsChannelId) missingChannels.push('**Canal de Claims** (`/claim-config set claims`)');
-      if (!config || !config.remindersChannelId) missingChannels.push('**Canal de Recordatorios** (`/claim-config set reminders`)');
-      if (!config || !config.successChannelId) missingChannels.push('**Canal de Claims Exitosos** (`/claim-config set success`)');
-      if (!config || !config.closedChannelId) missingChannels.push('**Canal de Claims Cerrados** (`/claim-config set closed`)');
+      if (!config || !config.claimsChannelId) missingChannels.push('**Canal de Claims** (usa `/claim setup`)');
+      if (!config || !config.remindersChannelId) missingChannels.push('**Canal de Recordatorios** (usa `/claim setup`)');
+      if (!config || !config.successChannelId) missingChannels.push('**Canal de Claims Completados** (usa `/claim setup`)');
+      if (!config || !config.closedChannelId) missingChannels.push('**Canal de Claims Cancelados** (usa `/claim setup`)');
 
       if (missingChannels.length > 0) {
         const errorEmbed = createErrorEmbed(
@@ -164,10 +173,10 @@ module.exports = {
             inline: false
           }, {
             name: '💡 Solución',
-            value: 'Un administrador debe configurar todos los canales listados arriba antes de poder crear claims.',
-            inline: false
-          }]
-        );
+          value: 'Ejecuta `/claim setup` para crear y asignar los canales automáticamente.',
+          inline: false
+        }]
+      );
         await interaction.editReply({ embeds: [errorEmbed] });
         return;
       }
@@ -385,6 +394,76 @@ module.exports = {
       await interaction.editReply({
         embeds: [errorEmbed]
       });
+    }
+  },
+
+  /**
+   * Configura automáticamente la categoría y canales para claims
+   */
+  async handleSetupClaims(interaction) {
+    try {
+      // Verificación de permisos: Administrador o rol autorizado
+      const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+      const hasAuthorizedRole = await checkAuthorizedRole(interaction);
+      if (!isAdmin && !hasAuthorizedRole) {
+        const errorEmbed = createErrorEmbed(
+          'Acceso denegado',
+          'Necesitas permisos de Administrador o estar en los roles autorizados para ejecutar `/claim setup`.'
+        );
+        return await interaction.editReply({ embeds: [errorEmbed] });
+      }
+
+      const guild = interaction.guild;
+      // Crear o reutilizar categoría "claims"
+      let category = guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name.toLowerCase() === 'claims');
+      if (!category) {
+        category = await guild.channels.create({ name: 'claims', type: ChannelType.GuildCategory });
+      }
+
+      // Helper para crear o reutilizar un canal bajo la categoría
+      const ensureChannel = async (name) => {
+        let ch = guild.channels.cache.find(c => c.type === ChannelType.GuildText && c.name.toLowerCase() === name && c.parentId === category.id);
+        if (!ch) {
+          ch = await guild.channels.create({ name, type: ChannelType.GuildText, parent: category.id });
+        }
+        return ch;
+      };
+
+      const claimsChannel = await ensureChannel('claims');
+      const remindersChannel = await ensureChannel('recordatorios');
+      const cancelledChannel = await ensureChannel('cancelados');
+      const completedChannel = await ensureChannel('completados');
+
+      // Guardar configuración en BD usando el servicio existente
+      const ClaimChannelService = require('../../services/claimChannelService');
+      const guildId = guild.id;
+      const guildName = guild.name;
+      const byUser = interaction.user.id;
+
+      await ClaimChannelService.setClaimsChannel(guildId, guildName, claimsChannel.id, claimsChannel.name, byUser);
+      await ClaimChannelService.setRemindersChannel(guildId, guildName, remindersChannel.id, remindersChannel.name, byUser);
+      await ClaimChannelService.setClosedChannel(guildId, guildName, cancelledChannel.id, cancelledChannel.name, byUser);
+      await ClaimChannelService.setSuccessChannel(guildId, guildName, completedChannel.id, completedChannel.name, byUser);
+
+      const successEmbed = createSuccessEmbed(
+        'Configuración de Claims Completada',
+        'Se creó/asignó la categoría y los canales por defecto.'
+      );
+      successEmbed.addFields(
+        { name: '📂 Categoría', value: category.name, inline: true },
+        { name: '📝 Claims', value: `<#${claimsChannel.id}>`, inline: true },
+        { name: '⏰ Recordatorios', value: `<#${remindersChannel.id}>`, inline: true },
+        { name: '❌ Cancelados', value: `<#${cancelledChannel.id}>`, inline: true },
+        { name: '✅ Completados', value: `<#${completedChannel.id}>`, inline: true }
+      );
+
+      return await interaction.editReply({ embeds: [successEmbed] });
+    } catch (error) {
+      const errorEmbed = createErrorEmbed(
+        'Error en Claim Setup',
+        `No se pudo configurar los canales automáticamente: ${error.message}`
+      );
+      return await interaction.editReply({ embeds: [errorEmbed] });
     }
   }
 };
