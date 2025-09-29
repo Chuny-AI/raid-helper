@@ -95,7 +95,7 @@ module.exports = {
           const categoryDefaultEmoji = categoryData.defaultEmoji;
 
           for (const weaponItem of categoryData.data) {
-            const { emoji, name, image = "", url = "", sendBuildToPrivate = true } = weaponItem;
+            const { emoji, name, image = "", url = "" } = weaponItem;
             const emojiId = emoji;
 
             if (!emojiId || !name) {
@@ -112,8 +112,7 @@ module.exports = {
                 categoryDisplayName,
                 categoryDefaultEmoji,
                 image,
-                url,
-                sendBuildToPrivate
+                url
               });
               createdCount++;
             } catch (dbError) {

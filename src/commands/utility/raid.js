@@ -6,6 +6,7 @@ const { createSelect } = require("../../utils/select");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { createErrorEmbed, createWarningEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
+const { checkAuthorizedRole } = require('../../middleware/roleCheck');
 
 
 /**
@@ -143,6 +144,17 @@ module.exports = {
       if (!isPremium) {
         const premiumEmbed = createPremiumEmbed();
         await interaction.editReply({ embeds: [premiumEmbed], ephemeral: true });
+        return;
+      }
+
+      // Verificar roles autorizados (authorizedroles), independiente de economy/decode
+      const hasAuthorizedRole = await checkAuthorizedRole(interaction);
+      if (!hasAuthorizedRole) {
+        const errorEmbed = createErrorEmbed(
+          'Acceso denegado',
+          'No tienes un rol autorizado para usar el comando /raid en este servidor.\nPide a un administrador que te agregue a la lista de roles autorizados.'
+        );
+        await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
         return;
       }
 

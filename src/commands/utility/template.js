@@ -695,33 +695,7 @@ module.exports = {
           title: template.title,
           description: template.description,
           image: template.image,
-          weapons: Array.isArray(template.weapons) ? template.weapons :
-            (template.weapons && typeof template.weapons === 'object') ?
-              Object.values(template.weapons).map(weaponGroup => {
-                // Si es formato antiguo (sin estructura de grupo)
-                if (weaponGroup.data && Array.isArray(weaponGroup.data)) {
-                  return {
-                    name: weaponGroup.displayName || weaponGroup.category || 'Grupo Sin Nombre',
-                    defaultEmoji: weaponGroup.defaultEmoji || '⚔️',
-                    categories: [{
-                      name: weaponGroup.category || 'General',
-                      weapons: weaponGroup.data.map(weapon => ({
-                        id: weapon.id || Date.now() + Math.random(),
-                        name: weapon.name,
-                        quantity: weapon.units || weapon.quantity || 1,
-                        units: weapon.units || weapon.quantity || 1, // Compatibilidad
-                        emoji: weapon.emojiId || weapon.emoji || '⚔️',
-                        emojiId: weapon.emojiId || weapon.emoji || '⚔️', // Preservar emojiId
-                        image: weapon.image || '',
-                        url: weapon.url || '',
-                        sendBuildToPrivate: weapon.sendBuildToPrivate || false
-                      }))
-                    }]
-                  };
-                }
-                // Si ya tiene el formato correcto
-                return weaponGroup;
-              }) : []
+          weapons: template.weapons // Mantener la estructura original sin conversión
         },
         hasChanges: false,
         step: 'overview'
@@ -790,14 +764,24 @@ module.exports = {
           },
           {
             name: '⚔️ Grupos de Armas',
-            value: template.weapons && template.weapons.length > 0
-              ? template.weapons.map((weaponGroup, index) => {
-                const totalWeapons = weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0);
-                const categoryNames = weaponGroup.categories.map(cat => cat.name).join(', ');
-                const groupName = weaponGroup.name || weaponGroup.displayName || `Grupo ${index + 1}`;
-                const emojiRendered = renderEmoji(weaponGroup.defaultEmoji);
-                return `• ${emojiRendered} ${groupName} (${totalWeapons} armas) - ${categoryNames}`;
-              }).join('\n')
+            value: template.weapons && (Array.isArray(template.weapons) ? template.weapons.length > 0 : Object.keys(template.weapons).length > 0)
+              ? (Array.isArray(template.weapons) 
+                  ? template.weapons.map((weaponGroup, index) => {
+                      // Estructura legacy con categories
+                      const totalWeapons = weaponGroup.categories?.reduce((total, cat) => total + (cat.weapons?.length || 0), 0) || 0;
+                      const categoryNames = weaponGroup.categories?.map(cat => cat.name).join(', ') || '';
+                      const groupName = weaponGroup.name || weaponGroup.displayName || `Grupo ${index + 1}`;
+                      const emojiRendered = renderEmoji(weaponGroup.defaultEmoji);
+                      return `• ${emojiRendered} ${groupName} (${totalWeapons} armas) - ${categoryNames}`;
+                    }).join('\n')
+                  : Object.entries(template.weapons).map(([groupKey, weaponGroup], index) => {
+                      // Estructura nueva con data
+                      const totalWeapons = weaponGroup.data?.length || 0;
+                      const groupName = weaponGroup.displayName || groupKey;
+                      const emojiRendered = renderEmoji(weaponGroup.defaultEmoji);
+                      return `• ${emojiRendered} ${groupName} (${totalWeapons} armas)`;
+                    }).join('\n')
+                )
               : 'Sin grupos configurados',
             inline: false
           }
@@ -2434,15 +2418,64 @@ module.exports = {
         .setColor(parseInt((template.color || '#0099ff').replace('#', ''), 16));
 
       // Mostrar grupos existentes
-      if (template.weapons && template.weapons.length > 0) {
-        const weaponsList = template.weapons.map((weaponGroup, index) => {
-          const categoryNames = weaponGroup.categories.map(cat => cat.name).join(', ');
-          const totalWeapons = weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0);
-          const groupName = weaponGroup.name || `Grupo ${index + 1}`;
-          const groupEmoji = renderEmoji(weaponGroup.defaultEmoji);
+      if (template.weapons && (Array.isArray(template.weapons) ? template.weapons.length > 0 : Object.keys(template.weapons).length > 0)) {
+        let weaponsList;
+        let selectOptions;
+        
+        if (Array.isArray(template.weapons)) {
+          // Estructura de array (legacy)
+          weaponsList = template.weapons.map((weaponGroup, index) => {
+            const categoryNames = weaponGroup.categories?.map(cat => cat.name).join(', ') || '';
+            const totalWeapons = weaponGroup.categories?.reduce((total, cat) => total + (cat.weapons?.length || 0), 0) || 0;
+            const groupName = weaponGroup.name || weaponGroup.displayName || `Grupo ${index + 1}`;
+            const groupEmoji = renderEmoji(weaponGroup.defaultEmoji);
 
-          return `${groupEmoji} **${groupName}**\n• ${totalWeapons} armas configuradas\n• Categorías: ${categoryNames || 'Ninguna'}`;
-        }).join('\n\n');
+            return `${groupEmoji} **${groupName}**\n• ${totalWeapons} armas configuradas\n• Categorías: ${categoryNames || 'Ninguna'}`;
+          }).join('\n\n');
+
+          selectOptions = template.weapons.map((weaponGroup, index) => {
+            const categoryNames = weaponGroup.categories?.map(cat => cat.name).join(', ') || '';
+            const totalWeapons = weaponGroup.categories?.reduce((total, cat) => total + (cat.weapons?.length || 0), 0) || 0;
+            const groupName = weaponGroup.name || weaponGroup.displayName || `Grupo ${index + 1}`;
+            const groupEmoji = weaponGroup.defaultEmoji || '⚔️';
+            const option = {
+              label: groupName,
+              value: index.toString(),
+              description: `${totalWeapons} armas - ${categoryNames.length > 50 ? categoryNames.substring(0, 47) + '...' : categoryNames || 'Sin armas'}`,
+            };
+            try {
+              if (/^\d{15,20}$/.test(String(groupEmoji))) option.emoji = { id: String(groupEmoji) };
+              else option.emoji = { name: String(groupEmoji) };
+            } catch { option.emoji = { name: '⚔️' }; }
+            return option;
+          });
+        } else {
+          // Estructura de objeto con claves (nueva estructura)
+          const weaponGroups = Object.entries(template.weapons);
+          weaponsList = weaponGroups.map(([groupKey, weaponGroup], index) => {
+            const totalWeapons = weaponGroup.data?.length || 0;
+            const groupName = weaponGroup.displayName || groupKey;
+            const groupEmoji = renderEmoji(weaponGroup.defaultEmoji);
+
+            return `${groupEmoji} **${groupName}**\n• ${totalWeapons} armas configuradas`;
+          }).join('\n\n');
+
+          selectOptions = weaponGroups.map(([groupKey, weaponGroup], index) => {
+            const totalWeapons = weaponGroup.data?.length || 0;
+            const groupName = weaponGroup.displayName || groupKey;
+            const groupEmoji = weaponGroup.defaultEmoji || '⚔️';
+            const option = {
+              label: groupName,
+              value: index.toString(),
+              description: `${totalWeapons} armas`,
+            };
+            try {
+              if (/^\d{15,20}$/.test(String(groupEmoji))) option.emoji = { id: String(groupEmoji) };
+              else option.emoji = { name: String(groupEmoji) };
+            } catch { option.emoji = { name: '⚔️' }; }
+            return option;
+          });
+        }
 
         embed.addFields([
           {
@@ -2451,24 +2484,6 @@ module.exports = {
             inline: false
           }
         ]);
-
-        // Select menu para editar grupos existentes
-        const selectOptions = template.weapons.map((weaponGroup, index) => {
-          const categoryNames = weaponGroup.categories.map(cat => cat.name).join(', ');
-          const totalWeapons = weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0);
-          const groupName = weaponGroup.name || `Grupo ${index + 1}`;
-          const groupEmoji = weaponGroup.defaultEmoji || '⚔️';
-          const option = {
-            label: groupName,
-            value: index.toString(),
-            description: `${totalWeapons} armas - ${categoryNames.length > 50 ? categoryNames.substring(0, 47) + '...' : categoryNames || 'Sin armas'}`,
-          };
-          try {
-            if (/^\d{15,20}$/.test(String(groupEmoji))) option.emoji = { id: String(groupEmoji) };
-            else option.emoji = { name: String(groupEmoji) };
-          } catch { option.emoji = { name: '⚔️' }; }
-          return option;
-        });
 
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId(`template_edit_weapon_group_select_${sessionId}`)
@@ -2576,17 +2591,40 @@ module.exports = {
       }
 
       const { session, sessionId: actualSessionId } = validSession;
-      const weaponGroup = session.data.weapons[groupIndex];
-
+      
       console.log('[DEBUG] handleEditWeaponGroupSelect - groupIndex:', groupIndex);
-      console.log('[DEBUG] handleEditWeaponGroupSelect - weapons disponibles:', session.data.weapons.length);
-      console.log('[DEBUG] handleEditWeaponGroupSelect - weapons array:', session.data.weapons);
-      console.log('[DEBUG] handleEditWeaponGroupSelect - weaponGroup encontrado:', !!weaponGroup);
+      console.log('[DEBUG] handleEditWeaponGroupSelect - session.data.weapons type:', typeof session.data.weapons);
+      console.log('[DEBUG] handleEditWeaponGroupSelect - session.data.weapons isArray:', Array.isArray(session.data.weapons));
+      
+      let weaponGroup;
+      
+      if (Array.isArray(session.data.weapons)) {
+        // Estructura de array (legacy)
+        weaponGroup = session.data.weapons[groupIndex];
+        console.log('[DEBUG] handleEditWeaponGroupSelect - weapons disponibles (array):', session.data.weapons.length);
+        console.log('[DEBUG] handleEditWeaponGroupSelect - weaponGroup encontrado (array):', !!weaponGroup);
+      } else if (session.data.weapons && typeof session.data.weapons === 'object') {
+        // Estructura de objeto (nueva)
+        const weaponGroups = Object.entries(session.data.weapons);
+        const groupEntry = weaponGroups[groupIndex];
+        if (groupEntry) {
+          const [groupKey, groupData] = groupEntry;
+          weaponGroup = groupData;
+          console.log('[DEBUG] handleEditWeaponGroupSelect - weapons disponibles (object):', weaponGroups.length);
+          console.log('[DEBUG] handleEditWeaponGroupSelect - groupKey:', groupKey);
+          console.log('[DEBUG] handleEditWeaponGroupSelect - weaponGroup encontrado (object):', !!weaponGroup);
+        }
+      }
+      
       console.log('[DEBUG] handleEditWeaponGroupSelect - weaponGroup content:', weaponGroup);
 
       if (!weaponGroup) {
-        console.log('[ERROR] Grupo no encontrado - groupIndex:', groupIndex, 'weapons length:', session.data.weapons.length);
-        const errorEmbed = createErrorEmbed('Grupo no encontrado', `El grupo seleccionado no existe. Grupos disponibles: ${session.data.weapons.length}`);
+        const weaponsLength = Array.isArray(session.data.weapons) 
+          ? session.data.weapons.length 
+          : (session.data.weapons ? Object.keys(session.data.weapons).length : 0);
+          
+        console.log('[ERROR] Grupo no encontrado - groupIndex:', groupIndex, 'weapons length:', weaponsLength);
+        const errorEmbed = createErrorEmbed('Grupo no encontrado', `El grupo seleccionado no existe. Grupos disponibles: ${weaponsLength}`);
 
         try {
           if (!interaction.replied && !interaction.deferred) {
@@ -2650,13 +2688,21 @@ module.exports = {
         return `<:weapon:${id}>`;
       };
 
-      const totalWeapons = weaponGroup.categories ?
-        weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0) : 0;
-      const categoryNames = weaponGroup.categories ?
-        weaponGroup.categories.map(cat => cat.name).join(', ') : 'Sin categorías';
+      const totalWeapons = (weaponGroup && Array.isArray(weaponGroup.data))
+        ? weaponGroup.data.length
+        : (weaponGroup && Array.isArray(weaponGroup.categories))
+          ? weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0)
+          : 0;
+      const categoryNames = (weaponGroup && Array.isArray(weaponGroup.categories))
+        ? weaponGroup.categories.map(cat => cat.name).join(', ')
+        : 'Sin categorías';
 
       const weaponsList = [];
-      if (weaponGroup.categories && weaponGroup.categories.length > 0) {
+      if (weaponGroup && Array.isArray(weaponGroup.data) && weaponGroup.data.length > 0) {
+        weaponGroup.data.forEach(weapon => {
+          weaponsList.push(`• ${renderEmoji(weapon.emoji, interaction.client, interaction.guild)} ${weapon.name} (x${weapon.units || 1})`);
+        });
+      } else if (weaponGroup && Array.isArray(weaponGroup.categories) && weaponGroup.categories.length > 0) {
         weaponGroup.categories.forEach(category => {
           if (category.weapons && category.weapons.length > 0) {
             weaponsList.push(`**${category.name}:**`);
@@ -3063,10 +3109,16 @@ module.exports = {
         return `<:weapon:${id}>`;
       };
 
-      const totalWeapons = weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0);
-      const categoryNames = weaponGroup.categories.map(cat => cat.name).join(', ');
+      const totalWeapons = (weaponGroup && Array.isArray(weaponGroup.data))
+        ? weaponGroup.data.length
+        : (weaponGroup && Array.isArray(weaponGroup.categories))
+          ? weaponGroup.categories.reduce((total, cat) => total + (cat.weapons?.length || 0), 0)
+          : 0;
+      const categoryNames = (weaponGroup && Array.isArray(weaponGroup.categories))
+        ? weaponGroup.categories.map(cat => cat.name).join(', ')
+        : 'Sin categorías';
 
-      const groupName = weaponGroup.name || weaponGroup.displayName || `Grupo ${groupIndex + 1}`;
+      const groupName = weaponGroup.displayName || weaponGroup.name || `Grupo ${groupIndex + 1}`;
       const embed = new EmbedBuilder()
         .setTitle(`${renderEmoji(weaponGroup.defaultEmoji, interaction.client, interaction.guild)} Editar ${groupName}`)
         .setDescription('Administra las armas de este grupo. Puedes añadir más armas, eliminar existentes o modificar cantidades.')
@@ -4635,31 +4687,21 @@ templateModule.handleAddWeaponModalSubmit = async function (interaction) {
 
     // Añadir el arma al grupo
     const weaponGroup = session.data.weapons[groupIndex];
-    if (!weaponGroup.categories) {
-      weaponGroup.categories = [];
+    if (!weaponGroup.data) {
+      weaponGroup.data = [];
     }
 
-    // Buscar o crear la categoría
-    let category = weaponGroup.categories.find(cat => cat.name === weaponCategory);
-    if (!category) {
-      category = { name: weaponCategory, weapons: [] };
-      weaponGroup.categories.push(category);
-    }
-
-    // Añadir el arma
+    // Añadir el arma directamente al array data
     const newWeapon = {
-      id: Date.now() + Math.random(),
       name: weaponName,
-      quantity: weaponQuantity,
-      units: weaponQuantity, // Compatibilidad
+      units: weaponQuantity,
       emoji: weaponEmoji,
-      emojiId: weaponEmoji, // Preservar emojiId
       image: '',
       url: '',
       sendBuildToPrivate: false
     };
 
-    category.weapons.push(newWeapon);
+    weaponGroup.data.push(newWeapon);
 
     // Marcar que hay cambios para poder guardar
     session.hasChanges = true;
@@ -5031,14 +5073,9 @@ async function handleGroupEmojiSelect(interaction) {
 
     // Crear el grupo con el emoji seleccionado
     const newGroup = {
-      name: tempData.name,
+      displayName: tempData.name,
       defaultEmoji: weaponEmoji,
-      categories: [
-        {
-          name: 'General',
-          weapons: []
-        }
-      ]
+      data: []
     };
 
     // Añadir al template
@@ -5407,6 +5444,12 @@ templateModule.saveTemplateChanges = async function(interaction, sessionId) {
       if (data && typeof data === 'object') {
         const cleaned = {};
         for (const [key, value] of Object.entries(data)) {
+          // Filtrar parámetros no permitidos
+          if (key === 'id' || key === 'code' || key === 'quantity' || key === 'private') {
+            // Omitir estos parámetros completamente
+            continue;
+          }
+          
           // Convertir emojiId a emoji y limpiar duplicados
           if (key === 'emojiId') {
             // Convertir emojiId a emoji para mantener consistencia con el modelo
@@ -5898,15 +5941,17 @@ async function handleCategorySelectForGroup(interaction) {
 
         // Extraer armas del formato JSON
         for (const [category, categoryData] of Object.entries(weaponsData.weapons)) {
-          if (categoryData.weapons) {
-            categoryData.weapons.forEach(weapon => {
-              weapons.push({
-                name: weapon.name,
-                category: category,
-                categoryDisplayName: categoryData.displayName,
-                emojiId: weapon.emojiId,
-                code: weapon.code || weapon.name
-              });
+          if (categoryData.data && Array.isArray(categoryData.data)) {
+            categoryData.data.forEach(weapon => {
+              if (weapon.name && weapon.emoji) {
+                weapons.push({
+                  name: weapon.name,
+                  category: category,
+                  categoryDisplayName: categoryData.displayName,
+                  emojiId: weapon.emoji,
+                  code: weapon.code || weapon.name
+                });
+              }
             });
           }
         }
@@ -6027,15 +6072,17 @@ async function handleWeaponSelectForGroup(interaction) {
 
         // Extraer armas del formato JSON
         for (const [category, categoryData] of Object.entries(weaponsData.weapons)) {
-          if (categoryData.weapons) {
-            categoryData.weapons.forEach(weapon => {
-              weapons.push({
-                name: weapon.name,
-                category: category,
-                categoryDisplayName: categoryData.displayName,
-                emojiId: weapon.emojiId,
-                code: weapon.code || weapon.name
-              });
+          if (categoryData.data && Array.isArray(categoryData.data)) {
+            categoryData.data.forEach(weapon => {
+              if (weapon.name && weapon.emoji) {
+                weapons.push({
+                  name: weapon.name,
+                  category: category,
+                  categoryDisplayName: categoryData.displayName,
+                  emojiId: weapon.emoji,
+                  code: weapon.code || weapon.name
+                });
+              }
             });
           }
         }
@@ -6289,14 +6336,15 @@ async function handleWeaponConfigModal(interaction) {
         emojiId: tempData.weapon.emojiId || '⚔️', // Preservar emojiId
         image: '',
         url: link,
-        link: link,
-        sendBuildToPrivate: isPrivate,
-        private: isPrivate
+        sendBuildToPrivate: isPrivate
       };
-      weaponGroup.categories = [{
-        name: tempData.categoryName,
-        weapons: [newWeapon]
-      }];
+      
+      // Usar estructura correcta con "data" en lugar de "categories"
+      if (!weaponGroup.data) {
+        weaponGroup.data = [];
+      }
+      weaponGroup.data.push(newWeapon);
+      
       console.log('[DEBUG] handleWeaponConfigModal - Created new structure with weapon:', JSON.stringify(newWeapon, null, 2));
     }
 

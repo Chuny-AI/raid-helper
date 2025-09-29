@@ -1,9 +1,9 @@
 const { shouldShowPremiumCommand, shouldShowOwnerCommand, shouldShowAdminCommand } = require('../middleware/commandVisibility');
-const { checkAuthorizedUserAccess } = require('../middleware/roleCheck');
+const { checkAuthorizedUserAccess, checkAuthorizedRole } = require('../middleware/roleCheck');
 const { createPremiumEmbed, createErrorEmbed, safeReply } = require('./errorEmbeds');
 
 const commandVisibilityMap = {
-  'raid': 'premium_roles_admin',
+  'raid': 'premium_authorized_roles',
   'templates': 'premium_roles_admin',
   'create_template': 'premium_roles_admin',
   'edit_template': 'premium_roles_admin',
@@ -17,7 +17,7 @@ const commandVisibilityMap = {
   'roles': 'premium_admin_owner',
   'premium': 'owner',
   'status': 'all',
-  'migrate': 'premium_roles_admin',
+  'migrate': 'premium_authorized_roles',
   'economy': 'premium_economy_roles',
   'economy-roles': 'premium_admin_owner',
   'split': 'premium_roles_admin',
@@ -100,6 +100,42 @@ const filterCommand = async (interaction) => {
       return true;
     }
 
+    if (commandType === 'premium_authorized_roles') {
+      const hasPremium = await shouldShowPremiumCommand(interaction);
+      console.log(`[FILTER] Comando ${commandName} es premium_authorized_roles, ¿tiene premium?: ${hasPremium}`);
+
+      if (!hasPremium) {
+        try {
+          const embed = createPremiumEmbed();
+          await safeReply(interaction, { embeds: [embed], ephemeral: true });
+          console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de premium - mostrando mensaje premium`);
+        } catch (error) {
+          console.error(`[FILTER] Error enviando mensaje premium para ${commandName}:`, error);
+        }
+        return false;
+      }
+
+      // Con premium, validar que el usuario tenga un rol en authorizedroles
+      const hasAuthorized = await checkAuthorizedRole(interaction);
+      console.log(`[FILTER] ¿Tiene rol autorizado?: ${hasAuthorized}`);
+      if (!hasAuthorized) {
+        try {
+          const embed = createErrorEmbed(
+            'Acceso Denegado',
+            'Este comando está restringido a usuarios con roles autorizados en este servidor.'
+          );
+          await safeReply(interaction, { embeds: [embed], ephemeral: true });
+          console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de rol autorizado`);
+        } catch (error) {
+          console.error(`[FILTER] Error enviando mensaje de rol autorizado para ${commandName}:`, error);
+        }
+        return false;
+      }
+
+      console.log(`[FILTER] Comando ${commandName} PERMITIDO (premium + rol autorizado)`);
+      return true;
+    }
+
     if (commandType === 'decode_roles') {
       // Comandos de decode NO validan premium. Solo owner o usuarios autorizados.
       const hasDecodeAccess = await checkAuthorizedUserAccess(interaction);
@@ -140,114 +176,16 @@ const filterCommand = async (interaction) => {
         console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de permisos admin/owner`);
         return false;
       }
-
       console.log(`[FILTER] Comando ${commandName} PERMITIDO (es admin)`);
       return true;
     }
 
-    if (commandType === 'owner') {
-      console.log(`[FILTER] Comando ${commandName} es owner (solo propietario)`);
-      const isOwner = await shouldShowOwnerCommand(interaction);
-      console.log(`[FILTER] ¿Es owner?: ${isOwner}`);
-      if (!isOwner) {
-        const embed = createErrorEmbed(
-          "Acceso Denegado",
-          "Solo el propietario del bot puede usar este comando."
-        );
-        await safeReply(interaction, { embeds: [embed], ephemeral: true });
-        console.log(`[FILTER] Comando ${commandName} BLOQUEADO por no ser owner`);
-        return false;
-      }
-      console.log(`[FILTER] Comando ${commandName} PERMITIDO (es owner)`);
-      return true;
-    }
-
-    if (commandType === 'premium_admin_owner') {
-      console.log(`[FILTER] Comando ${commandName} es premium_admin_owner`);
-
-      // PRIMERA PRIORIDAD: Verificar estado premium
-      const hasPremium = await shouldShowPremiumCommand(interaction);
-      console.log(`[FILTER] ¿Tiene premium?: ${hasPremium}`);
-
-      if (!hasPremium) {
-        // Solo el propietario puede usar comandos en servidores no premium
-        const isOwner = await shouldShowOwnerCommand(interaction);
-        console.log(`[FILTER] No tiene premium, ¿es owner?: ${isOwner}`);
-        if (!isOwner) {
-          try {
-            const embed = createPremiumEmbed();
-            await safeReply(interaction, { embeds: [embed], ephemeral: true });
-            console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de premium`);
-          } catch (error) {
-            console.error(`[FILTER] Error enviando mensaje premium para ${commandName}:`, error);
-          }
-          return false;
-        }
-      }
-
-      // SEGUNDA PRIORIDAD: Verificar si es owner (acceso total)
-      const isOwner = await shouldShowOwnerCommand(interaction);
-      console.log(`[FILTER] ¿Es owner?: ${isOwner}`);
-      if (isOwner) {
-        console.log(`[FILTER] Comando ${commandName} PERMITIDO (es owner)`);
-        return true;
-      }
-
-      // TERCERA PRIORIDAD: Si no es owner, verificar admin
-      const isAdmin = await shouldShowAdminCommand(interaction);
-      console.log(`[FILTER] No es owner, ¿es admin?: ${isAdmin}`);
-      if (!isAdmin) {
-        const embed = createErrorEmbed(
-          "Acceso Denegado",
-          "Solo el propietario del bot y los administradores pueden usar este comando."
-        );
-        await safeReply(interaction, { embeds: [embed], ephemeral: true });
-        console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de permisos admin/owner`);
-        return false;
-      }
-
-      console.log(`[FILTER] Comando ${commandName} PERMITIDO (es admin)`);
-      return true;
-    }
-
-    if (commandType === 'premium_economy_roles') {
-      console.log(`[FILTER] Comando ${commandName} es premium_economy_roles`);
-
-      // PRIMERA PRIORIDAD: Verificar estado premium ANTES que permisos de economía
-      const hasPremium = await shouldShowPremiumCommand(interaction);
-      console.log(`[FILTER] ¿Tiene premium?: ${hasPremium}`);
-
-      if (!hasPremium) {
-        // Verificar si es propietario (único bypass permitido)
-        const isOwner = await shouldShowOwnerCommand(interaction);
-        console.log(`[FILTER] No tiene premium, ¿es owner?: ${isOwner}`);
-        if (!isOwner) {
-          try {
-            const embed = createPremiumEmbed();
-            await safeReply(interaction, { embeds: [embed], ephemeral: true });
-            console.log(`[FILTER] Comando ${commandName} BLOQUEADO por falta de premium`);
-          } catch (error) {
-            console.error(`[FILTER] Error enviando mensaje premium para ${commandName}:`, error);
-          }
-          return false;
-        }
-      }
-
-      // SEGUNDA PRIORIDAD: Solo con premium confirmado, verificar permisos de economía
-       // Nota: La validación específica de roles de economía se maneja en el comando individual
-       console.log(`[FILTER] Comando ${commandName} PERMITIDO (tiene premium, validación de roles en comando)`);
-       return true;
-    }
-
+    console.log(`[FILTER] Comando ${commandName} no coincide con ninguna política conocida, permitiendo ejecución por defecto`);
     return true;
-
   } catch (error) {
-    console.error('[ERROR] Error en filterCommand:', error);
-    return true;
+    console.error('[FILTER] Error en filterCommand:', error);
+    return true; // Permitir por defecto para evitar bloquear todo por un error
   }
 };
 
-module.exports = {
-  filterCommand,
-  commandVisibilityMap
-};
+module.exports = { filterCommand };

@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { createTemplate, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { createErrorEmbed, createSuccessEmbed, safeReply } = require("../../utils/errorEmbeds");
+const { checkAuthorizedRole } = require('../../middleware/roleCheck');
 
 /**
  * Comando para migrar un template desde JSON a la base de datos
@@ -21,6 +22,16 @@ module.exports = {
     try {
       const guildId = interaction.guild.id;
       const attachment = interaction.options.getAttachment('file');
+
+      // Validar roles autorizados (authorizedroles), independiente de economy/decode
+      const hasAuthorizedRole = await checkAuthorizedRole(interaction);
+      if (!hasAuthorizedRole) {
+        const errorEmbed = createErrorEmbed(
+          'Acceso denegado',
+          'No tienes un rol autorizado para usar el comando /migrate en este servidor.\nPide a un administrador que te agregue a la lista de roles autorizados.'
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
 
       await getOrCreateServer(guildId, interaction.guild.name);
 
@@ -117,7 +128,7 @@ module.exports = {
           `Error al procesar el archivo: ${parseError.message}`,
           [
             { name: '💡 Solución', value: 'Asegúrate de que el archivo contenga JSON válido.', inline: false },
-            { name: '� Archivo', value: attachment ? `\`${attachment.name}\`` : 'N/D', inline: true }
+            { name: '📁 Archivo', value: attachment ? `\`${attachment.name}\`` : 'N/D', inline: true }
           ]
         );
         await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });

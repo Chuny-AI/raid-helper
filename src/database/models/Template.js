@@ -20,10 +20,6 @@ const weaponDataSchema = new mongoose.Schema({
   url: {
     type: String,
     default: ""
-  },
-  sendBuildToPrivate: {
-    type: Boolean,
-    default: true
   }
 });
 

@@ -76,17 +76,23 @@ const updateTemplate = async (templateId, updateData) => {
       console.log(`[DEBUG] updateTemplate - Validando estructura de weapons`);
       console.log(`[DEBUG] updateTemplate - weapons type:`, typeof updateData.weapons);
       console.log(`[DEBUG] updateTemplate - weapons isArray:`, Array.isArray(updateData.weapons));
-      
-      if (Array.isArray(updateData.weapons)) {
-        console.log(`[DEBUG] updateTemplate - weapons array length:`, updateData.weapons.length);
-        updateData.weapons.forEach((group, index) => {
-          console.log(`[DEBUG] updateTemplate - Grupo ${index}:`, {
-            name: group.name,
-            emoji: group.emoji,
-            categoriesCount: group.categories ? group.categories.length : 0
-          });
-        });
-      }
+
+      // Remover sendBuildToPrivate si existe
+      const removeSendBuild = (data) => {
+        if (Array.isArray(data)) {
+          return data.map(item => removeSendBuild(item));
+        } else if (data && typeof data === 'object') {
+          const cleaned = {};
+          for (const [k, v] of Object.entries(data)) {
+            if (k === 'sendBuildToPrivate') continue;
+            cleaned[k] = removeSendBuild(v);
+          }
+          return cleaned;
+        }
+        return data;
+      };
+
+      updateData.weapons = removeSendBuild(updateData.weapons);
     }
     
     const result = await Template.findByIdAndUpdate(

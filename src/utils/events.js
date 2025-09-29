@@ -491,9 +491,13 @@ const getEvents = () => {
         const templateName = customId.substring('weapons-'.length, lastDashIndex);
 
         // Parse the unique value format: weaponId-weaponCategory-index
-        const valueParts = values[0].split('-');
-        const weaponId = valueParts[0];
-        const weaponCategoryFromValue = valueParts.slice(1, -1).join('-').replace(/_/g, ' '); // Remove index and restore spaces
+        const rawValue = values[0];
+        const lastHyphen = rawValue.lastIndexOf('-');
+        const indexPart = rawValue.substring(lastHyphen + 1);
+        const rest = rawValue.substring(0, lastHyphen);
+        const firstHyphen = rest.indexOf('-');
+        const weaponId = rest.substring(0, firstHyphen);
+        const weaponCategoryFromValue = rest.substring(firstHyphen + 1).replace(/_/g, ' '); // Restore spaces from category
 
         const embedsList = embedsMap[templateName];
         if (!embedsList) {
@@ -598,35 +602,45 @@ const getEvents = () => {
             if (template && template.weapons) {
               let weaponUrl = null;
               let weaponEmoji = null;
-              let shouldSendBuild = true; // Por defecto true si no se especifica
 
-              for (const [key, weapon] of Object.entries(template.weapons)) {
+              // Soportar weapons como objeto (nuevo formato) y array (legacy)
+              const weaponGroups = Array.isArray(template.weapons)
+                ? template.weapons
+                : Object.values(template.weapons);
+
+              // Buscar por id explícito primero
+              let foundItem = null;
+              for (const weapon of weaponGroups) {
                 if (weapon.data && Array.isArray(weapon.data)) {
-                  const weaponItem = weapon.data.find(item => String(item.id) === String(weaponId));
-                  if (weaponItem) {
-                    weaponUrl = weaponItem.url;
-                    weaponEmoji = weaponItem.emoji;
-                    shouldSendBuild = weaponItem.sendBuildToPrivate !== false;
+                  foundItem = weapon.data.find(item => item.id && String(item.id) === String(weaponId));
+                  if (foundItem) {
                     break;
                   }
                 }
               }
 
-              if (shouldSendBuild) {
-                let buildEmbed;
-                if (weaponUrl && weaponUrl.trim() !== '') {
-                  buildEmbed = createBuildEmbed(weaponCategory, weaponUrl, weaponEmoji, templateName);
-                } else {
-                  buildEmbed = createNoBuildEmbed(weaponCategory, templateName);
+              // Si no hay id (datos legacy), intentar por nombre dentro de la categoría extraída
+              if (!foundItem) {
+                for (const weapon of weaponGroups) {
+                  if (weapon.displayName === weaponCategory && weapon.data && Array.isArray(weapon.data)) {
+                    foundItem = weapon.data.find(item => item.name && item.name.trim().toLowerCase() === weaponCategory.trim().toLowerCase());
+                    if (foundItem) break;
+                  }
                 }
+              }
 
+              if (foundItem) {
+                weaponUrl = foundItem.url;
+                weaponEmoji = foundItem.emojiId || foundItem.emoji;
+              }
+
+              // Enviar build solo si hay URL válida
+              if (weaponUrl && weaponUrl.trim() !== '') {
+                const buildEmbed = createBuildEmbed(weaponCategory, weaponUrl, weaponEmoji, templateName);
                 try {
-                  await interaction.user.send({
-                    embeds: [buildEmbed],
-                  });
+                  await interaction.user.send({ embeds: [buildEmbed] });
                 } catch (dmError) {
                   console.error('Error enviando mensaje privado:', dmError);
-                  // No usar followUp aquí ya que puede estar fuera del contexto de tiempo
                   console.log('[INFO] No se pudo enviar build por DM, usuario probablemente tiene DMs cerrados');
                 }
               }
