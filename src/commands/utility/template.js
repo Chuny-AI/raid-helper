@@ -2443,20 +2443,8 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
     session.data.image = image.trim() || null;
     session.hasChanges = true;
 
-    const successEmbed = new EmbedBuilder()
-      .setTitle('✅ Información Básica Actualizada')
-      .setDescription([
-        `**Título:** ${title}`,
-        `**Descripción:** ${description.length > 100 ? description.substring(0, 100) + '...' : description}`,
-        `**Imagen:** ${image ? 'Configurada' : 'Sin imagen'}`
-      ].join('\n'))
-      .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
-
-    if (image) {
-      successEmbed.setThumbnail(image);
-    }
-
-    await interaction.reply({ embeds: [successEmbed], ephemeral: true });
+    // Refrescar inmediatamente el Editor con los nuevos datos
+    await this.showEditOverview(interaction, sessionId);
   },
 
   // Procesar edición de descripción
@@ -2468,12 +2456,8 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
     session.data.description = description;
     session.hasChanges = true;
 
-    const successEmbed = new EmbedBuilder()
-      .setTitle('✅ Descripción Actualizada')
-      .setDescription(description.length > 200 ? description.substring(0, 200) + '...' : description)
-      .setColor(parseInt((session.data.color || '#0099ff').replace('#', ''), 16));
-
-    await interaction.reply({ embeds: [successEmbed], ephemeral: true });
+    // Refrescar inmediatamente el Editor con los nuevos datos
+    await this.showEditOverview(interaction, sessionId);
   },
 
   // Procesar edición de configuración
