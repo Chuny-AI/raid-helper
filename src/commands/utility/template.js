@@ -3134,14 +3134,20 @@ module.exports = {
       // Mostrar lista detallada de armas si hay pocas
       if (totalWeapons <= 10 && totalWeapons > 0) {
         const weaponsList = [];
-        weaponGroup.categories.forEach(category => {
-          if (category.weapons && category.weapons.length > 0) {
-            weaponsList.push(`**${category.name}:**`);
-            category.weapons.forEach(weapon => {
-              weaponsList.push(`• ${weapon.name} (x${weapon.quantity || weapon.units || 1})`);
-            });
-          }
-        });
+        if (weaponGroup && Array.isArray(weaponGroup.data)) {
+          weaponGroup.data.forEach(weapon => {
+            weaponsList.push(`• ${renderEmoji(weapon.emoji, interaction.client, interaction.guild)} ${weapon.name} (x${weapon.units || 1})`);
+          });
+        } else if (weaponGroup && Array.isArray(weaponGroup.categories)) {
+          weaponGroup.categories.forEach(category => {
+            if (category.weapons && category.weapons.length > 0) {
+              weaponsList.push(`**${category.name}:**`);
+              category.weapons.forEach(weapon => {
+                weaponsList.push(`• ${weapon.name} (x${weapon.quantity || weapon.units || 1})`);
+              });
+            }
+          });
+        }
 
         if (weaponsList.length > 0) {
           embed.addFields([{
