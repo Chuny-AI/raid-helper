@@ -7,8 +7,8 @@ const { checkPremiumAccessWithOwnerBypass } = require('../../middleware/roleChec
 // Store temporal para manejar el estado del proceso de edición
 const templateEditSessions = new Map();
 
-// Tiempo de vida de sesión en milisegundos (30 minutos)
-const SESSION_TIMEOUT = 30 * 60 * 1000;
+// Tiempo de vida de sesión en milisegundos (12 horas)
+const SESSION_TIMEOUT = 12 * 60 * 60 * 1000;
 
 // Limpiar sesiones expiradas cada 5 minutos
 setInterval(() => {
@@ -1631,7 +1631,9 @@ module.exports = {
 
         const session = templateEditSessions.get(sessionId);
         if (session) {
-          const weaponGroup = session.data.weapons[groupIndex];
+          const weaponGroup = Array.isArray(session.data.weapons)
+            ? session.data.weapons[groupIndex]
+            : Object.entries(session.data.weapons)[groupIndex]?.[1];
           if (weaponGroup) {
             await this.showGroupEditInterface(interaction, sessionId, weaponGroup, groupIndex);
           } else {
@@ -2153,11 +2155,34 @@ module.exports = {
       // Manejar adición de nuevo grupo de armas desde sesión temporal
       if (updatedData.newWeaponGroup !== undefined) {
         if (!editSession.data.weapons) {
-          editSession.data.weapons = [];
+          editSession.data.weapons = {};
         }
-        // Convertir al formato de editor antes de insertar
+        
+        // Si weapons está en formato array, convertir a objeto
+        if (Array.isArray(editSession.data.weapons)) {
+          const obj = {};
+          editSession.data.weapons.forEach((g, idx) => {
+            const base = (g.displayName || g.name || `grupo_${idx + 1}`).toString().trim().toLowerCase()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+              .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+            let key = base || `grupo_${idx + 1}`;
+            let c = 1;
+            while (obj[key]) { key = `${base}_${c++}`; }
+            obj[key] = g;
+          });
+          editSession.data.weapons = obj;
+        }
+        
+        // Convertir al formato de editor y añadir como objeto
         const editorGroup = convertCreationGroupToEditorGroup(updatedData.newWeaponGroup);
-        editSession.data.weapons.push(editorGroup);
+        const baseKey = (editorGroup.displayName || 'nuevo_grupo').toString().trim().toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        let newKey = baseKey || `grupo_${Date.now()}`;
+        let i = 1;
+        while (editSession.data.weapons[newKey]) { newKey = `${baseKey}_${i++}`; }
+        
+        editSession.data.weapons[newKey] = editorGroup;
         editSession.hasChanges = true;
       }
 
@@ -2833,9 +2858,10 @@ module.exports = {
         isNewGroup: true,
         data: {
           // Copiar datos básicos del template existente
-          templateId: session.data.templateId,
-          name: session.data.name,
+          templateId: session.templateId,
+          title: session.data.title,
           description: session.data.description,
+          image: session.data.image,
           weapons: {}
         },
         tempGroupConfig: null
@@ -2873,7 +2899,9 @@ module.exports = {
         return;
       }
 
-      if (!session.data.weapons || session.data.weapons.length === 0) {
+      const weaponsData = session.data.weapons;
+      const weaponGroups = Array.isArray(weaponsData) ? weaponsData : Object.values(weaponsData);
+      if (!weaponGroups || weaponGroups.length === 0) {
         const errorEmbed = createErrorEmbed('Sin grupos', 'No hay grupos de armas para eliminar.');
         await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         return;
@@ -2886,13 +2914,17 @@ module.exports = {
         .setMinValues(1)
         .setMaxValues(1);
 
-      session.data.weapons.forEach((group, index) => {
-        const categoriesDesc = group.categories.map(cat => cat.name).join(', ');
-        const labelName = group.name || group.displayName || `Grupo ${index + 1}`;
+      weaponGroups.forEach((group, index) => {
+        const totalWeapons = Array.isArray(group.data)
+          ? group.data.length
+          : (Array.isArray(group.categories)
+              ? group.categories.reduce((sum, cat) => sum + (cat.weapons?.length || 0), 0)
+              : 0);
+        const labelName = group.displayName || group.name || `Grupo ${index + 1}`;
         const emoji = group.defaultEmoji || '⚔️';
         const option = {
           label: labelName,
-          description: categoriesDesc.length > 100 ? categoriesDesc.substring(0, 97) + '...' : (categoriesDesc || 'Sin categorías'),
+          description: `${totalWeapons} armas`,
           value: index.toString()
         };
         try {
@@ -2943,15 +2975,24 @@ module.exports = {
         return;
       }
 
-      if (!session.data.weapons || groupIndex >= session.data.weapons.length) {
+      const weaponsData = session.data.weapons;
+      const weaponEntries = Array.isArray(weaponsData) ? weaponsData.map((g, i) => [i, g]) : Object.entries(weaponsData);
+      if (!weaponEntries[groupIndex]) {
         const errorEmbed = createErrorEmbed('Grupo no encontrado', 'El grupo seleccionado no existe.');
         await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         return;
       }
 
-      // Eliminar el grupo
-      const deletedGroup = session.data.weapons.splice(groupIndex, 1)[0];
-      const groupName = deletedGroup.categories.map(cat => cat.name).join(', ');
+      // Eliminar el grupo (soporta objeto y array)
+      let deletedGroup;
+      if (Array.isArray(weaponsData)) {
+        deletedGroup = weaponsData.splice(groupIndex, 1)[0];
+      } else {
+        const [deletedKey, deletedVal] = weaponEntries[groupIndex];
+        deletedGroup = deletedVal;
+        delete weaponsData[deletedKey];
+      }
+      const groupName = deletedGroup.displayName || deletedGroup.name || 'Grupo';
 
       // Marcar que hay cambios para poder guardar
       session.hasChanges = true;
@@ -4637,9 +4678,14 @@ async function handleDeleteGroup(interaction, sessionId, groupIndex) {
     const session = templateEditSessions.get(sessionId);
     const weaponGroup = session.data.weapons[groupIndex];
 
-    const embed = createInfoEmbed(
+    const targetGroup = Array.isArray(session.data.weapons)
+        ? session.data.weapons[groupIndex]
+        : Object.entries(session.data.weapons)[groupIndex]?.[1];
+      const groupLabel = targetGroup?.name || targetGroup?.displayName || `Grupo ${groupIndex + 1}`;
+
+      const embed = createInfoEmbed(
       '🚮 Confirmar Eliminación',
-      `¿Estás seguro de que deseas eliminar el grupo **${session.data.weapons[groupIndex]?.name || session.data.weapons[groupIndex]?.displayName || `Grupo ${groupIndex + 1}`}** completo?\n\nEsta acción no se puede deshacer.`
+      `¿Estás seguro de que deseas eliminar el grupo **${groupLabel}** completo?\n\nEsta acción no se puede deshacer.`
     );
 
     const confirmBtn = new ButtonBuilder()
@@ -5080,15 +5126,39 @@ async function handleGroupEmojiSelect(interaction) {
     // Crear el grupo con el emoji seleccionado
     const newGroup = {
       displayName: tempData.name,
-      defaultEmoji: weaponEmoji,
+      defaultEmoji: weaponEmoji || '⚔️',
       data: []
     };
 
-    // Añadir al template
+    // Añadir al template usando formato de objeto (como en 000002.json)
     if (!session.data.weapons) {
-      session.data.weapons = [];
+      session.data.weapons = {};
     }
-    session.data.weapons.push(newGroup);
+
+    // Si por compatibilidad llegó en formato array, convertirlo a objeto
+    if (Array.isArray(session.data.weapons)) {
+      const obj = {};
+      session.data.weapons.forEach((g, idx) => {
+        const base = (g.displayName || g.name || `grupo_${idx + 1}`).toString().trim().toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        let key = base || `grupo_${idx + 1}`;
+        let c = 1;
+        while (obj[key]) { key = `${base}_${c++}`; }
+        obj[key] = g;
+      });
+      session.data.weapons = obj;
+    }
+
+    // Generar clave única para el nuevo grupo basada en el nombre
+    const baseKey = tempData.name.toString().trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    let newKey = baseKey || `grupo_${Date.now()}`;
+    let i = 1;
+    while (session.data.weapons[newKey]) { newKey = `${baseKey}_${i++}`; }
+
+    session.data.weapons[newKey] = newGroup;
 
     // Limpiar datos temporales
     delete session.tempGroupData;
@@ -5115,18 +5185,8 @@ async function handleGroupEmojiSelect(interaction) {
           .setEmoji('🔫')
       );
 
-    // After deferUpdate, edit the original reply message
-    if (interaction.message && interaction.message.edit) {
-      await interaction.message.edit({
-        embeds: [successEmbed],
-        components: [botones]
-      });
-    } else if (interaction.editReply) {
-      await interaction.editReply({
-        embeds: [successEmbed],
-        components: [botones]
-      });
-    }
+    // Refrescar inmediatamente el embed de edición para mostrar el nuevo grupo
+    return await templateModule.showEditWeapons(interaction, actualSessionId);
 
   } catch (error) {
     console.error('Error en handleGroupEmojiSelect:', error);
@@ -5486,15 +5546,33 @@ templateModule.saveTemplateChanges = async function(interaction, sessionId) {
     // Limpiar los datos antes de guardar
     const cleanedData = cleanEmojiData(session.data);
     
+    // Asegurar estructura de weapons como objeto antes de guardar
+    if (cleanedData.weapons && Array.isArray(cleanedData.weapons)) {
+      const obj = {};
+      cleanedData.weapons.forEach((g, idx) => {
+        const base = (g.displayName || g.name || `grupo_${idx + 1}`).toString().trim().toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        let key = base || `grupo_${idx + 1}`;
+        let c = 1;
+        while (obj[key]) { key = `${base}_${c++}`; }
+        obj[key] = g;
+      });
+      cleanedData.weapons = obj;
+    }
+
+    // Aplicar limpieza final de datos
+    const finalData = cleanEmojiData(cleanedData);
+    
     // Actualizar el template en la base de datos
-    await updateTemplate(session.templateId, cleanedData);
+    await updateTemplate(session.templateId, finalData);
 
     // Limpiar la sesión
     templateEditSessions.delete(sessionId);
 
     const successEmbed = new EmbedBuilder()
       .setTitle('✅ Template Guardado')
-      .setDescription(`El template **${session.data.title || session.data.name || 'undefined'}** ha sido guardado exitosamente.`)
+      .setDescription(`El template **${finalData.title || session.data.title || 'undefined'}** ha sido guardado exitosamente.`)
       .setColor('#00FF00');
 
     await interaction.reply({ embeds: [successEmbed], ephemeral: true });
@@ -5511,14 +5589,23 @@ async function showRemoveWeaponsInterface(interaction, sessionId, groupIndex, se
   try {
     console.log('[DEBUG] showRemoveWeaponsInterface - sessionId:', sessionId, 'groupIndex:', groupIndex);
 
-    if (!session.data.weapons || !session.data.weapons[groupIndex]) {
+    if (!session.data.weapons) {
       return await interaction.reply({
         content: 'No se encontró el grupo de armas especificado.',
         ephemeral: true
       });
     }
 
-    const weaponGroup = session.data.weapons[groupIndex];
+    const weaponGroup = Array.isArray(session.data.weapons)
+      ? session.data.weapons[groupIndex]
+      : Object.entries(session.data.weapons)[groupIndex]?.[1];
+
+    if (!weaponGroup) {
+      return await interaction.reply({
+        content: 'No se encontró el grupo de armas especificado.',
+        ephemeral: true
+      });
+    }
     const allWeapons = [];
 
     // Recopilar todas las armas del grupo con sus categorías
@@ -5592,8 +5679,12 @@ async function showRemoveWeaponsInterface(interaction, sessionId, groupIndex, se
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
+    const targetGroup = Array.isArray(session.data.weapons)
+      ? session.data.weapons[groupIndex]
+      : Object.entries(session.data.weapons)[groupIndex]?.[1];
+
     const embed = new EmbedBuilder()
-      .setTitle(`🗑️ Eliminar Armas de ${session.data.weapons[groupIndex]?.name || session.data.weapons[groupIndex]?.displayName || `Grupo ${groupIndex + 1}`}`)
+      .setTitle(`🗑️ Eliminar Armas de ${targetGroup?.name || targetGroup?.displayName || `Grupo ${groupIndex + 1}`}`)
       .setDescription('Selecciona las armas que quieres eliminar de este grupo:')
       .setColor('#FF4444');
 
@@ -5764,8 +5855,12 @@ async function showDirectWeaponSelectionForEdit(interaction, sessionId, groupInd
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
+    const targetGroup = Array.isArray(session.data.weapons)
+      ? session.data.weapons[groupIndex]
+      : Object.entries(session.data.weapons)[groupIndex]?.[1];
+
     const embed = new EmbedBuilder()
-      .setTitle(`➕ Añadir Armas a ${session.data.weapons[groupIndex]?.name || session.data.weapons[groupIndex]?.displayName || `Grupo ${groupIndex + 1}`}`)
+      .setTitle(`➕ Añadir Armas a ${targetGroup?.name || targetGroup?.displayName || `Grupo ${groupIndex + 1}`}`)
       .setDescription(`Selecciona las armas que quieres añadir al grupo.\n\n**Armas disponibles:** ${allWeapons.length}${allWeapons.length > 25 ? ' (mostrando las primeras 25)' : ''}`)
       .setColor('#00FF00');
 
@@ -6138,7 +6233,18 @@ async function handleWeaponSelectForGroup(interaction) {
     const session = validSession.session;
     const groupIndex = session.currentGroupIndex;
 
-    if (groupIndex === undefined || !session.data.weapons || !session.data.weapons[groupIndex]) {
+    if (groupIndex === undefined || !session.data.weapons) {
+      return await interaction.reply({
+        content: 'No se encontró el grupo de armas que se está editando.',
+        ephemeral: true
+      });
+    }
+
+    const currentGroup = Array.isArray(session.data.weapons)
+      ? session.data.weapons[groupIndex]
+      : Object.entries(session.data.weapons)[groupIndex]?.[1];
+
+    if (!currentGroup) {
       return await interaction.reply({
         content: 'No se encontró el grupo de armas que se está editando.',
         ephemeral: true
@@ -6247,7 +6353,9 @@ async function handleWeaponConfigModal(interaction) {
       });
     }
 
-    const weaponGroup = session.data.weapons[tempData.groupIndex];
+    const weaponGroup = Array.isArray(session.data.weapons)
+      ? session.data.weapons[tempData.groupIndex]
+      : Object.entries(session.data.weapons)[tempData.groupIndex]?.[1];
     console.log('[DEBUG] handleWeaponConfigModal - weaponGroup:', JSON.stringify(weaponGroup, null, 2));
 
     if (!weaponGroup) {
@@ -6361,12 +6469,16 @@ async function handleWeaponConfigModal(interaction) {
     console.log('[DEBUG] handleWeaponConfigModal - Set hasChanges to true');
 
     // Mostrar confirmación y volver al editor
+    const targetGroup = Array.isArray(session.data.weapons)
+      ? session.data.weapons[tempData.groupIndex]
+      : Object.entries(session.data.weapons)[tempData.groupIndex]?.[1];
+    const groupLabel = targetGroup?.name || targetGroup?.displayName || `Grupo ${tempData.groupIndex + 1}`;
+
     const embed = new EmbedBuilder()
       .setTitle('✅ Arma Añadida')
-      .setDescription(`**${tempData.weapon.name}** ha sido añadida al grupo **${session.data.weapons[tempData.groupIndex]?.name || session.data.weapons[tempData.groupIndex]?.displayName || `Grupo ${tempData.groupIndex + 1}`}**:\n\n` +
+      .setDescription(`**${tempData.weapon.name}** ha sido añadida al grupo **${groupLabel}**:\n\n` +
         `• **Cantidad:** ${quantity}\n` +
-        `• **Enlace:** ${link || 'Ninguno'}\n` +
-        `• **Privado:** ${isPrivate ? 'Sí' : 'No'}`)
+        `• **Enlace:** ${link || 'Ninguno'}`)
       .setColor('#00FF00');
 
     const backButton = new ButtonBuilder()
@@ -6421,14 +6533,23 @@ async function handleRemoveWeaponsSelect(interaction) {
     }
 
     const session = validSession.session;
-    if (!session.data.weapons || !session.data.weapons[groupIndex]) {
+    if (!session.data.weapons) {
       return await interaction.reply({
         content: 'No se encontró el grupo de armas especificado.',
         ephemeral: true
       });
     }
 
-    const weaponGroup = session.data.weapons[groupIndex];
+    const weaponGroup = Array.isArray(session.data.weapons)
+      ? session.data.weapons[groupIndex]
+      : Object.entries(session.data.weapons)[groupIndex]?.[1];
+
+    if (!weaponGroup) {
+      return await interaction.reply({
+        content: 'No se encontró el grupo de armas especificado.',
+        ephemeral: true
+      });
+    }
     const weaponsToRemove = [];
 
     // Recopilar información de las armas a eliminar
@@ -6502,9 +6623,14 @@ async function handleRemoveWeaponsSelect(interaction) {
     session.hasChanges = true;
 
     // Mostrar confirmación
+    const targetGroup = Array.isArray(session.data.weapons)
+      ? session.data.weapons[groupIndex]
+      : Object.entries(session.data.weapons)[groupIndex]?.[1];
+    const groupLabel = targetGroup?.name || targetGroup?.displayName || `Grupo ${groupIndex + 1}`;
+
     const embed = new EmbedBuilder()
       .setTitle('✅ Armas Eliminadas')
-      .setDescription(`Se eliminaron ${removedCount} armas del grupo **${session.data.weapons[groupIndex]?.name || session.data.weapons[groupIndex]?.displayName || `Grupo ${groupIndex + 1}`}**:\n\n${weaponsToRemove.map(w => `• ${w.weapon.name} (${w.category})`).join('\n')}`)
+      .setDescription(`Se eliminaron ${removedCount} armas del grupo **${groupLabel}**:\n\n${weaponsToRemove.map(w => `• ${w.weapon.name} (${w.category})`).join('\n')}`)
       .setColor('#FF4444');
 
     const backButton = new ButtonBuilder()
