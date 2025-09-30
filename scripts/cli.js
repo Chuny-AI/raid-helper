@@ -266,14 +266,23 @@ async function handleAuthorizedUsers() {
 
 // DB Wipe handler
 async function handleDbWipe() {
-  const mongoURI = process.env.MONGODB_URI;
+  // Determinar qué URI usar basado en IS_PROD
+  const isProd = process.env.IS_PROD === 'TRUE' || process.env.IS_PROD === 'true';
+  const mongoURI = isProd ? process.env.MONGODB_URI_PROD : process.env.MONGODB_URI;
+  
   if (!mongoURI) {
     clear();
-    console.error('❌ MONGODB_URI no está definido en el entorno. Configure .env y ejecute el CLI con --env-file=.env');
+    const envVar = isProd ? 'MONGODB_URI_PROD' : 'MONGODB_URI';
+    console.error(`❌ ${envVar} no está definido en el entorno. Configure .env y ejecute el CLI con --env-file=.env`);
+    console.error(`ℹ️  Modo actual: ${isProd ? 'PRODUCCIÓN' : 'DESARROLLO'}`);
     await question('Enter para continuar...');
     return;
   }
+  
   const dbName = parseDbName(mongoURI);
+  console.log(`⚠️  ATENCIÓN: Operando en modo ${isProd ? 'PRODUCCIÓN' : 'DESARROLLO'}`);
+  console.log(`📊 Base de datos objetivo: ${dbName}`);
+  
   const ok = await confirmDestructiveAction(dbName);
   if (!ok) return;
 
@@ -316,8 +325,14 @@ async function handleDeleteGlobalCommands() {
 async function main() {
   try {
     await connectDB();
+    
+    // Determinar el ambiente actual
+    const isProd = process.env.IS_PROD === 'TRUE' || process.env.IS_PROD === 'true';
+    const environment = isProd ? 'PRODUCCIÓN' : 'DESARROLLO';
+    const title = `Chuny CLI - Gestión del BOT [${environment}]`;
+    
     while (true) {
-      const choice = await selectMenu('Chuny CLI - Gestión del BOT', [
+      const choice = await selectMenu(title, [
         'Servidores Premium',
         'Subir armas a la base de datos',
         'Usuarios autorizados (scanner)',
