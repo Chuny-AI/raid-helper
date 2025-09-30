@@ -1,12 +1,12 @@
 const AuthorizedUser = require('../database/models/AuthorizedUser');
 
 /**
- * Servicio para gestionar usuarios autorizados para decode-file
+ * Servicio para gestionar usuarios autorizados para decode
  */
 class AuthorizedUserService {
 
   /**
-   * Verifica si un usuario está autorizado para usar decode-file
+   * Verifica si un usuario está autorizado para usar decode
    * @param {string} userId - ID del usuario de Discord
    * @returns {Promise<boolean>} - true si está autorizado
    */
@@ -26,7 +26,7 @@ class AuthorizedUserService {
   }
 
   /**
-   * Autoriza a un usuario para usar decode-file
+   * Autoriza a un usuario para usar decode
    * @param {string} userId - ID del usuario de Discord
    * @param {string} authorizedBy - ID del usuario que autoriza
    * @param {string} username - Nombre de usuario (opcional)

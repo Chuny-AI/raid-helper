@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { getTemplatesByServer, getTemplateByName, updateTemplate, createTemplate, deleteTemplate, getTemplateNames } = require('../../services/templateService');
+const { AttachmentBuilder } = require('discord.js');
 const { isServerPremium, getOrCreateServer } = require('../../services/serverService');
 const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, createPremiumEmbed, safeReply } = require('../../utils/errorEmbeds');
 const { checkPremiumAccessWithOwnerBypass } = require('../../middleware/roleCheck');
@@ -443,6 +444,53 @@ module.exports = {
             .setDescription('Nombre para el nuevo template')
             .setRequired(true)
         )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('export')
+        .setDescription('Exporta un template a un archivo JSON descargable')
+        .addStringOption(option =>
+          option
+            .setName('template')
+            .setDescription('Selecciona el template a exportar (desde Mongo)')
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('import')
+        .setDescription('Importa un template desde un archivo JSON adjunto')
+        .addAttachmentOption(option =>
+          option
+            .setName('json')
+            .setDescription('Archivo JSON con la estructura completa del template')
+            .setRequired(true)
+        )
+        .addStringOption(option =>
+          option
+            .setName('template_name')
+            .setDescription('Nombre del template destino donde se importarán los datos')
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('rename')
+        .setDescription('Renombra el título de un template existente')
+        .addStringOption(option =>
+          option
+            .setName('template')
+            .setDescription('Selecciona el template existente (desde Mongo)')
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+        .addStringOption(option =>
+          option
+            .setName('new_template_name')
+            .setDescription('Nuevo nombre para el template (obligatorio)')
+            .setRequired(true)
+        )
     ),
 
   async execute(interaction) {
@@ -464,6 +512,15 @@ module.exports = {
           break;
         case 'clone':
           await this.executeClone(interaction);
+          break;
+        case 'export':
+          await this.executeExport(interaction);
+          break;
+        case 'import':
+          await this.executeImport(interaction);
+          break;
+        case 'rename':
+          await this.executeRename(interaction);
           break;
         default:
           await interaction.reply({
@@ -1594,7 +1651,7 @@ module.exports = {
     const subcommand = interaction.options.getSubcommand();
 
     try {
-      if (['edit', 'delete', 'clone'].includes(subcommand)) {
+      if (['edit', 'delete', 'clone', 'export', 'rename'].includes(subcommand)) {
         const templates = await getTemplatesByServer(interaction.guild.id);
         const focusedValue = interaction.options.getFocused();
         const filtered = templates.filter(template =>
@@ -1611,6 +1668,207 @@ module.exports = {
     } catch (error) {
       console.error(`[ERROR] Error en autocomplete template ${subcommand}:`, error);
       await interaction.respond([]);
+    }
+  },
+
+  async executeRename(interaction) {
+    try {
+      const guildId = interaction.guild.id;
+      const currentName = interaction.options.getString('template');
+      const newTitle = interaction.options.getString('new_template_name');
+
+      // Buscar el template actual
+      const currentTemplate = await getTemplateByName(currentName, guildId);
+      if (!currentTemplate) {
+        const errorEmbed = createErrorEmbed(
+          'Template No Encontrado',
+          `No existe un template con nombre "${currentName}" en este servidor.`
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
+
+      // Verificar que el nuevo nombre no esté en uso
+      const conflict = await getTemplateByName(newTitle, guildId);
+      if (conflict) {
+        const errorEmbed = createErrorEmbed(
+          'Título Ya en Uso',
+          `El título "${newTitle}" ya está en uso. Elige otro nombre.`
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
+
+      // Actualizar el template con el nuevo título
+      const updatedTemplate = await updateTemplate(currentTemplate._id, { title: newTitle });
+
+      const successEmbed = createSuccessEmbed(
+        'Template Renombrado',
+        `El template "${currentName}" ha sido renombrado exitosamente a "${newTitle}".`,
+        [
+          { name: 'Nombre Anterior', value: currentName, inline: true },
+          { name: 'Nombre Nuevo', value: newTitle, inline: true }
+        ]
+      );
+
+      return await safeReply(interaction, { embeds: [successEmbed], ephemeral: true });
+
+    } catch (error) {
+      console.error('[ERROR] Error en executeRename:', error);
+      const errorEmbed = createErrorEmbed(
+        'Error del Sistema',
+        'Hubo un error al renombrar el template.'
+      );
+      return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+    }
+  },
+
+async executeExport(interaction) {
+    try {
+      const guildId = interaction.guild.id;
+      const templateName = interaction.options.getString('template');
+
+      // Buscar el template en la base de datos
+      const template = await getTemplateByName(templateName, guildId);
+      if (!template) {
+        const errorEmbed = createErrorEmbed(
+          'Template No Encontrado',
+          `No existe un template con nombre "${templateName}" en este servidor.`
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
+
+      // Preparar los datos para exportar
+      const exportData = {
+        title: template.title,
+        description: template.description || '',
+        image: template.image || '',
+        color: template.color || '',
+        url: template.url || '',
+        roles: template.roles || [],
+        weapons: template.weapons || {},
+        notifyAll: template.notifyAll || false,
+        reminder: template.reminder || '5m'
+      };
+
+      // Crear el archivo JSON
+      const jsonContent = JSON.stringify(exportData, null, 2);
+      const buffer = Buffer.from(jsonContent, 'utf8');
+      const fileName = `${template.title.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
+      
+      const { AttachmentBuilder } = require('discord.js');
+      const attachment = new AttachmentBuilder(buffer, { name: fileName });
+
+      const successEmbed = createSuccessEmbed(
+        'Template Exportado',
+        `El template "${template.title}" ha sido exportado exitosamente.`,
+        [
+          { name: 'Archivo', value: fileName, inline: true },
+          { name: 'Tamaño', value: `${Math.round(buffer.length / 1024 * 100) / 100} KB`, inline: true }
+        ]
+      );
+
+      return await safeReply(interaction, { 
+        embeds: [successEmbed], 
+        files: [attachment], 
+        ephemeral: true 
+      });
+
+    } catch (error) {
+      console.error('[ERROR] Error en executeExport:', error);
+      const errorEmbed = createErrorEmbed(
+        'Error de Exportación',
+        'Hubo un error al exportar el template.'
+      );
+      return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+    }
+  },
+
+async executeImport(interaction) {
+    try {
+      const guildId = interaction.guild.id;
+      const attachment = interaction.options.getAttachment('json');
+      const templateName = interaction.options.getString('template_name');
+
+      // Validar el archivo
+      if (!attachment.name.endsWith('.json')) {
+        const errorEmbed = createErrorEmbed(
+          'Formato de Archivo Inválido',
+          'El archivo debe ser de tipo JSON (.json)'
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
+
+      // Validar tamaño del archivo (máximo 8MB)
+      if (attachment.size > 8 * 1024 * 1024) {
+        const errorEmbed = createErrorEmbed(
+          'Archivo Muy Grande',
+          'El archivo es demasiado grande. Máximo permitido: 8MB'
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
+
+      // Verificar si ya existe un template con ese nombre
+      const existingTemplate = await getTemplateByName(templateName, guildId);
+      if (existingTemplate) {
+        const errorEmbed = createErrorEmbed(
+          'Template Ya Existe',
+          `Ya existe un template con el nombre "${templateName}". Usa otro nombre.`
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
+
+      // Descargar y parsear el archivo JSON
+      const response = await fetch(attachment.url);
+      if (!response.ok) {
+        throw new Error(`Error al descargar archivo: ${response.status}`);
+      }
+
+      const jsonContent = await response.text();
+      let importData;
+
+      try {
+        importData = JSON.parse(jsonContent);
+      } catch (parseError) {
+        const errorEmbed = createErrorEmbed(
+          'JSON Inválido',
+          'El archivo no contiene un JSON válido.'
+        );
+        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+      }
+
+      // Preparar los datos del template
+      const templateData = {
+        title: templateName,
+        description: importData.description || '',
+        image: importData.image || '',
+        color: importData.color || '',
+        url: importData.url || '',
+        roles: importData.roles || [],
+        weapons: importData.weapons || {},
+        notifyAll: importData.notifyAll || false,
+        reminder: importData.reminder || '5m'
+      };
+
+      // Crear el template en la base de datos
+      const createdTemplate = await createTemplate(templateData, guildId);
+
+      const successEmbed = createSuccessEmbed(
+        'Template Importado',
+        `El template "${templateName}" ha sido importado exitosamente.`,
+        [
+          { name: 'Archivo Original', value: attachment.name, inline: true },
+          { name: 'Nuevo Template', value: templateName, inline: true }
+        ]
+      );
+
+      return await safeReply(interaction, { embeds: [successEmbed], ephemeral: true });
+
+    } catch (error) {
+      console.error('[ERROR] Error en executeImport:', error);
+      const errorEmbed = createErrorEmbed(
+        'Error de Importación',
+        'Hubo un error al importar el template.'
+      );
+      return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
     }
   },
 
@@ -5255,7 +5513,7 @@ async function showWeaponSelectionForGroupEmoji(interaction, sessionId) {
 
     if (!categories.length) {
       return await interaction.reply({
-        content: 'No hay armas disponibles para seleccionar emoji. Usa `/upload_weapons` para cargar armas primero.',
+        content: 'No hay armas disponibles para seleccionar emoji. Usa el CLI para cargar armas primero.',
         ephemeral: true
       });
     }
@@ -6121,14 +6379,14 @@ async function showDirectWeaponSelectionForEdit(interaction, sessionId, groupInd
           } else {
             console.log('🔄 [DEBUG] No se encontró weapons.json');
             return await interaction.reply({
-              content: 'No hay armas disponibles. Usa `/upload_weapons` para cargar armas primero.',
+              content: 'No hay armas disponibles. Usa el CLI para cargar armas primero.',
               ephemeral: true
             });
           }
         } catch (fallbackError) {
           console.error('[DEBUG] Error cargando armas del sistema:', fallbackError);
           return await interaction.reply({
-            content: 'No hay armas disponibles. Usa `/upload_weapons` para cargar armas primero.',
+            content: 'No hay armas disponibles. Usa el CLI para cargar armas primero.',
             ephemeral: true
           });
         }
@@ -6138,7 +6396,7 @@ async function showDirectWeaponSelectionForEdit(interaction, sessionId, groupInd
     // Verificar si finalmente tenemos categorías
     if (!categories || !categories.length) {
       return await interaction.reply({
-        content: 'No hay armas disponibles. Usa `/upload_weapons` para cargar armas primero.',
+        content: 'No hay armas disponibles. Usa el CLI para cargar armas primero.',
         ephemeral: true
       });
     }
@@ -6269,7 +6527,7 @@ async function showWeaponCategorySelectionForEdit(interaction, sessionId) {
     // Verificar si tenemos categorías
     if (!categories.length) {
       return await interaction.reply({
-        content: 'No hay categorías de armas disponibles. Usa `/upload_weapons` para cargar armas primero.',
+        content: 'No hay categorías de armas disponibles. Usa el CLI para cargar armas primero.',
         ephemeral: true
       });
     }

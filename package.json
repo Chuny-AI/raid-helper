@@ -4,11 +4,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node --env-file=.env index.js",
-    "dev": "nodemon --env-file=.env index.js",
-    "register": "node --env-file=.env register-commands.js",
     "destroy-node-instances": "taskkill /F /IM node.exe",
-    "delete-global": "node --env-file=.env delete-global-commands.js",
-    "check-commands": "node --env-file=.env check-commands.js"
+    "check-commands": "node --env-file=.env check-commands.js",
+    "cli": "node --env-file=.env scripts/cli.js"
   },
   "keywords": [
     "discord",

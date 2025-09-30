@@ -10,7 +10,7 @@ const AuthorizedUserService = require('../../services/authorizedUserService');
  */
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('decode-file')
+    .setName('decode')
     .setDescription('Decodifica con la herramienta misteriosa desde un archivo con datos hexadecimales')
     .addAttachmentOption(option =>
       option
@@ -20,19 +20,19 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    console.log(`[DECODE-FILE] Comando ejecutado por ${interaction.user.tag} (${interaction.user.id})`);
+    console.log(`[DECODE] Comando ejecutado por ${interaction.user.tag} (${interaction.user.id})`);
 
     try {
       await interaction.deferReply();
     } catch (error) {
-      console.error('[DECODE-FILE] Error al defer reply:', error);
+      console.error('[DECODE] Error al defer reply:', error);
       try {
         await interaction.reply({
           content: '⚠️ Error de conexión con Discord. Intenta de nuevo.',
           ephemeral: true
         });
       } catch (secondError) {
-        console.error('[DECODE-FILE] Error crítico en interaction:', secondError);
+        console.error('[DECODE] Error crítico en interaction:', secondError);
       }
       return;
     }
@@ -49,7 +49,7 @@ module.exports = {
           'No tienes autorización para usar este comando.',
           [{
             name: '🔒 Comando Restringido',
-            value: 'El comando `decode-file` está limitado a usuarios autorizados específicamente.',
+            value: 'El comando `decode` está limitado a usuarios autorizados específicamente.',
             inline: false
           }, {
             name: '📞 ¿Necesitas Acceso?',
@@ -63,11 +63,11 @@ module.exports = {
         );
 
         await interaction.editReply({ embeds: [unauthorizedEmbed] });
-        console.log(`[DECODE-FILE] Acceso denegado para ${interaction.user.tag} (${interaction.user.id})`);
+        console.log(`[DECODE] Acceso denegado para ${interaction.user.tag} (${interaction.user.id})`);
         return;
       }
 
-      console.log(`[DECODE-FILE] Usuario autorizado: ${interaction.user.tag} (${interaction.user.id})${isOwner ? ' (OWNER)' : ''}`);
+      console.log(`[DECODE] Usuario autorizado: ${interaction.user.tag} (${interaction.user.id})${isOwner ? ' (OWNER)' : ''}`);
 
       const attachment = interaction.options.getAttachment('archivo');
 
@@ -106,7 +106,7 @@ module.exports = {
         return;
       }
 
-      console.log(`[DECODE-FILE] Descargando archivo: ${attachment.name} (${attachment.size} bytes)`);
+      console.log(`[DECODE] Descargando archivo: ${attachment.name} (${attachment.size} bytes)`);
 
       const response = await fetch(attachment.url);
       if (!response.ok) {
@@ -114,7 +114,7 @@ module.exports = {
       }
 
       const fileContent = await response.text();
-      console.log(`[DECODE-FILE] Archivo leído: ${fileContent.length} caracteres`);
+      console.log(`[DECODE] Archivo leído: ${fileContent.length} caracteres`);
 
       const hexData = fileContent
         .replace(/\s+/g, ' ')  // Reemplazar múltiples espacios por uno solo
@@ -140,7 +140,7 @@ module.exports = {
         return;
       }
 
-      console.log(`[DECODE-FILE] Iniciando decodificación de ${hexData.length} caracteres`);
+      console.log(`[DECODE] Iniciando decodificación de ${hexData.length} caracteres`);
       const bosses = DungeonDecoder.decode(hexData);
 
       if (bosses.length === 0) {
@@ -196,10 +196,10 @@ module.exports = {
 
       await interaction.editReply({ embeds: [dungeonEmbed] });
 
-      console.log(`[DECODE-FILE] Decodificación exitosa: ${bosses.length} jefes • Mejor cofre: ${highestPriorityColor}`);
+      console.log(`[DECODE] Decodificación exitosa: ${bosses.length} jefes • Mejor cofre: ${highestPriorityColor}`);
 
     } catch (error) {
-      console.error('[ERROR] Error en comando decode-file:', error);
+      console.error('[ERROR] Error en comando decode:', error);
 
       const errorEmbed = createErrorEmbed(
         'Error de Decodificación',
@@ -222,7 +222,7 @@ module.exports = {
           await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
       } catch (replyError) {
-        console.error('[DECODE-FILE] Error al enviar mensaje de error:', replyError);
+        console.error('[DECODE] Error al enviar mensaje de error:', replyError);
       }
     }
   },

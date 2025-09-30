@@ -138,7 +138,11 @@ async function registerCommands() {
  */
 async function initializeBot() {
   try {
-    connectDB();
+    await connectDB();
+
+    // Asegurar colecciones en BD (crear si no existen)
+    const { ensureCollections } = require('./src/database/bootstrap');
+    await ensureCollections();
 
     getCommands();
 

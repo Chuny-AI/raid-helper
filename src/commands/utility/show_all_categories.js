@@ -2,7 +2,6 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getWeaponCategories } = require("../../services/weaponService");
 const { createInfoEmbed, createErrorEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { isServerPremium } = require("../../services/serverService");
-const { isOwner } = require("../../middleware/ownerCheck");
 
 /**
  * Comando para mostrar todas las categorías de armas
@@ -23,12 +22,8 @@ module.exports = {
       // 1. PRIMERA PRIORIDAD: Verificar estado premium
       const isPremium = await isServerPremium(guildId);
       if (!isPremium) {
-        // Solo el propietario puede usar comandos en servidores no premium
-        const ownerCheck = await isOwner(interaction);
-        if (!ownerCheck) {
-          const premiumEmbed = createPremiumEmbed();
-          return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
-        }
+        const premiumEmbed = createPremiumEmbed();
+        return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
       }
 
       // 2. SEGUNDA PRIORIDAD: Ejecutar el comando
@@ -41,7 +36,7 @@ module.exports = {
           "No hay categorías de armas disponibles.",
           [{
             name: "Solución",
-            value: "Ejecuta `/upload_weapons` primero para cargar las armas y categorías.",
+            value: "Usa el CLI para cargar las armas y categorías primero.",
             inline: false
           }]
         );

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 /**
- * Esquema para usuarios autorizados a usar el comando decode-file
+ * Esquema para usuarios autorizados a usar el comando decode
  */
 const authorizedUserSchema = new mongoose.Schema({
   userId: {

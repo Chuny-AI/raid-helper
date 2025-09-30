@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChannelType } = 
 const ClaimService = require('../../services/claimService');
 const { createErrorEmbed, createSuccessEmbed } = require('../../utils/errorEmbeds');
 const { checkAuthorizedRole } = require('../../middleware/roleCheck');
+const { isMemberInGuildRoles } = require('../../services/guildRoleService');
 
 /**
  * Comando para crear claims de actividades de Albion Online
@@ -285,6 +286,18 @@ module.exports = {
     const claimId = interaction.options.getString('claim_id').toUpperCase();
 
     try {
+      // Restricción: solo administradores o usuarios con roles de gremio pueden completar claims de otros usuarios
+      const claimPreview = await ClaimService.getClaimById?.(claimId) || null;
+      const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+      const hasGuildRole = await isMemberInGuildRoles(interaction.member);
+      if (claimPreview && !isAdmin && !hasGuildRole && claimPreview.userId !== interaction.user.id) {
+        const embed = createErrorEmbed(
+          'Acceso denegado',
+          'Solo puedes completar claims que hayas creado tú. Los administradores y usuarios con roles de gremio pueden completar cualquier claim.'
+        );
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
       const claim = await ClaimService.completeClaim(claimId, interaction);
 
       const embed = new EmbedBuilder()
@@ -343,6 +356,18 @@ module.exports = {
     const claimId = interaction.options.getString('claim_id').toUpperCase();
 
     try {
+      // Restricción: solo administradores o usuarios con roles de gremio pueden cancelar claims de otros usuarios
+      const claimPreview = await ClaimService.getClaimById?.(claimId) || null;
+      const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+      const hasGuildRole = await isMemberInGuildRoles(interaction.member);
+      if (claimPreview && !isAdmin && !hasGuildRole && claimPreview.userId !== interaction.user.id) {
+        const embed = createErrorEmbed(
+          'Acceso denegado',
+          'Solo puedes cancelar claims que hayas creado tú. Los administradores y usuarios con roles de gremio pueden cancelar cualquier claim.'
+        );
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
       const claim = await ClaimService.cancelClaim(claimId, interaction);
 
       const embed = new EmbedBuilder()

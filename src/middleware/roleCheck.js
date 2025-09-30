@@ -47,18 +47,6 @@ const checkPremiumAccess = async (interaction) => {
       return false;
     }
 
-    let botOwnerId;
-    const application = interaction.client.application;
-    if (application && application.owner) {
-      botOwnerId = application.owner.id;
-    } else {
-      botOwnerId = process.env.BOT_OWNER_ID;
-    }
-
-    if (interaction.user.id === botOwnerId) {
-      return true;
-    }
-
     if (interaction.member.permissions.has('Administrator')) {
       return true;
     }
@@ -88,24 +76,12 @@ const checkPremiumAccessWithOwnerBypass = async (interaction) => {
       return false; // No permitir comandos premium en DMs
     }
 
-    let botOwnerId;
-    const application = interaction.client.application;
-    if (application && application.owner) {
-      botOwnerId = application.owner.id;
-    } else {
-      botOwnerId = process.env.BOT_OWNER_ID;
-    }
-
     const guildId = interaction.guild.id;
     const isPremium = await isServerPremium(guildId);
 
     if (!isPremium) {
-      if (interaction.user.id === botOwnerId) {
-        return true; // El propietario puede usar comandos en cualquier servidor
-      } else {
-        // No responder aquí, dejar que commandFilter maneje la respuesta
-        return false;
-      }
+      // No responder aquí, dejar que commandFilter maneje la respuesta
+      return false;
     }
 
     return await checkPremiumAccess(interaction);
@@ -125,20 +101,6 @@ const checkAuthorizedUserAccess = async (interaction) => {
     if (!interaction.user) {
       return false;
     }
-
-    // Verificar si es el propietario del bot
-    let botOwnerId;
-    const application = interaction.client.application;
-    if (application && application.owner) {
-      botOwnerId = application.owner.id;
-    } else {
-      botOwnerId = process.env.BOT_OWNER_ID;
-    }
-
-    if (interaction.user.id === botOwnerId) {
-      return true;
-    }
-
     // Verificar si está en la tabla de usuarios autorizados
     return await isUserAuthorized(interaction.user.id);
   } catch (error) {
@@ -162,23 +124,8 @@ const checkEconomyPermission = async (interaction, specificPermission = 'ECONOMY
     }
 
     const guildId = interaction.guild.id;
-    const userId = interaction.user.id;
 
-    // 1. PRIMERA PRIORIDAD: Verificar si es propietario del bot
-    let botOwnerId;
-    const application = interaction.client.application;
-    if (application && application.owner) {
-      botOwnerId = application.owner.id;
-    } else {
-      botOwnerId = process.env.BOT_OWNER_ID;
-    }
-
-    if (userId === botOwnerId) {
-      console.log('[ECONOMY_CHECK] Usuario es propietario del bot - acceso total');
-      return true;
-    }
-
-    // 2. SEGUNDA PRIORIDAD: Verificar estado premium del servidor
+    // 1. PRIMERA PRIORIDAD: Verificar estado premium del servidor
     const isPremium = await isServerPremium(guildId);
     console.log(`[ECONOMY_CHECK] ¿Servidor premium?: ${isPremium}`);
     
@@ -187,13 +134,13 @@ const checkEconomyPermission = async (interaction, specificPermission = 'ECONOMY
       return false;
     }
 
-    // 3. TERCERA PRIORIDAD: Verificar si es administrador
+    // 2. SEGUNDA PRIORIDAD: Verificar si es administrador
     if (interaction.member.permissions.has('Administrator')) {
       console.log('[ECONOMY_CHECK] Usuario es administrador - acceso permitido');
       return true;
     }
 
-    // 4. CUARTA PRIORIDAD: Verificar permisos de economía en base de datos
+    // 3. TERCERA PRIORIDAD: Verificar permisos de economía en base de datos
     const hasEconomyPermission = await EconomyRoleService.hasEconomyPermission(interaction, specificPermission);
     console.log(`[ECONOMY_CHECK] ¿Tiene permiso ${specificPermission}?: ${hasEconomyPermission}`);
 

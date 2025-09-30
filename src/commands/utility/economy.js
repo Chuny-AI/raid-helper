@@ -3,6 +3,7 @@ const { createErrorEmbed, createPremiumEmbed, createSuccessEmbed, createInfoEmbe
 const EconomyService = require('../../services/economyService');
 const { isServerPremium } = require('../../services/serverService');
 const { checkEconomyPermission, checkSpecificEconomyPermission, getEconomyPermissionInfo } = require('../../middleware/roleCheck');
+const { isMemberInGuildRoles } = require('../../services/guildRoleService');
 
 /**
  * Comando de economía con subcomandos para gestionar dinero de usuarios
@@ -144,16 +145,18 @@ module.exports = {
             // Ver su propio balance - permitido para todos en servidores premium
             hasPermission = true;
           } else {
-            // Ver balance de otro usuario - requiere permisos ECONOMY_VIEW
+            // Ver balance de otro usuario - requiere permisos ECONOMY_VIEW o rol de gremio
             requiredPermission = 'ECONOMY_VIEW';
             hasPermission = await checkSpecificEconomyPermission(interaction, requiredPermission) || 
-                           await checkEconomyPermission(interaction, 'ECONOMY');
+                           await checkEconomyPermission(interaction, 'ECONOMY') ||
+                           await isMemberInGuildRoles(interaction.member);
           }
           break;
         case 'top':
           requiredPermission = 'ECONOMY_VIEW';
           hasPermission = await checkSpecificEconomyPermission(interaction, requiredPermission) || 
-                         await checkEconomyPermission(interaction, 'ECONOMY');
+                         await checkEconomyPermission(interaction, 'ECONOMY') ||
+                         await isMemberInGuildRoles(interaction.member);
           break;
         default:
           hasPermission = await checkEconomyPermission(interaction, 'ECONOMY');

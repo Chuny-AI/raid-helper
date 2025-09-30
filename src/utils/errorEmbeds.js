@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 /**
  * Crea un embed de error hermoso con redes sociales
@@ -285,43 +285,47 @@ const safeReply = async (interaction, options) => {
  * @returns {EmbedBuilder} - Embed premium estandarizado
  */
 const createPremiumEmbed = () => {
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle("✨ ¡Acceso Premium Requerido!")
-    .setDescription("Este comando requiere acceso **Premium**. ¡Mejora tu experiencia con Chuny BOT!")
+    .setDescription("Esta acción requiere una suscripción **Premium** activa en tu servidor.")
     .setColor("#FFD700")
     .setThumbnail("https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless")
-    .addFields([
+    .addFields(
       {
-        name: "🔗 Mis Redes Sociales",
-        value: "¡Sígueme para estar al día con las últimas actualizaciones!",
+        name: "💰 Planes Premium",
+        value: [
+          "• Mensual: **$8 USD**",
+          "• Semestral: **$45 USD** (6% de ahorro)",
+          "• Anual: **$80 USD** (16% de ahorro)"
+        ].join("\n"),
         inline: false
       },
       {
-        name: "🎮 Twitch",
-        value: "[@chuny_dev](https://www.twitch.tv/chuny_dev)",
-        inline: true
+        name: "📌 Requisito",
+        value: "Algunas funciones avanzadas del bot requieren Premium.",
+        inline: false
       },
       {
-        name: "💬 Discord",
-        value: "[Mi Canal](https://discord.gg/6fFHsmewSn)",
-        inline: true
-      },
-      {
-        name: "👤 Contacto Directo",
-        value: `<@${process.env.BOT_OWNER_ID}>`,
-        inline: true
-      },
-      {
-        name: "💡 ¿Cómo obtener Premium?",
-        value: `Contacta directamente a <@${process.env.BOT_OWNER_ID}> o únete a mi servidor de Discord para más información.`,
+        name: "🔗 Suscripción",
+        value: `[Suscribirse ahora](${process.env.PREMIUM_SUBSCRIBE_URL || 'https://discord.com/channels/1322040044265013268/1420525781125304401'})`,
         inline: false
       }
-    ])
+    )
     .setFooter({
       text: "Chuny BOT - Premium",
       iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless"
     })
     .setTimestamp();
+  return embed;
+};
+
+// Botón CTA de suscripción
+const getPremiumCTAComponents = () => {
+  const url = process.env.PREMIUM_SUBSCRIBE_URL || 'https://discord.com/channels/1322040044265013268/1420525781125304401';
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Suscribirse').setURL(url)
+  );
+  return [row];
 };
 
 module.exports = {
@@ -330,5 +334,6 @@ module.exports = {
   createInfoEmbed,
   createSuccessEmbed,
   createPremiumEmbed,
+  getPremiumCTAComponents,
   safeReply
 };
