@@ -1,0 +1,164 @@
+{
+  "title": "Mono - Open",
+  "description": "Tier 7 - Compo para PvP abierto",
+  "image": "https://media.discordapp.net/attachments/1289065983071223864/1431107302223773696/Compo_10.png?ex=68fc3609&is=68fae489&hm=dbeee724a1d02d5ddd973db010be300b8a1659e30ea94a7b5aa7cdc7aca78bf1&=&format=webp&quality=lossless&width=1284&height=856",
+  "weapons": {
+    "group_0": {
+      "displayName": "Maza clapper",
+      "defaultEmoji": "1286453830292344942",
+      "data": [
+        {
+          "name": "Maza",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453830292344942"
+        }
+      ]
+    },
+    "group_1": {
+      "displayName": "Maza pesada",
+      "defaultEmoji": "1286453824827031552",
+      "data": [
+        {
+          "name": "Maza pesada",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453824827031552"
+        }
+      ]
+    },
+    "group_2": {
+      "displayName": "Bastón enraizado",
+      "defaultEmoji": "1286453627623440394",
+      "data": [
+        {
+          "name": "Bastón enraizado",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453627623440394"
+        }
+      ]
+    },
+    "group_3": {
+      "displayName": "Santificador",
+      "defaultEmoji": "1286453963209707572",
+      "data": [
+        {
+          "name": "Santificador",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453963209707572"
+        }
+      ]
+    },
+    "group_4": {
+      "displayName": "Bastón de infortunio",
+      "defaultEmoji": "1286453789766844437",
+      "data": [
+        {
+          "name": "Bastón de infortunio",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453789766844437"
+        }
+      ]
+    },
+    "group_5": {
+      "displayName": "Romperreinos",
+      "defaultEmoji": "1286454791760908309",
+      "data": [
+        {
+          "name": "Romperreinos",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454791760908309"
+        }
+      ]
+    },
+    "group_7": {
+      "displayName": "Arco largo",
+      "defaultEmoji": "1286454654837850122",
+      "data": [
+        {
+          "name": "Arco largo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454654837850122",
+          "url": ""
+        }
+      ]
+    },
+    "group_8": {
+      "displayName": "Patas de oso",
+      "defaultEmoji": "1286454770558828564",
+      "data": [
+        {
+          "name": "Patas de oso",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454770558828564"
+        }
+      ]
+    },
+    "group_9": {
+      "displayName": "Espada tallada",
+      "defaultEmoji": "1286453447532740673",
+      "data": [
+        {
+          "name": "Espada tallada",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453447532740673"
+        }
+      ]
+    },
+    "group_6": {
+      "displayName": "Guanteletes de púas",
+      "defaultEmoji": "1286454654837850122",
+      "data": [
+        {
+          "name": "Guanteletes de púas",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453878648344606"
+        }
+      ]
+    },
+    "group_10": {
+      "displayName": "Extras",
+      "defaultEmoji": "1286454711649697802",
+      "data": [
+        {
+          "name": "Bastón astral",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454711649697802"
+        },
+        {
+          "name": "Crea reyes",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453462611005543"
+        },
+        {
+          "name": "Maza íncubo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453835937746964"
+        },
+        {
+          "name": "Santificador",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453963209707572"
+        },
+        {
+          "name": "Bastón enraizado",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453627623440394"
+        }
+      ]
+    }
+  }
+}

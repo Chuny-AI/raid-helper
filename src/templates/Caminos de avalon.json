@@ -1,0 +1,79 @@
+{
+  "title": "Caminos de avalon - cofres dorados",
+  "description": "**📍 Punto de partida:** Definido por el caller.\n\nMantén tu build lista y respeta los tiempos. La eficiencia y disciplina garantizan una buena run. 💪",
+  "image": "https://media.discordapp.net/attachments/1289065983071223864/1427805684942114846/Group_1.png?ex=68f0332a&is=68eee1aa&hm=c5f95e24d5afbfbf8242791abd58afd87ec100e40880f1a966547ac356722059&=&format=webp&quality=lossless&width=1616&height=1320",
+  "weapons": {
+    "group_0": {
+      "displayName": "Maza",
+      "defaultEmoji": "1286453830292344942",
+      "data": [
+        {
+          "name": "Maza",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453830292344942"
+        }
+      ]
+    },
+    "group_1": {
+      "displayName": "Stopper - Shadowcaller",
+      "defaultEmoji": "1286453824827031552",
+      "data": [
+        {
+          "name": "Maza pesada",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453824827031552"
+        }
+      ]
+    },
+    "group_2": {
+      "displayName": "Santificador",
+      "defaultEmoji": "1286453963209707572",
+      "data": [
+        {
+          "name": "Santificador",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453963209707572"
+        }
+      ]
+    },
+    "group_3": {
+      "displayName": "Perforador de niebla",
+      "defaultEmoji": "1286454665214562315",
+      "data": [
+        {
+          "name": "Perforador de niebla",
+          "units": 3,
+          "image": "",
+          "emoji": "1286454665214562315"
+        }
+      ]
+    },
+    "group_4": {
+      "displayName": "Extra DPS",
+      "defaultEmoji": "1286454138212716615",
+      "data": [
+        {
+          "name": "Canción de despertar",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454138212716615"
+        },
+        {
+          "name": "Bastón flamígero",
+          "units": 0,
+          "image": "",
+          "emoji": "1286454120416280606"
+        },
+        {
+          "name": "Bastón ártico",
+          "units": 0,
+          "image": "",
+          "emoji": "1286454058730786907"
+        }
+      ]
+    }
+  }
+}

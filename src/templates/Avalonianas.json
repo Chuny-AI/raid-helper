@@ -1,0 +1,149 @@
+{
+  "title": "Ava Rush Chuny",
+  "description": "**📍 Punto de partida:** Se sale desde el **HO principal del gremio**.\n\n**⚔️ Requisitos de equipo:**\n- **DPS (Main y Swaps):** Armas **5.4 despertadas** con **+10% de daño**.\n- **Off Hands:** Calidad **8.3**.\n- **Core:** Debe ser **4.4 despertado** con su **mejor stat**.\n\n**⏰ Organización:**\n- Se lanza el **ping con 15 minutos de anticipación**.\n- Al cumplirse los **15 minutos**, **se parte del HO sin excepciones**.\n- Si alguien no llega a tiempo, **se reemplaza por lista de espera** y **pierde acceso al contenido**.\n\n**💰 Scout:**\nEl scout se paga entre todos, **100k por persona**.\n\nMantén tu build lista y respeta los tiempos. La eficiencia y disciplina garantizan una buena run. 💪",
+  "image": "https://media.discordapp.net/attachments/1300940384351944845/1433940272114303170/Google_AI_Studio_2025-10-31T22_06_28.445Z.png?ex=692ac5b2&is=69297432&hm=befb20bc825a6bef3d30091d78bf4a63b148a3037b621480fe17fb9ed7cf6bea&=&format=webp&quality=lossless&width=1569&height=856",
+  "weapons": {
+    "group_1": {
+      "displayName": "Caller",
+      "defaultEmoji": "1286453835937746964",
+      "data": [
+        {
+          "name": "Maza íncubo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453835937746964",
+          "url": "https://albionfreemarket.com/builds/details/68c0eb1ab43c26a4dc1738a4"
+        }
+      ]
+    },
+    "group_0": {
+      "displayName": "Off tank",
+      "defaultEmoji": "1415437240846258237",
+      "data": [
+        {
+          "name": "Martillo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454020675862549",
+          "url": "https://albionfreemarket.com/builds/details/68c0f165b43c26a4dc1738a7"
+        }
+      ]
+    },
+    "group_3": {
+      "displayName": "Bastón sagrado",
+      "defaultEmoji": "1286453934658945044",
+      "data": [
+        {
+          "name": "Bastón sagrado",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453934658945044",
+          "url": "https://albionfreemarket.com/builds/details/68e9993205462e2e8d600330"
+        }
+      ]
+    },
+    "group_4": {
+      "displayName": "Bastón de raíz férrea DPS",
+      "defaultEmoji": "1286453795236085770",
+      "data": [
+        {
+          "name": "Bastón de raíz férrea",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453795236085770",
+          "url": "https://albionfreemarket.com/builds/details/68c2299149aec3c17b6ce11d"
+        }
+      ]
+    },
+    "group_5": {
+      "displayName": "Shadowcaller",
+      "defaultEmoji": "1286454278868832256",
+      "data": [
+        {
+          "name": "Invocador oscuro",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454278868832256",
+          "url": "https://albionfreemarket.com/builds/details/68c1064d49aec3c17b6ce0c8"
+        }
+      ]
+    },
+    "group_6": {
+      "displayName": "Falce de cristal 1",
+      "defaultEmoji": "1286454785108873267",
+      "data": [
+        {
+          "name": "Falce de cristal",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": "https://albionfreemarket.com/builds/details/68e4677905462e2e8d600168"
+        }
+      ]
+    },
+    "group_7": {
+      "displayName": "Falce de cristal 2",
+      "defaultEmoji": "1286454785108873267",
+      "data": [
+        {
+          "name": "Falce de cristal",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": "https://albionfreemarket.com/builds/details/68e4677905462e2e8d600168"
+        }
+      ]
+    },
+    "group_8": {
+      "displayName": "Falce de cristal 3",
+      "defaultEmoji": "1286454785108873267",
+      "data": [
+        {
+          "name": "Falce de cristal",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": "https://albionfreemarket.com/builds/details/68e4677905462e2e8d600168"
+        }
+      ]
+    },
+    "group_9": {
+      "displayName": "Falce de cristal 4",
+      "defaultEmoji": "1286454785108873267",
+      "data": [
+        {
+          "name": "Falce de cristal",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": "https://albionfreemarket.com/builds/details/68e4677905462e2e8d600168"
+        }
+      ]
+    },
+    "group_11": {
+      "displayName": "Falce de cristal 5",
+      "defaultEmoji": "1286454785108873267",
+      "data": [
+        {
+          "name": "Falce de cristal",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": "https://albionfreemarket.com/builds/details/68e4677905462e2e8d600168"
+        }
+      ]
+    },
+    "group_10": {
+      "displayName": "Scout",
+      "defaultEmoji": "1286453818841759878",
+      "data": [
+        {
+          "name": "Maza de lecho",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453818841759878"
+        }
+      ]
+    }
+  }
+}

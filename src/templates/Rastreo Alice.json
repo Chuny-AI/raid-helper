@@ -1,0 +1,72 @@
+{
+  "title": "Alice - Rastreo - Arañas",
+  "description": "Se prestan las builds T8, si mueren se deben pagar.",
+  "image": "https://media.discordapp.net/attachments/1420457189364990052/1423395008152600626/image.png?ex=68e02767&is=68ded5e7&hm=0cdef45c6dba774711d5cab2e2f7ff68787ff2b63b8a2060a42cc033c43e95c9&=&format=webp&quality=lossless",
+  "weapons": {
+    "offtank": {
+      "displayName": "Tanque",
+      "defaultEmoji": "1286453835937746964",
+      "data": [
+        {
+          "name": "Maza íncubo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453835937746964",
+          "url": ""
+        }
+      ]
+    },
+    "group_1": {
+      "displayName": "Falce de cristal 1",
+      "defaultEmoji": "1286454785108873267",
+      "data": [
+        {
+          "name": "Falce de cristal",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": ""
+        }
+      ]
+    },
+    "group_2": {
+      "displayName": "Falce de cristal 2",
+      "defaultEmoji": "1286454785108873267",
+      "data": [
+        {
+          "name": "Falce de cristal",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": ""
+        }
+      ]
+    },
+    "group_3": {
+      "displayName": "Falce de cristal 3",
+      "defaultEmoji": "1286454785108873267",
+      "data": [
+        {
+          "name": "Falce de cristal",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454785108873267",
+          "url": ""
+        }
+      ]
+    },
+    "group_4": {
+      "displayName": "Redención",
+      "defaultEmoji": "1286453921484640286",
+      "data": [
+        {
+          "name": "Bastón de redención",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453921484640286",
+          "url": ""
+        }
+      ]
+    }
+  }
+}

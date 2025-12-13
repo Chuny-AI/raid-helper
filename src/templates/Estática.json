@@ -1,0 +1,98 @@
+{
+  "title": "Estática T8 - Ropa T6, Armas T7",
+  "description": "Estática T8 con ropa T6 y armas T7 para misiones de nivel alto.",
+  "image": "https://media.discordapp.net/attachments/1300940384351944845/1432085236749041825/Group_4_1.png?ex=68ffc4cf&is=68fe734f&hm=c8d913e8fbc358b4be7a1403eedb19a52c9b25f447b5be2a29717be83585aa4b&=&format=webp&quality=lossless&width=1152&height=960",
+  "weapons": {
+    "group_1": {
+      "displayName": "Maza",
+      "defaultEmoji": "1286453830292344942",
+      "data": [
+        {
+          "name": "Maza",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453830292344942",
+          "url": "https://albionfreemarket.com/builds/details/691fc4f5c3498488998ae76c"
+        }
+      ]
+    },
+    "group_2": {
+      "displayName": "Bastón caído",
+      "defaultEmoji": "1286453946659115090",
+      "data": [
+        {
+          "name": "Bastón caído",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453946659115090",
+          "url": "https://albionfreemarket.com/builds/details/691fc565c3498488998ae76e"
+        }
+      ]
+    },
+    "group_3": {
+      "displayName": "Prisma de hielos",
+      "defaultEmoji": "1286454042263945248",
+      "data": [
+        {
+          "name": "Prisma de hielos",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454042263945248",
+          "url": "https://albionfreemarket.com/builds/details/691fc5b8c3498488998ae76f"
+        }
+      ]
+    },
+    "group_4": {
+      "displayName": "Bastón flamígero",
+      "defaultEmoji": "1286454120416280606",
+      "data": [
+        {
+          "name": "Bastón flamígero",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454120416280606",
+          "url": "https://albionfreemarket.com/builds/details/691fc61bc3498488998ae770"
+        }
+      ]
+    },
+    "group_5": {
+      "displayName": "Cazaespíritus",
+      "defaultEmoji": "1286453599215554630",
+      "data": [
+        {
+          "name": "Cazaespíritus",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453599215554630",
+          "url": "https://albionfreemarket.com/builds/details/691fc6e0c3498488998ae772"
+        }
+      ]
+    },
+    "group_6": {
+      "displayName": "Arco de badón",
+      "defaultEmoji": "1286454637251002478",
+      "data": [
+        {
+          "name": "Arco de badón",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454637251002478",
+          "url": "https://albionfreemarket.com/builds/details/691fc656c3498488998ae771"
+        }
+      ]
+    },
+    "group_7": {
+      "displayName": "Invocador de luz",
+      "defaultEmoji": "1286453674364899432",
+      "data": [
+        {
+          "name": "Invocador de luz",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453674364899432",
+          "url": "https://albionfreemarket.com/builds/details/691fc783c3498488998ae773"
+        }
+      ]
+    }
+  }
+}

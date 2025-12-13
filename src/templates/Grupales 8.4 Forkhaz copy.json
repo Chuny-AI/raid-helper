@@ -1,0 +1,98 @@
+{
+  "title": "Grupales Forkhaz",
+  "description": "Grupales 8.4",
+  "image": "https://media.discordapp.net/attachments/1289065983071223864/1419911950954926201/hNAKGAl.jpeg?ex=68d61e8d&is=68d4cd0d&hm=e68da2ac32a28aa08f3797b7560657a78c0b438bb419be74492bb62703f48b91&=&format=webp&width=1230&height=694",
+  "weapons": {
+    "group_0": {
+      "displayName": "Maza íncubo",
+      "defaultEmoji": "1286453835937746964",
+      "data": [
+        {
+          "name": "Maza íncubo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453835937746964",
+          "url": ""
+        }
+      ]
+    },
+    "group_1": {
+      "displayName": "Bastón de redención",
+      "defaultEmoji": "1286453921484640286",
+      "data": [
+        {
+          "name": "Bastón de redención",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453921484640286",
+          "url": ""
+        }
+      ]
+    },
+    "group_2": {
+      "displayName": "Invocador oscuro",
+      "defaultEmoji": "1286454278868832256",
+      "data": [
+        {
+          "name": "Invocador oscuro",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454278868832256",
+          "url": ""
+        }
+      ]
+    },
+    "group_3": {
+      "displayName": "Prisma de hielos",
+      "defaultEmoji": "1286454042263945248",
+      "data": [
+        {
+          "name": "Prisma de hielos",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454042263945248",
+          "url": ""
+        }
+      ]
+    },
+    "group_4": {
+      "displayName": "Arco de badón",
+      "defaultEmoji": "1286454637251002478",
+      "data": [
+        {
+          "name": "Arco de badón",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454637251002478",
+          "url": ""
+        }
+      ]
+    },
+    "group_5": {
+      "displayName": "Bastón flamígero",
+      "defaultEmoji": "1286454120416280606",
+      "data": [
+        {
+          "name": "Bastón flamígero",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454120416280606",
+          "url": "1"
+        }
+      ]
+    },
+    "group_6": {
+      "displayName": "Arco largo",
+      "defaultEmoji": "1286454654837850122",
+      "data": [
+        {
+          "name": "Arco largo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454654837850122",
+          "url": ""
+        }
+      ]
+    }
+  }
+}

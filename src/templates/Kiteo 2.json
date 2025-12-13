@@ -1,0 +1,98 @@
+{
+  "title": "Kiteo DPS",
+  "description": "Builds T8",
+  "image": "https://media.discordapp.net/attachments/1300940384351944845/1432085236749041825/Group_4_1.png?ex=68ffc4cf&is=68fe734f&hm=c8d913e8fbc358b4be7a1403eedb19a52c9b25f447b5be2a29717be83585aa4b&=&format=webp&quality=lossless&width=1152&height=960",
+  "weapons": {
+    "group_1": {
+      "displayName": "Prisma de hielos",
+      "defaultEmoji": "1286454042263945248",
+      "data": [
+        {
+          "name": "Prisma de hielos",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454042263945248",
+          "url": "https://albionfreemarket.com/builds/details/68fd844883a24d4178966a4d"
+        }
+      ]
+    },
+    "group_2": {
+      "displayName": "Guja fisurante",
+      "defaultEmoji": "1286453583172079616",
+      "data": [
+        {
+          "name": "Guja fisurante",
+          "units": 2,
+          "image": "",
+          "emoji": "1286453583172079616",
+          "url": "https://albionfreemarket.com/builds/details/68fd853183a24d4178966a4f"
+        }
+      ]
+    },
+    "group_3": {
+      "displayName": "Guanteletes de púas",
+      "defaultEmoji": "1286453878648344606",
+      "data": [
+        {
+          "name": "Guanteletes de púas",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453878648344606",
+          "url": "https://albionfreemarket.com/builds/details/68fd857b83a24d4178966a50"
+        }
+      ]
+    },
+    "group_4": {
+      "displayName": "Romperreinos",
+      "defaultEmoji": "1286454791760908309",
+      "data": [
+        {
+          "name": "Romperreinos",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454791760908309",
+          "url": "https://albionfreemarket.com/builds/details/68fd85f683a24d4178966a51"
+        }
+      ]
+    },
+    "group_5": {
+      "displayName": "Canción de despertar",
+      "defaultEmoji": "1286454138212716615",
+      "data": [
+        {
+          "name": "Canción de despertar",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454138212716615",
+          "url": "https://albionfreemarket.com/builds/details/68fd864583a24d4178966a52"
+        }
+      ]
+    },
+    "group_6": {
+      "displayName": "Cazaespíritus",
+      "defaultEmoji": "1286453599215554630",
+      "data": [
+        {
+          "name": "Cazaespíritus",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453599215554630",
+          "url": "https://albionfreemarket.com/builds/details/68fd83a483a24d4178966a4b"
+        }
+      ]
+    },
+    "group_7": {
+      "displayName": "Modelador de energía",
+      "defaultEmoji": "1286454328416145521",
+      "data": [
+        {
+          "name": "Modelador de energía",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454328416145521",
+          "url": "https://albionfreemarket.com/builds/details/68fd83f783a24d4178966a4c"
+        }
+      ]
+    }
+  }
+}

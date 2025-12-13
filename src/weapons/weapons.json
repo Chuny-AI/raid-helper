@@ -227,6 +227,12 @@
           "emoji": "1286453795236085770"
         },
         {
+          "name": "Bastón de forjacorteza",
+          "units": 1,
+          "image": "",
+          "emoji": "1426361624725422143"
+        },
+        {
           "name": "Bastón de infortunio",
           "units": 1,
           "image": "",
@@ -405,6 +411,12 @@
           "units": 1,
           "image": "",
           "emoji": "1286453921484640286"
+        },
+        {
+          "name": "Bastón exaltado",
+          "units": 1,
+          "image": "",
+          "emoji": "1432083614299983942"
         }
       ]
     },
@@ -657,6 +669,12 @@
           "units": 1,
           "image": "",
           "emoji": "1286454244328738829"
+        },
+        {
+          "name": "Bastón putrefacto",
+          "units": 1,
+          "image": "",
+          "emoji": "1431874844311420979"
         }
       ]
     },
