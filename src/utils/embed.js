@@ -130,16 +130,16 @@ const ensureParticipationSections = (embed) => {
     const hasCannotGo = embed.data.fields?.some(f => f.name === cannotGoFieldName);
 
     if (!hasWaitlist) {
-      embed.addFields({ name: waitlistFieldName, value: '—', inline: false });
+      embed.addFields({ name: waitlistFieldName, value: '\u200b', inline: false });
     }
     if (!hasCannotGo) {
-      embed.addFields({ name: cannotGoFieldName, value: '—', inline: false });
+      embed.addFields({ name: cannotGoFieldName, value: '\u200b', inline: false });
     }
   } catch (e) {
     // No romper si el embed aún no tiene fields
     embed.addFields(
-      { name: '🕒 Lista de espera', value: '—', inline: false },
-      { name: '🚫 No puedo ir', value: '—', inline: false }
+      { name: '🕒 Lista de espera', value: '\u200b', inline: false },
+      { name: '🚫 No puedo ir', value: '\u200b', inline: false }
     );
   }
 };

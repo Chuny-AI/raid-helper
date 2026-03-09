@@ -491,14 +491,11 @@ const getEvents = () => {
         const getCustomEmbedId = customId.substring(lastDashIndex + 1);
         const templateName = customId.substring('weapons-'.length, lastDashIndex);
 
-        // Parse the unique value format: weaponId-weaponCategory-index
+        // Parse the unique value format: groupKey~itemGroupIndex
         const rawValue = values[0];
-        const lastHyphen = rawValue.lastIndexOf('-');
-        const indexPart = rawValue.substring(lastHyphen + 1);
-        const rest = rawValue.substring(0, lastHyphen);
-        const firstHyphen = rest.indexOf('-');
-        const weaponId = rest.substring(0, firstHyphen);
-        const weaponCategoryFromValue = rest.substring(firstHyphen + 1).replace(/_/g, ' '); // Restore spaces from category
+        const tildeIdx = rawValue.indexOf('~');
+        const groupKey = rawValue.substring(0, tildeIdx);
+        const itemGroupIndex = parseInt(rawValue.substring(tildeIdx + 1));
 
         const embedsList = embedsMap[templateName];
         if (!embedsList) {
@@ -517,26 +514,26 @@ const getEvents = () => {
           return;
         }
 
-        // Get weapon info from template using weaponId and category
+        // Get weapon info from template using groupKey and per-group item index
         let weaponCategory = null;
         let emojiSelected = null;
         let weaponName = null;
+        let weaponUnitsLimit = 1;
+        let template = null;
 
         try {
           const { getTemplateByName } = require('../services/templateService');
-          const template = await getTemplateByName(templateName, interaction.guild.id);
+          template = await getTemplateByName(templateName, interaction.guild.id);
 
           if (template && template.weapons) {
-            for (const [key, weapon] of Object.entries(template.weapons)) {
-              if (weapon.data && Array.isArray(weapon.data) && weapon.displayName === weaponCategoryFromValue) {
-                const weaponItem = weapon.data.find(item => String(item.id) === String(weaponId));
-                if (weaponItem) {
-                  weaponCategory = weapon.displayName;
-                  emojiSelected = weaponItem.emojiId || weaponItem.emoji; // Usar emojiId si existe, sino emoji como fallback
-                  weaponName = weaponItem.name || weapon.displayName;
-                  break;
-                }
-              }
+            const weaponGroup = template.weapons[groupKey];
+            if (weaponGroup && weaponGroup.data && Array.isArray(weaponGroup.data) &&
+                itemGroupIndex >= 0 && itemGroupIndex < weaponGroup.data.length) {
+              const weaponItem = weaponGroup.data[itemGroupIndex];
+              weaponCategory = weaponGroup.displayName;
+              emojiSelected = weaponItem.emojiId || weaponItem.emoji;
+              weaponName = weaponItem.name || weaponGroup.displayName;
+              weaponUnitsLimit = weaponItem.units || 1;
             }
           }
         } catch (templateError) {
@@ -552,6 +549,21 @@ const getEvents = () => {
         }
 
         const embed = currentEmbedEntry.embed;
+
+        // Validate per-weapon limit before checking group total
+        const groupField = embed.data.fields.find(f => f.name.includes(weaponCategory));
+        if (groupField && weaponName) {
+          const escapedWeaponName = weaponName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const currentWeaponCount = (groupField.value.match(new RegExp(escapedWeaponName, 'g')) || []).length;
+          if (currentWeaponCount >= weaponUnitsLimit) {
+            await interaction.followUp({
+              content: `El arma **${weaponName}** ya está llena (${currentWeaponCount}/${weaponUnitsLimit}).`,
+              ephemeral: true,
+            });
+            return;
+          }
+        }
+
         const newUser = modifyUnitsFromName(embed, weaponCategory);
         if (!newUser) {
           await interaction.followUp({
@@ -568,21 +580,21 @@ const getEvents = () => {
         let waitlistField = embed.data.fields.find(f => f.name === waitlistFieldName);
         let cannotGoField = embed.data.fields.find(f => f.name === cannotGoFieldName);
         if (!waitlistField) {
-          waitlistField = { name: waitlistFieldName, value: '—', inline: false };
+          waitlistField = { name: waitlistFieldName, value: '\u200b', inline: false };
           embed.data.fields.push(waitlistField);
         }
         if (!cannotGoField) {
-          cannotGoField = { name: cannotGoFieldName, value: '—', inline: false };
+          cannotGoField = { name: cannotGoFieldName, value: '\u200b', inline: false };
           embed.data.fields.push(cannotGoField);
         }
         // Remover al usuario de ambas listas si está presente
         if (typeof waitlistField.value === 'string' && waitlistField.value.includes(interaction.user.toString())) {
           const lines = waitlistField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
-          waitlistField.value = lines.length > 0 ? lines.join('\n') : '—';
+          waitlistField.value = lines.length > 0 ? lines.join('\n') : '\u200b';
         }
         if (typeof cannotGoField.value === 'string' && cannotGoField.value.includes(interaction.user.toString())) {
           const lines = cannotGoField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
-          cannotGoField.value = lines.length > 0 ? lines.join('\n') : '—';
+          cannotGoField.value = lines.length > 0 ? lines.join('\n') : '\u200b';
         }
         embed.data.fields.forEach((field) => {
           if (field.name.includes(weaponCategory)) {
@@ -592,7 +604,7 @@ const getEvents = () => {
               // Si es solo un ID numérico, formatearlo como emoji personalizado
               formattedEmoji = `<:weapon:${emojiSelected}>`;
             }
-            field.value += `\n${formattedEmoji} ${interaction.user}`;
+            field.value += `\n${formattedEmoji} ${weaponName} ${interaction.user}`;
           }
         });
 
@@ -625,68 +637,25 @@ const getEvents = () => {
         // Usar setImmediate para no bloquear la respuesta visual
         setImmediate(async () => {
           try {
-            const { getTemplateByName } = require('../services/templateService');
-            const { createBuildEmbed, createNoBuildEmbed } = require('./embed');
-            const template = await getTemplateByName(templateName, interaction.guild.id);
-
+            const { createBuildEmbed } = require('./embed');
+            // Reusar el template ya cargado (via closure) para evitar segunda llamada a DB
             if (template && template.weapons) {
-              let weaponUrl = null;
-              let weaponEmoji = null;
-
-              // Soportar weapons como objeto (nuevo formato) y array (legacy)
-              const weaponGroups = Array.isArray(template.weapons)
-                ? template.weapons
-                : Object.values(template.weapons);
-
-              // Buscar por id explícito primero
-              let foundItem = null;
-              for (const weapon of weaponGroups) {
-                if (weapon.data && Array.isArray(weapon.data)) {
-                  foundItem = weapon.data.find(item => item.id && String(item.id) === String(weaponId));
-                  if (foundItem) {
-                    break;
-                  }
-                }
-              }
-
-              // Si no hay id (datos legacy), intentar por nombre dentro de la categoría extraída
-              if (!foundItem) {
-                for (const weapon of weaponGroups) {
-                  if (weapon.displayName === weaponCategoryFromValue && weapon.data && Array.isArray(weapon.data)) {
-                    foundItem = weapon.data.find(item => item.name && item.name.trim().toLowerCase() === weaponCategoryFromValue.trim().toLowerCase());
-                    if (foundItem) break;
-                  }
-                }
-              }
-
-              // Fallback adicional: usar el índice recibido cuando no hay id ni coincidencia por nombre
-              if (!foundItem) {
-                const idx = parseInt(indexPart);
-                if (!isNaN(idx)) {
-                  for (const weapon of weaponGroups) {
-                    if (weapon.displayName === weaponCategoryFromValue && weapon.data && Array.isArray(weapon.data)) {
-                      if (idx >= 0 && idx < weapon.data.length) {
-                        foundItem = weapon.data[idx];
-                        break;
-                      }
-                    }
-                  }
-                }
-              }
+              const weaponGroup = template.weapons[groupKey];
+              const foundItem = weaponGroup?.data?.[itemGroupIndex];
 
               if (foundItem) {
-                weaponUrl = foundItem.url;
-                weaponEmoji = foundItem.emojiId || foundItem.emoji;
-              }
+                const weaponUrl = foundItem.url;
+                const weaponEmoji = foundItem.emojiId || foundItem.emoji;
 
-              // Enviar build solo si hay URL válida
-              if (weaponUrl && weaponUrl.trim() !== '') {
-                const buildEmbed = createBuildEmbed(weaponCategory, weaponUrl, weaponEmoji, templateName);
-                try {
-                  await interaction.user.send({ embeds: [buildEmbed] });
-                } catch (dmError) {
-                  console.error('Error enviando mensaje privado:', dmError);
-                  console.log('[INFO] No se pudo enviar build por DM, usuario probablemente tiene DMs cerrados');
+                // Enviar build solo si hay URL válida
+                if (weaponUrl && weaponUrl.trim() !== '') {
+                  const buildEmbed = createBuildEmbed(weaponCategory, weaponUrl, weaponEmoji, templateName);
+                  try {
+                    await interaction.user.send({ embeds: [buildEmbed] });
+                  } catch (dmError) {
+                    console.error('Error enviando mensaje privado:', dmError);
+                    console.log('[INFO] No se pudo enviar build por DM, usuario probablemente tiene DMs cerrados');
+                  }
                 }
               }
             }
@@ -718,12 +687,13 @@ const getEvents = () => {
           const waitlistFieldName = '🕒 Lista de espera';
           let waitlistField = embed.data.fields.find(f => f.name === waitlistFieldName);
           if (!waitlistField) {
-            waitlistField = { name: waitlistFieldName, value: '', inline: false };
+            waitlistField = { name: waitlistFieldName, value: '\u200b', inline: false };
             embed.data.fields.push(waitlistField);
           }
           // Añadir usuario a la lista si no está ya
           if (!waitlistField.value.includes(interaction.user.toString())) {
-            waitlistField.value += (waitlistField.value ? '\n' : '') + `${interaction.user}`;
+            const current = (waitlistField.value === '\u200b' || waitlistField.value.trim() === '') ? '' : waitlistField.value;
+            waitlistField.value = current ? `${current}\n${interaction.user}` : `${interaction.user}`;
           }
 
           // Remover del apartado "No puedo ir" si estaba allí
@@ -731,7 +701,7 @@ const getEvents = () => {
           const cannotGoField = embed.data.fields.find(f => f.name === cannotGoFieldName);
           if (cannotGoField && typeof cannotGoField.value === 'string' && cannotGoField.value.includes(interaction.user.toString())) {
             const lines = cannotGoField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
-            cannotGoField.value = lines.join('\n');
+            cannotGoField.value = lines.join('\n') || '\u200b';
           }
 
           // Actualizar contador de participantes y visualmente el mensaje
@@ -782,11 +752,12 @@ const getEvents = () => {
           const cannotGoFieldName = '🚫 No puedo ir';
           let cannotGoField = embed.data.fields.find(f => f.name === cannotGoFieldName);
           if (!cannotGoField) {
-            cannotGoField = { name: cannotGoFieldName, value: '', inline: false };
+            cannotGoField = { name: cannotGoFieldName, value: '\u200b', inline: false };
             embed.data.fields.push(cannotGoField);
           }
           if (!cannotGoField.value.includes(interaction.user.toString())) {
-            cannotGoField.value += (cannotGoField.value ? '\n' : '') + `${interaction.user}`;
+            const current = (cannotGoField.value === '\u200b' || cannotGoField.value.trim() === '') ? '' : cannotGoField.value;
+            cannotGoField.value = current ? `${current}\n${interaction.user}` : `${interaction.user}`;
           }
 
           // Remover del apartado "Lista de espera" si estaba allí
@@ -794,7 +765,7 @@ const getEvents = () => {
           const waitlistField = embed.data.fields.find(f => f.name === waitlistFieldName);
           if (waitlistField && typeof waitlistField.value === 'string' && waitlistField.value.includes(interaction.user.toString())) {
             const lines = waitlistField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
-            waitlistField.value = lines.join('\n');
+            waitlistField.value = lines.join('\n') || '\u200b';
           }
 
           // Actualizar contador de participantes y visualmente el mensaje
@@ -864,7 +835,7 @@ const deleteUserIfExistsOnCurrentField = (
   embed.data.fields.forEach((field) => {
     const regexUnits = /<:(\w+):\1>\s+(.+?)\s+\((\d+)\/(\d+)\):/;
     if (field.value.includes(interaction.user)) {
-      const regex = new RegExp(`\\n<:[^:]+:[0-9]+> ${interaction.user}`, "g");
+      const regex = new RegExp(`\\n<:[^:]+:[0-9]+>[^\\n]*${interaction.user}`, "g");
       if (regex) {
         field.value = field.value.replace(regex, "");
       }

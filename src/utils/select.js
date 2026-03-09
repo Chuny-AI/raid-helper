@@ -16,8 +16,7 @@ const createSelect = (template, templateName, interaction) => {
     .setPlaceholder("¡Selecciona tu opción!");
 
   const entries = Object.entries(template.weapons);
-  let optionIndex = 0; // Para asegurar valores únicos
-  for (const [, weapon] of entries) {
+  for (const [groupKey, weapon] of entries) {
     const weaponCategory = weapon.displayName;
 
     if (!weapon.data || !Array.isArray(weapon.data)) {
@@ -25,12 +24,12 @@ const createSelect = (template, templateName, interaction) => {
       continue;
     }
 
-    for (const item of weapon.data) {
+    for (let itemGroupIndex = 0; itemGroupIndex < weapon.data.length; itemGroupIndex++) {
+      const item = weapon.data[itemGroupIndex];
       const emojiId = item.emojiId || item.emoji; // Usar emojiId si existe, sino emoji como fallback
       const weaponName = item.name || weaponCategory; // Usar displayName si name está vacío
-      const weaponId = item.id;
-      // Create unique value by combining weaponId with category and index to avoid duplicates
-      const uniqueValue = `${weaponId}-${weaponCategory.replace(/\s+/g, '_')}-${optionIndex}`;
+      // Encode group key + per-group item index for accurate weapon lookup (no ID dependency)
+      const uniqueValue = `${groupKey}~${itemGroupIndex}`;
       
       // Solo añadir emoji si existe y es válido
       const optionBuilder = new StringSelectMenuOptionBuilder()
@@ -42,7 +41,6 @@ const createSelect = (template, templateName, interaction) => {
       }
       
       select.addOptions(optionBuilder);
-      optionIndex++;
     }
   }
 

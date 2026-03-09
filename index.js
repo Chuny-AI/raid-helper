@@ -120,15 +120,14 @@ async function registerGuildCommands() {
 
 /**
  * Función para registrar comandos según la configuración
+ * Si existe GUILD_ID se registran solo en ese servidor, si no, globalmente.
  */
 async function registerCommands() {
-  const useGuildCommands = process.env.GUILD_COMMANDS === 'true';
-
-  if (useGuildCommands) {
-    console.log('[INFO] Modo de desarrollo: Registrando comandos en servidor específico');
+  if (process.env.GUILD_ID) {
+    console.log(`[INFO] GUILD_ID detectado: registrando comandos en servidor ${process.env.GUILD_ID}`);
     return await registerGuildCommands();
   } else {
-    console.log('[INFO] Modo de producción: Registrando comandos globalmente');
+    console.log('[INFO] Sin GUILD_ID: registrando comandos globalmente');
     return await registerGlobalCommands();
   }
 }
