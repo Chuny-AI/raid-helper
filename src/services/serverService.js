@@ -52,52 +52,8 @@ const updateServerName = async (guildId, guildName) => {
   }
 };
 
-/**
- * Actualiza el estado premium del servidor
- */
-const updateServerPremium = async (guildId, premium) => {
-  try {
-    return await Server.findOneAndUpdate(
-      { guildId },
-      { premium },
-      { new: true }
-    );
-  } catch (error) {
-    console.error('[ERROR] Error en updateServerPremium:', error);
-    throw error;
-  }
-};
-
-/**
- * Verifica si un servidor tiene premium
- */
-const isServerPremium = async (guildId) => {
-  try {
-    const server = await Server.findOne({ guildId });
-    return server ? server.premium : false;
-  } catch (error) {
-    console.error('[ERROR] Error en isServerPremium:', error);
-    return false;
-  }
-};
-
-/**
- * Obtiene todos los servidores premium
- */
-const getPremiumServers = async () => {
-  try {
-    return await Server.find({ premium: true });
-  } catch (error) {
-    console.error('[ERROR] Error en getPremiumServers:', error);
-    throw error;
-  }
-};
-
 module.exports = {
   getOrCreateServer,
   getServer,
-  updateServerName,
-  updateServerPremium,
-  isServerPremium,
-  getPremiumServers
+  updateServerName
 };

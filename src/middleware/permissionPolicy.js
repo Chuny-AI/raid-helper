@@ -1,27 +1,13 @@
 const { shouldShowAdminCommand } = require('./commandVisibility');
-const { checkAuthorizedRole, checkAuthorizedUserAccess, checkEconomyPermission } = require('./roleCheck');
-const { isServerPremium } = require('../services/serverService');
-const { isMemberInGuildRoles } = require('../services/guildRoleService');
+const { checkAuthorizedRole } = require('./roleCheck');
 
 // Checkers por política estándar
 const policyCheckers = {
-  premium: async (interaction) => {
-    try { return await isServerPremium(interaction.guild.id); } catch (_) { return false; }
-  },
   admin: async (interaction) => {
     try { return await shouldShowAdminCommand(interaction); } catch (_) { return false; }
   },
   authorizedroles: async (interaction) => {
     try { return await checkAuthorizedRole(interaction); } catch (_) { return false; }
-  },
-  guildsroles: async (interaction) => {
-    try { return await isMemberInGuildRoles(interaction.member); } catch (_) { return false; }
-  },
-  authorizedusers: async (interaction) => {
-    try { return await checkAuthorizedUserAccess(interaction); } catch (_) { return false; }
-  },
-  economyroles: async (interaction) => {
-    try { return await checkEconomyPermission(interaction); } catch (_) { return false; }
   },
   all: async () => true,
 };
@@ -57,13 +43,9 @@ const evaluatePolicy = async (interaction, policyDef) => {
 
 // Etiquetas legibles
 const labels = {
-  premium: 'Permisos de premium',
   admin: 'Administradores del servidor',
   authorizedroles: 'Creadores de contenido',
-  guildsroles: 'Permisos de gremios y alianzas',
-  authorizedusers: 'Permisos de scanner',
-  economyroles: 'Permisos de economía',
-  all: 'Permisos para todo el mundo si hay premium',
+  all: 'Permisos para todo el mundo',
 };
 
 const formatPolicyRequirement = (policyDef) => {

@@ -1,9 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { getTemplatesByServer, getTemplateByName, updateTemplate, createTemplate, deleteTemplate, getTemplateNames } = require('../../services/templateService');
 const { AttachmentBuilder } = require('discord.js');
-const { isServerPremium, getOrCreateServer } = require('../../services/serverService');
-const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, createPremiumEmbed, safeReply } = require('../../utils/errorEmbeds');
-const { checkPremiumAccessWithOwnerBypass } = require('../../middleware/roleCheck');
+const { getOrCreateServer } = require('../../services/serverService');
+const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require('../../utils/errorEmbeds');
+const { checkPremiumAccess } = require('../../middleware/roleCheck');
 
 // Store temporal para manejar el estado del proceso de edición
 const templateEditSessions = new Map();
@@ -1006,15 +1006,9 @@ module.exports = {
   // =============== TEMPLATE LIST ===============
   async executeList(interaction) {
     try {
-      // VALIDACIÓN 1: Verificar premium del servidor
-      const isPremium = await isServerPremium(interaction.guild.id);
-      if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
-      }
 
-      // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
-      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      // VALIDACION: Verificar permisos de usuario
+      const hasAccess = await checkPremiumAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -1067,15 +1061,9 @@ module.exports = {
     }
   },  // =============== TEMPLATE CREATE ===============
   async executeCreate(interaction) {
-    // VALIDACIÓN 1: Verificar premium del servidor
-    const isPremium = await isServerPremium(interaction.guild.id);
-    if (!isPremium) {
-      const premiumEmbed = createPremiumEmbed();
-      return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
-    }
 
-    // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
-      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+    // VALIDACION: Verificar permisos de usuario
+      const hasAccess = await checkPremiumAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -1129,15 +1117,9 @@ module.exports = {
   // =============== TEMPLATE EDIT ===============
   async executeEdit(interaction) {
     try {
-      // VALIDACIÓN 1: Verificar premium del servidor
-      const isPremium = await isServerPremium(interaction.guild.id);
-      if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
-      }
 
-      // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
-      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      // VALIDACION: Verificar permisos de usuario
+      const hasAccess = await checkPremiumAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -1481,15 +1463,9 @@ module.exports = {
   // =============== TEMPLATE DELETE ===============
   async executeDelete(interaction) {
     try {
-      // VALIDACIÓN 1: Verificar premium del servidor
-      const isPremium = await isServerPremium(interaction.guild.id);
-      if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
-      }
 
-      // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
-      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      // VALIDACION: Verificar permisos de usuario
+      const hasAccess = await checkPremiumAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -1561,15 +1537,9 @@ module.exports = {
   // =============== TEMPLATE CLONE ===============
   async executeClone(interaction) {
     try {
-      // VALIDACIÓN 1: Verificar premium del servidor
-      const isPremium = await isServerPremium(interaction.guild.id);
-      if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        return await interaction.reply({ embeds: [premiumEmbed], ephemeral: true });
-      }
 
-      // VALIDACIÓN 2: Verificar permisos de usuario (premium + roles autorizados)
-      const hasAccess = await checkPremiumAccessWithOwnerBypass(interaction);
+      // VALIDACION: Verificar permisos de usuario
+      const hasAccess = await checkPremiumAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",

@@ -5,7 +5,7 @@ const { isValidHex } = require("../../utils/regex");
 const { createSelect } = require("../../utils/select");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
-const { createErrorEmbed, createWarningEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
+const { createErrorEmbed, createWarningEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { checkAuthorizedRole } = require('../../middleware/roleCheck');
 
 
@@ -134,18 +134,6 @@ module.exports = {
   async execute(interaction) {
     try {
       // No hacer defer todavía, necesitamos verificar si hay roles a notificar primero
-
-      /**
-       * Verificar acceso premium - SIN BYPASS PARA EL DUEÑO
-       */
-      const { isServerPremium } = require('../../services/serverService');
-      const isPremium = await isServerPremium(interaction.guild.id);
-
-      if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        await interaction.editReply({ embeds: [premiumEmbed], ephemeral: true });
-        return;
-      }
 
       // Verificar roles autorizados (authorizedroles), independiente de economy/decode
       const hasAuthorizedRole = await checkAuthorizedRole(interaction);

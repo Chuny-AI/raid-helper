@@ -1,4 +1,3 @@
-const { isServerPremiumSilent } = require('./premiumCheckSilent');
 const { isOwner } = require('./ownerCheck');
 
 /**
@@ -11,7 +10,7 @@ const shouldShowCommand = async (interaction, commandType) => {
   try {
     switch (commandType) {
       case 'premium':
-        return await isServerPremiumSilent(interaction);
+        return false;
       
       case 'owner':
         return await isOwner(interaction);

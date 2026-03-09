@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getTemplateNames, getTemplatesByServer } = require("../../services/templateService");
-const { getServer, isServerPremium } = require("../../services/serverService");
+const { getServer } = require("../../services/serverService");
 const { createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
@@ -18,7 +18,6 @@ module.exports = {
       
       const server = await getServer(guildId);
       const templates = await getTemplatesByServer(guildId);
-      const isPremium = await isServerPremium(guildId);
       
       const embed = createInfoEmbed(
         "Status Information",
@@ -42,11 +41,6 @@ module.exports = {
           {
             name: "Templates Count",
             value: templates.length.toString(),
-            inline: true
-          },
-          {
-            name: "Premium Status",
-            value: isPremium ? "✅ Premium" : "❌ Free",
             inline: true
           },
           {

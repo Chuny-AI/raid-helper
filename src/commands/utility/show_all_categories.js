@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getWeaponCategories } = require("../../services/weaponService");
-const { createInfoEmbed, createErrorEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
-const { isServerPremium } = require("../../services/serverService");
+const { createInfoEmbed, createErrorEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
  * Comando para mostrar todas las categorías de armas
@@ -19,14 +18,7 @@ module.exports = {
 
       const guildId = interaction.guild.id;
 
-      // 1. PRIMERA PRIORIDAD: Verificar estado premium
-      const isPremium = await isServerPremium(guildId);
-      if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
-      }
-
-      // 2. SEGUNDA PRIORIDAD: Ejecutar el comando
+      // Ejecutar el comando
       const categories = await getWeaponCategories();
 
       let embed;

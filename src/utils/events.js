@@ -3,7 +3,6 @@ const { client } = require("./client");
 const { embedsMap } = require("../utils/embed");
 const { getOrCreateServer } = require("../services/serverService");
 const { filterCommand } = require("./commandFilter");
-const ClaimService = require("../services/claimService");
 
 // Import template command
 const templateCommand = require("../commands/utility/template");
@@ -20,12 +19,6 @@ const getEvents = () => {
       console.log('[INFO] Servidores registrados en la base de datos');
     } catch (error) {
       console.error('[ERROR] Error al registrar servidores:', error);
-    }
-
-    try {
-      await ClaimService.cleanupOrphanReminders();
-    } catch (error) {
-      console.error('[ERROR] Error en limpieza de recordatorios huérfanos:', error);
     }
   });
 

@@ -1,9 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const { getAuthorizedRoles, addAuthorizedRole, removeAuthorizedRole, clearAuthorizedRoles } = require("../../services/authorizedRoleService");
-const { getOrCreateServer, isServerPremium } = require("../../services/serverService");
+const { getOrCreateServer } = require("../../services/serverService");
 const { checkOwner } = require("../../middleware/ownerCheck");
-const { checkPremiumAccessWithOwnerBypass } = require("../../middleware/roleCheck");
-const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, createPremiumEmbed, safeReply } = require("../../utils/errorEmbeds");
+const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
  * Comando para gestionar roles autorizados para enviar notificaciones
@@ -47,25 +46,7 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // JERARQUÍA DE VALIDACIONES:
-      // 1. Verificar estado premium del servidor (OBLIGATORIO para todos excepto propietario)
-      // 2. Verificar permisos de administrador o propietario
-      // 3. Verificar usuarios autorizados (si aplica)
-
-      // 1. PRIMERA PRIORIDAD: Verificar estado premium (OBLIGATORIO)
-      const isPremium = await isServerPremium(interaction.guild.id);
-      if (!isPremium) {
-        // ÚNICO bypass permitido: propietario del bot
-        const isOwner = await checkOwner(interaction);
-        if (!isOwner) {
-          // SIN EXCEPCIONES: Ni administradores pueden usar comandos sin premium
-          const premiumEmbed = createPremiumEmbed();
-          return await safeReply(interaction, { embeds: [premiumEmbed], ephemeral: true });
-        }
-      }
-
-      // 2. SEGUNDA PRIORIDAD: Verificar permisos de administrador o propietario
-      const isOwner = await checkOwner(interaction);
+            const isOwner = await checkOwner(interaction);
       const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
       
       if (!isOwner && !isAdmin) {

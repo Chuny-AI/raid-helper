@@ -1,10 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { createErrorEmbed, createPremiumEmbed } = require('../../utils/errorEmbeds');
-const { isServerPremiumSilent } = require('../../middleware/premiumCheckSilent');
+const { createErrorEmbed } = require('../../utils/errorEmbeds');
 
 /**
  * Comando para calcular división de botín entre jugadores
- * Disponible solo en servidores premium
  */
 module.exports = {
   data: new SlashCommandBuilder()
@@ -43,17 +41,6 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // Verificar si el servidor es premium
-      const isPremium = await isServerPremiumSilent(interaction);
-
-      if (!isPremium) {
-        const premiumEmbed = createPremiumEmbed();
-        return await interaction.reply({
-          embeds: [premiumEmbed],
-          ephemeral: true
-        });
-      }
-
       // Defer la respuesta para evitar timeouts
       await interaction.deferReply();
 

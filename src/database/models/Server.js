@@ -15,10 +15,6 @@ const serverSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Template'
   }],
-  premium: {
-    type: Boolean,
-    default: false
-  },
   createdAt: {
     type: Date,
     default: Date.now
