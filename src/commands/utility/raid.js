@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { createEmbed, embedsMap, createMassNotificationEmbed } = require("../../utils/embed");
-const { parseTime } = require("../../utils/time");
+const { parseUTCTime, parseMinutes } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
 const { createSelect } = require("../../utils/select");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
@@ -27,7 +27,7 @@ module.exports = {
       option
         .setName("time")
         .setDescription(
-          'Indica el tiempo restante en minutos (1-60) ej: "30", "45", "60" (OBLIGATORIO)'
+          'Hora del evento en UTC (formato HH:MM) ej: "17:00", "21:30"'
         )
         .setRequired(true)
     )
@@ -67,7 +67,7 @@ module.exports = {
       option
         .setName("reminder")
         .setDescription(
-          'Minutos antes de la actividad para enviar recordatorio (1-60) ej: "10", "30" (opcional)'
+          'Minutos antes del evento para enviar recordatorio ej: "10", "30" (opcional)'
         )
         .setRequired(false)
     )
@@ -186,16 +186,16 @@ module.exports = {
         });
       }
 
-      let delayTime;
+      let eventTimestamp;
       try {
-        delayTime = parseTime(time);
+        eventTimestamp = parseUTCTime(time);
       } catch (timeError) {
         const errorEmbed = createErrorEmbed(
           "Error en el Tiempo del Evento",
-          `Error procesando el tiempo del evento: ${timeError.message}`,
+          `Error procesando la hora del evento: ${timeError.message}`,
           [{
             name: "Formato Correcto",
-            value: "Usa números de 1 a 60 (minutos): `30`, `45`, `60`",
+            value: "Usa el formato HH:MM en UTC: `17:00`, `21:30`, `09:00`",
             inline: false
           }]
         );
@@ -205,36 +205,19 @@ module.exports = {
         });
       }
 
-      const maxEventTime = 60 * 60 * 1000; // 60 minutos en milisegundos
-      if (delayTime > maxEventTime) {
-        const warningEmbed = createWarningEmbed(
-          "Tiempo del Evento Excedido",
-          "El tiempo del evento no puede exceder 60 minutos.",
-          [{
-            name: "Tiempos Válidos",
-            value: "Usa números de 1 a 60: `30`, `45`, `60`",
-            inline: false
-          }]
-        );
-        return await safeReply(interaction, {
-          embeds: [warningEmbed],
-          ephemeral: true,
-        });
-      }
-
       let finalReminder = reminder;
 
       if (finalReminder) {
-        let reminderTime;
+        let reminderTimeMs;
         try {
-          reminderTime = parseTime(finalReminder);
+          reminderTimeMs = parseMinutes(finalReminder);
         } catch (reminderError) {
           const errorEmbed = createErrorEmbed(
             "Error en el Tiempo del Recordatorio",
             `Error procesando el tiempo del recordatorio: ${reminderError.message}`,
             [{
               name: "Formato Correcto",
-              value: "Usa números de 1 a 60 (minutos): `10`, `30`, `45`",
+              value: "Usa un número de minutos: `10`, `30`, `60`",
               inline: false
             }]
           );
@@ -244,17 +227,15 @@ module.exports = {
           });
         }
 
-        // Validación: reminder debe ser <= time - 5 minutos
-        const minValidReminder = 5 * 60 * 1000; // 5 minutos en milisegundos
-        const maxAllowedReminder = delayTime - minValidReminder;
-
-        if (reminderTime > maxAllowedReminder) {
+        // El recordatorio debe dispararse antes del evento
+        const msUntilEvent = eventTimestamp * 1000 - Date.now();
+        if (reminderTimeMs >= msUntilEvent) {
           const warningEmbed = createWarningEmbed(
             "Tiempo de Recordatorio Inválido",
-            "El recordatorio debe ser menor o igual al tiempo del evento menos 5 minutos.",
+            "El recordatorio debe programarse antes de la hora del evento.",
             [{
               name: "Ejemplo",
-              value: `Para un evento de ${time} minutos, el recordatorio máximo permitido es ${Math.floor((maxAllowedReminder) / (60 * 1000))} minutos`,
+              value: `Para un evento en ${Math.round(msUntilEvent / 60000)} minutos, el recordatorio máximo permitido es ${Math.floor((msUntilEvent - 60000) / 60000)} minutos`,
               inline: false
             }]
           );
@@ -263,7 +244,7 @@ module.exports = {
             ephemeral: true,
           });
         }
-        if (reminderTime <= 0) {
+        if (reminderTimeMs <= 0) {
           const warningEmbed = createWarningEmbed(
             "Tiempo de Recordatorio Inválido",
             "El tiempo del recordatorio debe ser mayor a 0.",
@@ -372,7 +353,7 @@ module.exports = {
 
       const embed = createEmbed({
         title,
-        delayTime,
+        eventTimestamp,
         template,
         color,
         image,
@@ -395,12 +376,11 @@ module.exports = {
         try {
           const { createReminder, addInterestedUser } = require('../../utils/reminderManager');
           const activityTitle = title || template.title;
-          const activityTime = time; // time es obligatorio ahora
 
           createReminder(
             interaction.id,
             finalReminder,
-            activityTime,
+            eventTimestamp * 1000,  // ms timestamp del evento
             templateName,
             interaction.channel.id,
             guildId,
@@ -486,7 +466,7 @@ module.exports = {
           );
 
           const activityTitle = title || template.title;
-          const timeRemaining = time; // time es obligatorio ahora
+          const discordTimestamp = `<t:${eventTimestamp}:F>`;
 
           // Crear el enlace al mensaje del raid
           const messageUrl = `https://discord.com/channels/${interaction.guild.id}/${interaction.channel.id}/${raidMessage.id || interaction.id}`;
@@ -494,9 +474,9 @@ module.exports = {
           const massNotification = createMassNotificationEmbed(
             activityTitle,
             interaction.guild.name,
-            timeRemaining,
+            discordTimestamp,
             user.toString(),
-            messageUrl // Pasar la URL del mensaje
+            messageUrl
           );
 
           for (const member of targetMembers.values()) {

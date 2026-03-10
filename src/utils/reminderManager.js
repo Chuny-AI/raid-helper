@@ -1,4 +1,4 @@
-const { parseTime, formatTime } = require('./time');
+const { parseMinutes, formatMinutes } = require('./time');
 const { createReminderEmbed } = require('./embed');
 
 /**
@@ -10,30 +10,31 @@ const activeReminders = new Map();
 /**
  * Crea un recordatorio para una actividad
  * @param {string} interactionId - ID único de la interacción
- * @param {string} reminderTime - Tiempo del recordatorio (ej: "10", "30")
- * @param {string} activityTime - Tiempo total de la actividad (ej: "60")
+ * @param {string} reminderTime - Tiempo del recordatorio en minutos (ej: "10", "30")
+ * @param {number} eventTimestampMs - Timestamp Unix del evento en milisegundos
  * @param {string} templateName - Nombre del template
  * @param {string} channelId - ID del canal donde se creó la actividad
  * @param {string} guildId - ID del servidor
  * @param {string} activityTitle - Título de la actividad
  * @param {Array} participants - Lista de participantes (se actualizará dinámicamente)
  */
-const createReminder = (interactionId, reminderTime, activityTime, templateName, channelId, guildId, activityTitle, participants = []) => {
+const createReminder = (interactionId, reminderTime, eventTimestampMs, templateName, channelId, guildId, activityTitle, participants = []) => {
   try {
-    const reminderDelay = parseTime(reminderTime);
-    const totalActivityTime = parseTime(activityTime);
+    const reminderDelayMs = parseMinutes(reminderTime);
 
-    const reminderTimeMs = totalActivityTime - reminderDelay;
+    // El recordatorio se envía X minutos antes del evento
+    const fireAtMs = eventTimestampMs - reminderDelayMs;
+    const delayMs = fireAtMs - Date.now();
 
-    if (reminderTimeMs <= 0) {
-      console.log(`[WARNING] El tiempo de recordatorio (${reminderTime}) es mayor o igual al tiempo de la actividad (${activityTime})`);
+    if (delayMs <= 0) {
+      console.log(`[WARNING] El recordatorio para "${activityTitle}" no se puede programar: el tiempo de disparo ya pasó`);
       return null;
     }
 
     const timeoutId = setTimeout(async () => {
       await sendReminderNotification(interactionId, templateName, channelId, guildId, activityTitle, participants);
       activeReminders.delete(interactionId);
-    }, reminderTimeMs);
+    }, delayMs);
 
     activeReminders.set(interactionId, {
       timeoutId,
@@ -43,10 +44,10 @@ const createReminder = (interactionId, reminderTime, activityTime, templateName,
       guildId,
       activityTitle,
       reminderTime,
-      interestedUsers: new Set() // Usuarios que han mostrado interés en esta actividad
+      interestedUsers: new Set()
     });
 
-    console.log(`[INFO] Recordatorio creado para ${templateName} en ${reminderTime} (${reminderTimeMs}ms)`);
+    console.log(`[INFO] Recordatorio creado para "${activityTitle}" - disparo en ${Math.round(delayMs / 60000)} min`);
     return timeoutId;
 
   } catch (error) {
@@ -101,7 +102,7 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
     }
 
     const reminder = activeReminders.get(interactionId);
-    const reminderTimeFormatted = reminder ? formatTime(parseTime(reminder.reminderTime)) : 'pronto';
+    const reminderTimeFormatted = reminder ? formatMinutes(parseMinutes(reminder.reminderTime)) : 'pronto';
 
     let updatedParticipants = participants || [];
     try {

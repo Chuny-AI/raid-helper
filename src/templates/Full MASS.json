@@ -1,0 +1,133 @@
+{
+  "title": "Mono - Open",
+  "description": "Tier 8 - Compo para PvP abierto",
+  "image": "https://media.discordapp.net/attachments/1289065983071223864/1431107302223773696/Compo_10.png?ex=68fc3609&is=68fae489&hm=dbeee724a1d02d5ddd973db010be300b8a1659e30ea94a7b5aa7cdc7aca78bf1&=&format=webp&quality=lossless&width=1284&height=856",
+  "weapons": {
+    "group_0": {
+      "displayName": "Maza",
+      "defaultEmoji": "1286453830292344942",
+      "data": [
+        {
+          "name": "Maza",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453830292344942"
+        }
+      ]
+    },
+    "group_4": {
+      "displayName": "Stoppers",
+      "defaultEmoji": "1286454706578657382",
+      "data": [
+        {
+          "name": "Gran bastón arcano",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454706578657382"
+        },
+        {
+          "name": "Maza pesada",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453824827031552"
+        },
+        {
+          "name": "Martillo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454020675862549"
+        }
+      ]
+    },
+    "group_3": {
+      "displayName": "Healers",
+      "defaultEmoji": "1286453963209707572",
+      "data": [
+        {
+          "name": "Santificador",
+          "units": 2,
+          "image": "",
+          "emoji": "1286453963209707572"
+        },
+        {
+          "name": "Bastón caído",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453946659115090"
+        },
+        {
+          "name": "Bastón de forjacorteza",
+          "units": 1,
+          "image": "",
+          "emoji": "1426361624725422143"
+        }
+      ]
+    },
+    "group_23": {
+      "displayName": "Soportes",
+      "defaultEmoji": "1286453847782457364",
+      "data": [
+        {
+          "name": "Juradores",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453847782457364"
+        },
+        {
+          "name": "Locus malévolo",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454701075992697"
+        },
+        {
+          "name": "Bastón de maldición de vida",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454262666104892"
+        },
+        {
+          "name": "Bastón enraizado",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453627623440394"
+        }
+      ]
+    },
+    "group_21": {
+      "displayName": "DPS",
+      "defaultEmoji": "1286454042263945248",
+      "data": [
+        {
+          "name": "Prisma de hielos",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454042263945248"
+        },
+        {
+          "name": "Invocador oscuro",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454278868832256"
+        },
+        {
+          "name": "Brazales de batalla",
+          "units": 3,
+          "image": "",
+          "emoji": "1286453860919021609"
+        },
+        {
+          "name": "Guanteletes de púas",
+          "units": 1,
+          "image": "",
+          "emoji": "1286453878648344606"
+        },
+        {
+          "name": "Bastón astral",
+          "units": 1,
+          "image": "",
+          "emoji": "1286454711649697802"
+        }
+      ]
+    }
+  }
+}

@@ -7,7 +7,7 @@ const embedsMap = {};
  */
 const createEmbed = ({
   title,
-  delayTime,
+  eventTimestamp,
   template,
   color,
   image,
@@ -21,7 +21,7 @@ const createEmbed = ({
   setLeader(embed, user);
   setColor(embed, color, template);
   setDescription(embed, description, template);
-  showTime(embed, delayTime);
+  showTime(embed, eventTimestamp);
   setFooter(embed);
   setAuthor(embed);
   setTitleWeapons(embed);
@@ -257,20 +257,15 @@ const pingRoles = (embed, template, finalRoles = null) => {
 };
 
 /**
- * Mostrar la hora de inicio de la actividad en horario UTC
+ * Mostrar la hora de inicio de la actividad usando Discord Timestamps.
+ * <t:UNIX:F> → muestra fecha y hora completa según la zona horaria del usuario
+ * <t:UNIX:R> → muestra tiempo relativo (ej: "en 2 horas")
+ * @param {number} eventTimestamp - Unix timestamp en segundos
  */
-const showTime = (embed, delayTime) => {
-  const date = new Date(Date.now() + delayTime);
-
-  const day = date.getUTCDate(); // Día del mes (1-31)
-  const hours = String(date.getUTCHours()).padStart(2, "0"); // Horas (00-23)
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0"); // Minutos (00-59)
-
-  const formattedTime = `__Día ${day} - A las ${hours}:${minutes} UTC__`;
-
+const showTime = (embed, eventTimestamp) => {
   embed.addFields({
-    name: `Hora de la actividad:`,
-    value: formattedTime,
+    name: 'Hora de la actividad:',
+    value: `<t:${eventTimestamp}:F> (<t:${eventTimestamp}:R>)`,
   });
 };
 
