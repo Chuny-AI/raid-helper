@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { createEmbed, embedsMap, createMassNotificationEmbed } = require("../../utils/embed");
+const { createEmbed, embedsMap, createMassNotificationEmbed, updateParticipantsCounter } = require("../../utils/embed");
 const { parseUTCTime, parseMinutes } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
 const { createSelect } = require("../../utils/select");
@@ -7,7 +7,193 @@ const { getTemplateNames, getTemplateByName } = require("../../services/template
 const { getOrCreateServer } = require("../../services/serverService");
 const { createErrorEmbed, createWarningEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { checkAuthorizedRole } = require('../../middleware/roleCheck');
+const { createRaidEvent, getRaidEvent } = require('../../services/raidEventService');
 
+
+/**
+ * Elimina a un usuario del embed de un raid y decrementa los contadores afectados.
+ * Devuelve true si el usuario estaba en un grupo de armas o looters.
+ * @param {Object} embed - EmbedBuilder con data.fields
+ * @param {string} userMention - Mención del usuario (ej: "<@123456789>")
+ * @returns {boolean}
+ */
+function kickUserFromEmbed(embed, userMention) {
+  let wasInSlot = false;
+  const escapedMention = userMention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  embed.data.fields.forEach((field) => {
+    if (typeof field.value !== 'string' || !field.value.includes(userMention)) return;
+
+    // Lista de espera / No puedo ir — solo eliminar la línea, sin tocar contadores
+    if (field.name === '🕒 Lista de espera' || field.name === '🚫 No puedo ir') {
+      const lines = field.value.split('\n').filter(l => !l.includes(userMention));
+      field.value = lines.length > 0 ? lines.join('\n') : '\u200b';
+      return;
+    }
+
+    // Campo Looters
+    if (field.name.startsWith('👑 Looters')) {
+      const lines = field.value.split('\n').filter(l => !l.includes(userMention));
+      field.value = lines.join('\n') || '\u200b';
+      const m = field.name.match(/(\d+)\/(\d+)/);
+      if (m) {
+        const cur = parseInt(m[1]);
+        if (cur > 0) field.name = field.name.replace(/(\d+)\/(\d+)/, `${cur - 1}/${m[2]}`);
+      }
+      wasInSlot = true;
+      return;
+    }
+
+    // Campos de grupos de armas — entradas con formato: \n<:emoji:id> Arma <@userId>
+    const weaponLineRegex = new RegExp(`\\n<:[^:]+:[0-9]+>[^\\n]*${escapedMention}`, 'g');
+    field.value = field.value.replace(weaponLineRegex, '');
+
+    // Decrementar contador (X/Y) en el nombre del campo
+    const unitMatch = field.name.match(/<:[\w]+:[\w]+>\s+.+?\s+\((\d+)\/(\d+)\):/);
+    if (unitMatch) {
+      const cur = parseInt(unitMatch[1]);
+      const total = unitMatch[2];
+      const newCount = Math.max(0, cur - 1);
+      field.name = field.name.replace(/(\d+)\/(\d+)/, `${newCount}/${total}`);
+      wasInSlot = true;
+    }
+  });
+
+  return wasInSlot;
+}
+
+/**
+ * Manejador del subcomando /raid kick
+ */
+async function executeKickSubcommand(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+
+  const raidId = interaction.options.getString('raid_id').toUpperCase().trim();
+  const targetUser = interaction.options.getUser('usuario');
+
+  // 1. Buscar el embed activo en memoria
+  let targetEmbedEntry = null;
+  let targetTemplateName = null;
+  for (const [tmplName, entries] of Object.entries(embedsMap)) {
+    const found = entries.find(e => e.raidId === raidId);
+    if (found) {
+      targetEmbedEntry = found;
+      targetTemplateName = tmplName;
+      break;
+    }
+  }
+
+  if (!targetEmbedEntry) {
+    return interaction.editReply({
+      content: `No se encontró ningún raid activo con el ID **${raidId}**. Verifica el ID en el footer del embed del raid.`,
+    });
+  }
+
+  const embed = targetEmbedEntry.embed;
+
+  // 2. Verificar permisos: solo el líder del raid (o admin) puede expulsar
+  const leaderField = embed.data.fields.find(f => f.name === 'Líder de la actividad:');
+  const isLeader = leaderField && leaderField.value.includes(interaction.user.toString());
+  const isAdmin = interaction.member.permissions.has('Administrator');
+
+  if (!isLeader && !isAdmin) {
+    return interaction.editReply({
+      content: 'Solo el líder del raid puede expulsar participantes.',
+    });
+  }
+
+  const userMention = targetUser.toString();
+
+  // 3. Verificar que el usuario está inscrito en un grupo (no solo en waitlist/cannotgo)
+  const activeGroupFields = embed.data.fields.filter(f =>
+    typeof f.name === 'string' &&
+    (f.name.startsWith('👑 Looters') || /\(\d+\/\d+\):/.test(f.name))
+  );
+  const isInGroup = activeGroupFields.some(f =>
+    typeof f.value === 'string' && f.value.includes(userMention)
+  );
+
+  if (!isInGroup) {
+    return interaction.editReply({
+      content: `**${targetUser.username}** no está inscrito en ningún grupo de este raid.`,
+    });
+  }
+
+  // 4. Eliminar usuario del embed
+  const wasInSlot = kickUserFromEmbed(embed, userMention);
+
+  // 5. Actualizar contador de participantes
+  try {
+    updateParticipantsCounter(embed);
+  } catch (e) {
+    console.error('[WARN] kick: No se pudo actualizar el contador:', e);
+  }
+
+  // 6. Promover primer usuario de la lista de espera (si existe)
+  let promotedUserId = null;
+  if (wasInSlot) {
+    const waitlistField = embed.data.fields.find(f => f.name === '🕒 Lista de espera');
+    if (waitlistField && waitlistField.value && waitlistField.value !== '\u200b') {
+      const lines = waitlistField.value.split('\n').filter(l => l.trim());
+      if (lines.length > 0) {
+        const firstMention = lines[0].trim();
+        promotedUserId = firstMention.replace(/<@!?(\d+)>/, '$1');
+        const remaining = lines.slice(1);
+        waitlistField.value = remaining.length > 0 ? remaining.join('\n') : '\u200b';
+      }
+    }
+  }
+
+  // 7. Actualizar el mensaje del raid en Discord
+  try {
+    const raidEvent = await getRaidEvent(raidId);
+    if (raidEvent) {
+      const channel = await interaction.guild.channels.fetch(raidEvent.channelId);
+      if (channel) {
+        const message = await channel.messages.fetch(raidEvent.messageId);
+        if (message) await message.edit({ embeds: [embed] });
+      }
+    }
+  } catch (msgErr) {
+    console.error('[ERROR] kick: No se pudo actualizar el mensaje del raid:', msgErr);
+  }
+
+  // 8. Confirmar al ejecutor
+  await interaction.editReply({
+    content: `✅ **${targetUser.username}** ha sido expulsado del raid **#${raidId}**.`,
+  });
+
+  // 9. DMs (no bloqueantes)
+  setImmediate(async () => {
+    try {
+      await targetUser.send({ content: 'Has sido removido del raid por el líder.' });
+    } catch (e) {
+      console.log(`[INFO] kick: No se pudo enviar DM al expulsado: ${e.message}`);
+    }
+
+    if (promotedUserId) {
+      try {
+        const promotedMember = await interaction.guild.members.fetch(promotedUserId);
+        await promotedMember.send({ content: 'Se ha liberado un slot en el raid y has sido movido automáticamente.' });
+      } catch (e) {
+        console.log(`[INFO] kick: No se pudo enviar DM al promovido: ${e.message}`);
+      }
+    }
+  });
+}
+
+/**
+ * Genera un ID corto único para identificar un raid (6 caracteres alfanuméricos).
+ * Excluye O, I, 0, 1 para mejor legibilidad.
+ */
+function generateRaidId() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let id = '';
+  for (let i = 0; i < 6; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return id;
+}
 
 /**
  * Comando para crear raids usando templates del servidor
@@ -15,89 +201,115 @@ const { checkAuthorizedRole } = require('../../middleware/roleCheck');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("raid")
-    .setDescription("Envía una notificación para una actividad usando una plantilla")
-    .addStringOption((option) =>
-      option
-        .setName("template")
-        .setDescription("Selecciona la plantilla para esta actividad")
-        .setRequired(true)
-        .setAutocomplete(true)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("time")
-        .setDescription(
-          'Hora del evento en UTC (formato HH:MM) ej: "17:00", "21:30"'
+    .setDescription("Gestiona raids del servidor")
+    .addSubcommand((sub) =>
+      sub
+        .setName("create")
+        .setDescription("Crea un raid usando una plantilla")
+        .addStringOption((option) =>
+          option
+            .setName("template")
+            .setDescription("Selecciona la plantilla para esta actividad")
+            .setRequired(true)
+            .setAutocomplete(true)
         )
-        .setRequired(true)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("title")
-        .setDescription(
-          "Especifica un título personalizado para la actividad (opcional)"
+        .addStringOption((option) =>
+          option
+            .setName("time")
+            .setDescription(
+              'Hora del evento en UTC (formato HH:MM) ej: "17:00", "21:30"'
+            )
+            .setRequired(true)
         )
-        .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("description")
-        .setDescription(
-          "Especifica una descripción personalizada para la actividad (opcional)"
+        .addStringOption((option) =>
+          option
+            .setName("title")
+            .setDescription(
+              "Especifica un título personalizado para la actividad (opcional)"
+            )
+            .setRequired(false)
         )
-        .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("color")
-        .setDescription(
-          "Especifica el color del embed en formato hexadecimal (#FFFFFF) (opcional)"
+        .addStringOption((option) =>
+          option
+            .setName("description")
+            .setDescription(
+              "Especifica una descripción personalizada para la actividad (opcional)"
         )
-        .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("image")
-        .setDescription(
-          "Proporciona una URL para la imagen del embed (opcional)"
+          .setRequired(false)
         )
-        .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("reminder")
-        .setDescription(
-          'Minutos antes del evento para enviar recordatorio ej: "10", "30" (opcional)'
+        .addStringOption((option) =>
+          option
+            .setName("color")
+            .setDescription(
+              "Especifica el color del embed en formato hexadecimal (#FFFFFF) (opcional)"
+            )
+            .setRequired(false)
         )
-        .setRequired(false)
+        .addStringOption((option) =>
+          option
+            .setName("image")
+            .setDescription(
+              "Proporciona una URL para la imagen del embed (opcional)"
+            )
+            .setRequired(false)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("reminder")
+            .setDescription(
+              'Minutos antes del evento para enviar recordatorio ej: "10", "30" (opcional)'
+            )
+            .setRequired(false)
+        )
+        .addRoleOption((option) =>
+          option
+            .setName("role_to_notify_1")
+            .setDescription("Primer rol del servidor a notificar (opcional)")
+            .setRequired(false)
+        )
+        .addRoleOption((option) =>
+          option
+            .setName("role_to_notify_2")
+            .setDescription("Segundo rol del servidor a notificar (opcional)")
+            .setRequired(false)
+        )
+        .addRoleOption((option) =>
+          option
+            .setName("role_to_notify_3")
+            .setDescription("Tercer rol del servidor a notificar (opcional)")
+            .setRequired(false)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("looters")
+            .setDescription("Número máximo de looters permitidos (opcional)")
+            .setRequired(false)
+            .setMinValue(1)
+        )
     )
-    .addRoleOption((option) =>
-      option
-        .setName("role_to_notify_1")
-        .setDescription("Primer rol del servidor a notificar (opcional)")
-        .setRequired(false)
-    )
-    .addRoleOption((option) =>
-      option
-        .setName("role_to_notify_2")
-        .setDescription("Segundo rol del servidor a notificar (opcional)")
-        .setRequired(false)
-    )
-    .addRoleOption((option) =>
-      option
-        .setName("role_to_notify_3")
-        .setDescription("Tercer rol del servidor a notificar (opcional)")
-        .setRequired(false)
-    )
-    .addIntegerOption((option) =>
-      option
-        .setName("looters")
-        .setDescription("Número máximo de looters permitidos (opcional)")
-        .setRequired(false)
-        .setMinValue(1)
+    .addSubcommand((sub) =>
+      sub
+        .setName("kick")
+        .setDescription("Expulsa a un participante inscrito del raid")
+        .addStringOption((option) =>
+          option
+            .setName("raid_id")
+            .setDescription("ID de 6 caracteres del raid (visible en el footer del embed)")
+            .setRequired(true)
+        )
+        .addUserOption((option) =>
+          option
+            .setName("usuario")
+            .setDescription("Usuario a expulsar del raid")
+            .setRequired(true)
+        )
     ),
 
   async autocomplete(interaction) {
+    let subcommand;
+    try { subcommand = interaction.options.getSubcommand(); } catch { subcommand = null; }
+    if (subcommand !== 'create') return;
+
     const focusedOption = interaction.options.getFocused(true);
 
     if (focusedOption.name === 'template') {
@@ -149,6 +361,13 @@ module.exports = {
   },
 
   async execute(interaction) {
+    // Rutear al manejador del subcomando correspondiente
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === 'kick') {
+      return executeKickSubcommand(interaction);
+    }
+
+    // Subcomando 'create' — flujo de creación de raid
     try {
       // No hacer defer todavía, necesitamos verificar si hay roles a notificar primero
 
@@ -319,6 +538,9 @@ module.exports = {
         await interaction.deferReply();
       }
 
+      // Generar ID único del raid
+      const raidId = generateRaidId();
+
       const row = createSelect(template, templateName, interaction);
 
       const embed = createEmbed({
@@ -331,13 +553,14 @@ module.exports = {
         user,
         finalRoles: finalNotificationRoles,
         looters,
+        raidId,
       });
 
       if (!embedsMap[templateName]) {
         embedsMap[templateName] = [];
       }
 
-      embedsMap[templateName].push({ id: interaction.id, embed });
+      embedsMap[templateName].push({ id: interaction.id, raidId, embed });
 
 
       /**
@@ -486,6 +709,32 @@ module.exports = {
           console.error('[ERROR] Error enviando notificaciones a roles:', notifyError);
         }
       }
+
+      // Guardar el raid en la base de datos de forma no bloqueante
+      setImmediate(async () => {
+        try {
+          const messageId = raidMessage?.id || interaction.id;
+          await createRaidEvent({
+            eventId: raidId,
+            guildId,
+            channelId: interaction.channel.id,
+            messageId,
+            templateName,
+            title: title || template.title,
+            description: description || template.description,
+            time,
+            reminder: finalReminder || null,
+            rolesToNotify: finalNotificationRoles,
+            participants: [],
+            cannotGo: [],
+            weaponAssignments: [],
+            waitList: [],
+          });
+          console.log(`[INFO] Raid #${raidId} guardado en la base de datos (messageId: ${messageId})`);
+        } catch (dbError) {
+          console.error('[ERROR] Error guardando raid en DB:', dbError);
+        }
+      });
     } catch (error) {
       console.error('[ERROR] Error en comando raid:', error);
       const errorEmbed = createErrorEmbed(

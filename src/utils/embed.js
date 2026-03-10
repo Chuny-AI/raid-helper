@@ -15,6 +15,7 @@ const createEmbed = ({
   user,
   finalRoles = null,
   looters = null,
+  raidId = null,
 }) => {
   const embed = new EmbedBuilder(); // Crear una nueva instancia aquí
 
@@ -23,7 +24,7 @@ const createEmbed = ({
   setColor(embed, color, template);
   setDescription(embed, description, template);
   showTime(embed, eventTimestamp);
-  setFooter(embed);
+  setFooter(embed, raidId);
   setAuthor(embed);
   setTitleWeapons(embed);
   setCategoriesAndUnitsFromTemplate(embed, template);
@@ -55,11 +56,13 @@ const setColor = (embed, color, template) => {
 
 /**
  * Setea el footer del embed
+ * @param {EmbedBuilder} embed
+ * @param {string|null} raidId - ID único del raid (opcional)
  */
-const setFooter = (embed) => {
+const setFooter = (embed, raidId = null) => {
   embed
     .setFooter({
-      text: "Creado con ❤️ por Chuny",
+      text: raidId ? `Raid #${raidId} • Creado con ❤️ por Chuny` : "Creado con ❤️ por Chuny",
       iconURL: "https://media.discordapp.net/attachments/1289065983071223864/1419915514720944128/Logo_Chuny.png?ex=68d37edf&is=68d22d5f&hm=202c5214c5e86b99a083940105d694ef72cba3f523c737d5ce33c64b6a561877&=&format=webp&quality=lossless",
     })
     .setTimestamp();
