@@ -101,10 +101,12 @@ const setCategoriesAndUnitsFromTemplate = (embed, template) => {
       continue;
     }
 
-    const units = data.data.reduce(
-      (acc, current) => acc + current.units,
-      initialValue
-    );
+    const units = data.max_players !== undefined
+      ? data.max_players
+      : data.data.reduce(
+          (acc, current) => acc + current.units,
+          initialValue
+        );
     if (displayName && emojiId) {
       const name = `<:${emojiId}:${emojiId}> ${displayName} (0/${units}):`;
       fieldsArray.push({

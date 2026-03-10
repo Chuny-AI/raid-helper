@@ -646,8 +646,17 @@ async function handleAddWeaponGroup(interaction) {
     .setMaxLength(100)
     .setPlaceholder('Ej: DPS, Tanques, Support, Healers');
 
+  const maxPlayersInput = new TextInputBuilder()
+    .setCustomId('maxPlayers')
+    .setLabel('Máx. jugadores en el grupo (opcional)')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(4)
+    .setPlaceholder('Dejar vacío = suma de cupos de armas');
+
   modal.addComponents(
-    new ActionRowBuilder().addComponents(displayNameInput)
+    new ActionRowBuilder().addComponents(displayNameInput),
+    new ActionRowBuilder().addComponents(maxPlayersInput)
   );
 
   await interaction.showModal(modal);
@@ -670,6 +679,16 @@ async function handleBasicWeaponGroupSubmit(interaction) {
   const displayName = interaction.fields.getTextInputValue('displayName');
   console.log('[DEBUG] handleBasicWeaponGroupSubmit: displayName:', displayName);
 
+  // Leer max_players opcional del modal
+  let maxPlayers = null;
+  try {
+    const maxPlayersRaw = interaction.fields.getTextInputValue('maxPlayers');
+    if (maxPlayersRaw && maxPlayersRaw.trim() !== '') {
+      const parsed = parseInt(maxPlayersRaw.trim(), 10);
+      if (!isNaN(parsed) && parsed > 0) maxPlayers = parsed;
+    }
+  } catch (_) { /* campo opcional, ignorar si no existe */ }
+
   // Generar clave automática incremental
   const existingKeys = Object.keys(session.data.weapons || {});
   let weaponKey = 'group_1';
@@ -685,7 +704,8 @@ async function handleBasicWeaponGroupSubmit(interaction) {
   const tempGroupConfig = {
     displayName,
     weaponKey,
-    weapons: []
+    weapons: [],
+    maxPlayers
   };
 
   console.log('[DEBUG] handleBasicWeaponGroupSubmit: tempGroupConfig to save:', tempGroupConfig);
@@ -1832,9 +1852,16 @@ async function handleFinishGroup(interaction) {
     }
 
     // Crear la configuración final del grupo en el formato correcto
+    // Calcular max_players: usar el valor definido o sumar los cupos de todas las armas
+    const totalWeaponUnits = tempConfig.weapons.reduce((acc, w) => acc + (parseInt(w.quantity) || 0), 0);
+    const groupMaxPlayers = (tempConfig.maxPlayers && tempConfig.maxPlayers > 0)
+      ? tempConfig.maxPlayers
+      : totalWeaponUnits;
+
     const weaponConfig = {
       displayName: tempConfig.displayName,
       defaultEmoji: tempConfig.defaultEmoji || '⚔️', // Fallback emoji
+      max_players: groupMaxPlayers,
       data: tempConfig.weapons.map((weapon, index) => ({
         id: Date.now() + index, // Generar ID único basado en timestamp
         name: weapon.name,

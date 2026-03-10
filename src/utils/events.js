@@ -543,30 +543,76 @@ const getEvents = () => {
 
         const embed = currentEmbedEntry.embed;
 
-        // Validate per-weapon limit before checking group total
         const groupField = embed.data.fields.find(f => f.name.includes(weaponCategory));
+
+        // Determinar si el usuario ya pertenece a este grupo (está inscrito en alguna arma del grupo)
+        const userAlreadyInGroup = groupField
+          ? (typeof groupField.value === 'string' && groupField.value.includes(interaction.user.toString()))
+          : false;
+
+        // Paso 1 — Validar el grupo (max_players)
+        // Solo aplica si el usuario NO está ya en el grupo.
+        // Si ya pertenece, solo está cambiando de arma dentro del mismo grupo → omitir esta validación.
+        if (!userAlreadyInGroup && groupField) {
+          const groupCapacityMatch = groupField.name.match(/\((\d+)\/(\d+)\):/);
+          if (groupCapacityMatch) {
+            const groupCurrent = parseInt(groupCapacityMatch[1]);
+            const groupMax = parseInt(groupCapacityMatch[2]);
+            if (groupCurrent >= groupMax) {
+              await interaction.followUp({
+                content: 'No se pueden unir más jugadores a este grupo.',
+                ephemeral: true,
+              });
+              return;
+            }
+          }
+        }
+
+        // Paso 2 — Validar el arma (límite individual de esa arma)
+        // Si el usuario ya está en el grupo, simular la liberación de su slot actual
+        // para no bloquear el cambio cuando el arma destino tiene espacio que él mismo liberará.
         if (groupField && weaponName) {
           const escapedWeaponName = weaponName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const currentWeaponCount = (groupField.value.match(new RegExp(escapedWeaponName, 'g')) || []).length;
-          if (currentWeaponCount >= weaponUnitsLimit) {
+          let effectiveWeaponCount = (groupField.value.match(new RegExp(escapedWeaponName, 'g')) || []).length;
+
+          // Si el usuario ya ocupa un slot en exactamente este arma, al cambiar la liberará,
+          // por lo que no consume un cupo extra.
+          if (userAlreadyInGroup) {
+            const userOnThisWeapon = groupField.value.split('\n').some(line =>
+              line.includes(interaction.user.toString()) && line.includes(weaponName)
+            );
+            if (userOnThisWeapon) effectiveWeaponCount = Math.max(0, effectiveWeaponCount - 1);
+          }
+
+          if (effectiveWeaponCount >= weaponUnitsLimit) {
             await interaction.followUp({
-              content: `El arma **${weaponName}** ya está llena (${currentWeaponCount}/${weaponUnitsLimit}).`,
+              content: `Esta arma ya alcanzó su límite dentro del grupo.`,
               ephemeral: true,
             });
             return;
           }
         }
 
+        // Si el usuario ya pertenece al grupo, eliminarlo ANTES de intentar incrementar
+        // el contador del grupo. Así modifyUnitsFromName verá un slot libre (1/2) en lugar
+        // del máximo (2/2) y podrá incrementar correctamente.
+        if (userAlreadyInGroup) {
+          deleteUserIfExistsOnCurrentField(embed, interaction);
+        }
+
         const newUser = modifyUnitsFromName(embed, weaponCategory);
         if (!newUser) {
+          // Red de seguridad: no debería ocurrir si los pre-checks anteriores funcionaron
           await interaction.followUp({
-            content: "No puedes seleccionar más unidades de este arma.",
+            content: 'No se pueden unir más jugadores a este grupo.',
             ephemeral: true,
           });
           return;
         }
-        // Eliminar al usuario de cualquier arma y de secciones especiales antes de volver a inscribirse
-        deleteUserIfExistsOnCurrentField(embed, interaction);
+        // Para usuarios que NO estaban en este grupo: eliminar de cualquier otra arma/sección
+        if (!userAlreadyInGroup) {
+          deleteUserIfExistsOnCurrentField(embed, interaction);
+        }
         // Asegurar visibilidad permanente de las secciones
         const waitlistFieldName = '🕒 Lista de espera';
         const cannotGoFieldName = '🚫 No puedo ir';

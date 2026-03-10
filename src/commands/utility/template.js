@@ -6112,6 +6112,17 @@ templateModule.saveTemplateChanges = async function(interaction, sessionId) {
     
     // Aplicar limpieza final de datos para MongoDB
     const finalData = cleanForMongoDB(cleanedData);
+
+    // Garantizar que cada grupo tenga max_players definido
+    // Si no se especificó, se calcula como suma de cupos de armas
+    if (finalData.weapons && typeof finalData.weapons === 'object') {
+      for (const group of Object.values(finalData.weapons)) {
+        if (group && typeof group === 'object' && group.max_players === undefined) {
+          const weaponsArray = Array.isArray(group.data) ? group.data : [];
+          group.max_players = weaponsArray.reduce((acc, w) => acc + (parseInt(w.units) || 0), 0);
+        }
+      }
+    }
     
     // Actualizar el template en la base de datos
     await updateTemplate(session.templateId, finalData);
