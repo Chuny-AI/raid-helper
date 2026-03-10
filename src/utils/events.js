@@ -672,6 +672,9 @@ const getEvents = () => {
           console.error('[ERROR] Error actualizando participantes del recordatorio:', reminderError);
         }
 
+        // CUARTO: Notificar al creador si el raid se llenó por primera vez
+        setImmediate(() => checkAndNotifyRaidFull(currentEmbedEntry, interaction.guild));
+
         // TERCERO: Enviar build en segundo plano (puede tomar tiempo)
         // Usar setImmediate para no bloquear la respuesta visual
         setImmediate(async () => {
@@ -916,6 +919,8 @@ const getEvents = () => {
             console.error('[ERROR] Actualizando recordatorio (looter):', remErr);
           }
 
+          setImmediate(() => checkAndNotifyRaidFull(currentEmbedEntry, interaction.guild));
+
           await interaction.followUp({ content: '✅ Te has inscrito como looter.', ephemeral: true });
         } catch (err) {
           console.error('[ERROR] raid_looter handler:', err);
@@ -994,6 +999,35 @@ const deleteUserIfExistsOnCurrentField = (
       }
     }
   });
+};
+
+/**
+ * Envía un DM al creador del raid cuando todos los grupos se llenan.
+ * Solo se envía una vez por raid (flag fullNotificationSent en el embedEntry).
+ * @param {{ embed: Object, fullNotificationSent: boolean }} embedEntry
+ * @param {import('discord.js').Guild} guild
+ */
+const checkAndNotifyRaidFull = async (embedEntry, guild) => {
+  if (!embedEntry || embedEntry.fullNotificationSent) return;
+  if (!areAllRaidRolesFull(embedEntry.embed)) return;
+
+  // Marcar antes del await para evitar doble envío ante condiciones de carrera
+  embedEntry.fullNotificationSent = true;
+
+  const leaderField = embedEntry.embed.data.fields.find(f => f.name === 'Líder de la actividad:');
+  if (!leaderField) return;
+
+  const creatorId = leaderField.value.replace(/<@!?(\d+)>/, '$1');
+
+  try {
+    const creator = await guild.members.fetch(creatorId);
+    await creator.send({
+      content: 'Tu raid se ha llenado completamente.\n\nTodos los slots están ocupados y el raid está listo.',
+    });
+    console.log(`[INFO] Notificación de raid lleno enviada al creador (${creatorId})`);
+  } catch (e) {
+    console.log(`[INFO] No se pudo enviar DM de raid lleno al creador: ${e.message}`);
+  }
 };
 
 /**

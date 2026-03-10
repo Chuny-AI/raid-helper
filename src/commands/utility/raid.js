@@ -560,7 +560,7 @@ module.exports = {
         embedsMap[templateName] = [];
       }
 
-      embedsMap[templateName].push({ id: interaction.id, raidId, embed });
+      embedsMap[templateName].push({ id: interaction.id, raidId, embed, fullNotificationSent: false });
 
 
       /**
