@@ -14,6 +14,7 @@ const createEmbed = ({
   description,
   user,
   finalRoles = null,
+  looters = null,
 }) => {
   const embed = new EmbedBuilder(); // Crear una nueva instancia aquí
 
@@ -28,6 +29,7 @@ const createEmbed = ({
   setCategoriesAndUnitsFromTemplate(embed, template);
   setImage(embed, image, template);
   pingRoles(embed, template, finalRoles);
+  setLootersSection(embed, looters);
   // Asegurar que las secciones principales estén siempre visibles
   ensureParticipationSections(embed);
   // Inicializar y mostrar contador de participantes activos
@@ -115,6 +117,21 @@ const setCategoriesAndUnitsFromTemplate = (embed, template) => {
 
   if (fieldsArray.length > 0) {
     embed.addFields(fieldsArray);
+  }
+};
+
+/**
+ * Agrega la sección de Looters al embed si se especificó el parámetro
+ * @param {EmbedBuilder} embed
+ * @param {number|null} looters - Número máximo de looters
+ */
+const setLootersSection = (embed, looters) => {
+  if (looters && looters > 0) {
+    embed.addFields({
+      name: `👑 Looters (0/${looters}):`,
+      value: '\u200b',
+      inline: false,
+    });
   }
 };
 

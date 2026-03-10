@@ -787,6 +787,96 @@ const getEvents = () => {
         }
         return;
       }
+
+      // Botón: inscribirse como Looter
+      if (customId.startsWith('raid_looter-')) {
+        try { await interaction.deferUpdate(); } catch (e) { }
+        const lastDashIndex = customId.lastIndexOf('-');
+        const getCustomEmbedId = customId.substring(lastDashIndex + 1);
+        const templateName = customId.substring('raid_looter-'.length, lastDashIndex);
+
+        try {
+          const embedsList = embedsMap[templateName];
+          const currentEmbedEntry = embedsList?.find((entry) => entry.id.trim() === getCustomEmbedId);
+          if (!currentEmbedEntry) return;
+          const embed = currentEmbedEntry.embed;
+
+          // Comprobar si todos los roles del raid están llenos
+          if (!areAllRaidRolesFull(embed)) {
+            await interaction.followUp({
+              content: '⚠️ Los looters se habilitan cuando **todos los roles del raid estén completos**.',
+              ephemeral: true,
+            });
+            return;
+          }
+
+          // Encontrar el campo de Looters
+          const lootersField = embed.data.fields.find(f => typeof f.name === 'string' && f.name.startsWith('👑 Looters'));
+          if (!lootersField) {
+            await interaction.followUp({ content: '⚠️ Este raid no tiene plazas de looter configuradas.', ephemeral: true });
+            return;
+          }
+
+          const match = lootersField.name.match(/(\d+)\/(\d+)/);
+          if (!match) return;
+          const current = parseInt(match[1]);
+          const total = parseInt(match[2]);
+
+          if (current >= total) {
+            await interaction.followUp({ content: '⚠️ El grupo de Looters ya está lleno.', ephemeral: true });
+            return;
+          }
+
+          if (lootersField.value.includes(interaction.user.toString())) {
+            await interaction.followUp({ content: '⚠️ Ya estás inscrito como looter.', ephemeral: true });
+            return;
+          }
+
+          // Quitar al usuario de cualquier otro slot o sección antes de inscribir
+          deleteUserIfExistsOnCurrentField(embed, interaction);
+
+          const waitlistField = embed.data.fields.find(f => f.name === '🕒 Lista de espera');
+          const cannotGoField = embed.data.fields.find(f => f.name === '🚫 No puedo ir');
+          if (waitlistField?.value?.includes(interaction.user.toString())) {
+            const lines = waitlistField.value.split('\n').filter(l => !l.includes(interaction.user.toString()));
+            waitlistField.value = lines.join('\n') || '\u200b';
+          }
+          if (cannotGoField?.value?.includes(interaction.user.toString())) {
+            const lines = cannotGoField.value.split('\n').filter(l => !l.includes(interaction.user.toString()));
+            cannotGoField.value = lines.join('\n') || '\u200b';
+          }
+
+          // Añadir usuario al campo de Looters e incrementar contador
+          const currentVal = (lootersField.value === '\u200b' || lootersField.value.trim() === '') ? '' : lootersField.value;
+          lootersField.value = currentVal ? `${currentVal}\n${interaction.user}` : `${interaction.user}`;
+          lootersField.name = lootersField.name.replace(/(\d+)\/(\d+)/, `${current + 1}/${total}`);
+
+          // Actualizar contador de participantes
+          try {
+            const { updateParticipantsCounter } = require('./embed');
+            updateParticipantsCounter(embed);
+          } catch (counterErr) {
+            console.error('[WARN] No se pudo actualizar el contador (looter):', counterErr);
+          }
+
+          await interaction.message.edit({ embeds: [embed] });
+
+          try {
+            const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
+            const participants = extractParticipantsFromEmbed(embed);
+            updateReminderParticipants(getCustomEmbedId, participants);
+            addInterestedUser(getCustomEmbedId, interaction.user.id);
+          } catch (remErr) {
+            console.error('[ERROR] Actualizando recordatorio (looter):', remErr);
+          }
+
+          await interaction.followUp({ content: '✅ Te has inscrito como looter.', ephemeral: true });
+        } catch (err) {
+          console.error('[ERROR] raid_looter handler:', err);
+          await interaction.followUp({ content: 'No se pudo inscribir como looter.', ephemeral: true });
+        }
+        return;
+      }
     }
   });
 };
@@ -828,6 +918,20 @@ const deleteUserIfExistsOnCurrentField = (
   embed.data.fields.forEach((field) => {
     const regexUnits = /<:(\w+):\1>\s+(.+?)\s+\((\d+)\/(\d+)\):/;
     if (field.value.includes(interaction.user)) {
+      // Looters field: no emoji prefix, use line-based removal
+      if (typeof field.name === 'string' && field.name.startsWith('👑 Looters')) {
+        const lines = field.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
+        field.value = lines.join('\n') || '\u200b';
+        const lootersMatch = field.name.match(/(\d+)\/(\d+)/);
+        if (lootersMatch) {
+          const current = parseInt(lootersMatch[1]);
+          if (current > 0) {
+            field.name = field.name.replace(/(\d+)\/(\d+)/, `${current - 1}/${lootersMatch[2]}`);
+          }
+        }
+        return;
+      }
+      // Regular weapon fields: emoji-prefixed entries
       const regex = new RegExp(`\\n<:[^:]+:[0-9]+>[^\\n]*${interaction.user}`, "g");
       if (regex) {
         field.value = field.value.replace(regex, "");
@@ -843,6 +947,27 @@ const deleteUserIfExistsOnCurrentField = (
         field.name = updatedName;
       }
     }
+  });
+};
+
+/**
+ * Comprueba si todos los roles de raid del embed están completamente llenos.
+ * Los campos de roles son los que tienen el patrón (X/Y): en el nombre, excluyendo Looters.
+ * @param {Object} embed
+ * @returns {boolean}
+ */
+const areAllRaidRolesFull = (embed) => {
+  const fields = embed?.data?.fields || [];
+  const roleFields = fields.filter(f =>
+    typeof f.name === 'string' &&
+    /\(\d+\/\d+\):/.test(f.name) &&
+    !f.name.startsWith('👑 Looters')
+  );
+  if (roleFields.length === 0) return true;
+  return roleFields.every(f => {
+    const match = f.name.match(/(\d+)\/(\d+)/);
+    if (!match) return true;
+    return parseInt(match[1]) >= parseInt(match[2]);
   });
 };
 

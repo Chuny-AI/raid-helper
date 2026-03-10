@@ -71,13 +71,30 @@ module.exports = {
         )
         .setRequired(false)
     )
-    .addStringOption((option) =>
+    .addRoleOption((option) =>
       option
-        .setName("roles_to_notify")
-        .setDescription(
-          "IDs de roles a notificar separados por comas (opcional)"
-        )
+        .setName("role_to_notify_1")
+        .setDescription("Primer rol del servidor a notificar (opcional)")
         .setRequired(false)
+    )
+    .addRoleOption((option) =>
+      option
+        .setName("role_to_notify_2")
+        .setDescription("Segundo rol del servidor a notificar (opcional)")
+        .setRequired(false)
+    )
+    .addRoleOption((option) =>
+      option
+        .setName("role_to_notify_3")
+        .setDescription("Tercer rol del servidor a notificar (opcional)")
+        .setRequired(false)
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("looters")
+        .setDescription("Número máximo de looters permitidos (opcional)")
+        .setRequired(false)
+        .setMinValue(1)
     ),
 
   async autocomplete(interaction) {
@@ -156,7 +173,10 @@ module.exports = {
       const image = interaction.options.getString("image");
       const description = interaction.options.getString("description");
       const reminder = interaction.options.getString("reminder");
-      const rolesToNotifyInput = interaction.options.getString("roles_to_notify");
+      const roleToNotify1 = interaction.options.getRole("role_to_notify_1");
+      const roleToNotify2 = interaction.options.getRole("role_to_notify_2");
+      const roleToNotify3 = interaction.options.getRole("role_to_notify_3");
+      const looters = interaction.options.getInteger("looters");
       const user = interaction.user;
       const guildId = interaction.guild.id;
 
@@ -277,60 +297,10 @@ module.exports = {
         });
       }
 
-      let notificationRoles = [];
-      if (rolesToNotifyInput) {
-        try {
-          const roleIds = rolesToNotifyInput.split(',').map(id => id.trim()).filter(id => id);
-
-          for (const roleId of roleIds) {
-            const role = interaction.guild.roles.cache.get(roleId);
-
-            if (!role) {
-              const availableRoles = interaction.guild.roles.cache
-                .filter(r => r.name !== '@everyone' && !r.managed)
-                .map(r => `${r.name} (${r.id})`)
-                .slice(0, 10)
-                .join('\n');
-
-              const errorEmbed = createErrorEmbed(
-                "Rol No Encontrado",
-                `El rol con ID "${roleId}" no existe en este servidor.`,
-                [{
-                  name: "Solución",
-                  value: "Verifica que el ID del rol sea correcto y que el rol exista en el servidor.",
-                  inline: false
-                }, {
-                  name: "Roles Disponibles",
-                  value: availableRoles || "No hay roles disponibles",
-                  inline: false
-                }, {
-                  name: "Formato Correcto",
-                  value: "Usa el formato: `123456789, 987654321` (IDs de roles separados por comas)",
-                  inline: false
-                }]
-              );
-              return await safeReply(interaction, {
-                embeds: [errorEmbed],
-                ephemeral: true,
-              });
-            }
-
-            notificationRoles.push(role.id);
-          }
-        } catch (error) {
-          const errorEmbed = createErrorEmbed(
-            "Error Procesando Roles",
-            "Error al procesar los IDs de los roles proporcionados.",
-            [{
-              name: "Formato Correcto",
-              value: "Usa el formato: `123456789, 987654321` (IDs de roles separados por comas)",
-              inline: false
-            }]
-          );
-          return await safeReply(interaction, {
-            embeds: [errorEmbed],
-            ephemeral: true,
-          });
+      const notificationRoles = [];
+      for (const role of [roleToNotify1, roleToNotify2, roleToNotify3]) {
+        if (role && !notificationRoles.includes(role.id)) {
+          notificationRoles.push(role.id);
         }
       }
 
@@ -359,7 +329,8 @@ module.exports = {
         image,
         description,
         user,
-        finalRoles: finalNotificationRoles
+        finalRoles: finalNotificationRoles,
+        looters,
       });
 
       if (!embedsMap[templateName]) {
@@ -416,7 +387,7 @@ module.exports = {
       if (hasRolesToNotify) {
         console.log(`[DEBUG RAID] Publicando con reply() para mencionar roles`);
         const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-        const extraRow = new ActionRowBuilder().addComponents(
+        const extraRowComponents = [
           new ButtonBuilder()
             .setCustomId(`raid_waitlist-${templateName}-${interaction.id}`)
             .setLabel('Lista de espera')
@@ -426,8 +397,18 @@ module.exports = {
             .setCustomId(`raid_cannotgo-${templateName}-${interaction.id}`)
             .setLabel('No puedo ir')
             .setStyle(ButtonStyle.Danger)
-            .setEmoji('🚫')
-        );
+            .setEmoji('🚫'),
+        ];
+        if (looters) {
+          extraRowComponents.push(
+            new ButtonBuilder()
+              .setCustomId(`raid_looter-${templateName}-${interaction.id}`)
+              .setLabel('Looters')
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji('👑')
+          );
+        }
+        const extraRow = new ActionRowBuilder().addComponents(extraRowComponents);
         raidMessage = await interaction.reply({
           embeds: [embed],
           components: [row, extraRow],
@@ -436,7 +417,7 @@ module.exports = {
       } else {
         console.log(`[DEBUG RAID] Publicando con safeReply() sin roles`);
         const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-        const extraRow = new ActionRowBuilder().addComponents(
+        const extraRowComponents = [
           new ButtonBuilder()
             .setCustomId(`raid_waitlist-${templateName}-${interaction.id}`)
             .setLabel('Lista de espera')
@@ -446,8 +427,18 @@ module.exports = {
             .setCustomId(`raid_cannotgo-${templateName}-${interaction.id}`)
             .setLabel('No puedo ir')
             .setStyle(ButtonStyle.Danger)
-            .setEmoji('🚫')
-        );
+            .setEmoji('🚫'),
+        ];
+        if (looters) {
+          extraRowComponents.push(
+            new ButtonBuilder()
+              .setCustomId(`raid_looter-${templateName}-${interaction.id}`)
+              .setLabel('Looters')
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji('👑')
+          );
+        }
+        const extraRow = new ActionRowBuilder().addComponents(extraRowComponents);
         raidMessage = await safeReply(interaction, {
           embeds: [embed],
           components: [row, extraRow],
