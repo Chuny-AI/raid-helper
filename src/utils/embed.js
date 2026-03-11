@@ -256,7 +256,46 @@ const addSocialLinks = (embed) => {
 
 module.exports.embedsMap = embedsMap;
 
-module.exports.embedsMap = embedsMap;
+/**
+ * Construye un EmbedBuilder a partir de datos serializados (snapshot de BD).
+ * @param {Object} data - embed.data tal cual se guardó en la BD
+ * @returns {EmbedBuilder}
+ */
+const rebuildEmbedFromSnapshot = (data) => {
+  const embed = new EmbedBuilder();
+  if (data.title) embed.setTitle(data.title);
+  if (data.description) embed.setDescription(data.description);
+  if (data.color) embed.setColor(data.color);
+  if (data.timestamp) embed.setTimestamp(new Date(data.timestamp));
+  if (data.footer) embed.setFooter(data.footer);
+  if (data.author) embed.setAuthor(data.author);
+  if (data.image?.url) embed.setImage(data.image.url);
+  if (data.thumbnail?.url) embed.setThumbnail(data.thumbnail.url);
+  if (data.fields?.length) embed.addFields(data.fields);
+  return embed;
+};
+
+/**
+ * Trunca el valor de un campo embed para no superar el límite de Discord (1024 chars).
+ * @param {string} value
+ * @returns {string}
+ */
+const safeFieldValue = (value) => {
+  const MAX = 1024;
+  if (typeof value !== 'string') return '\u200b';
+  if (value.length <= MAX) return value;
+  // Truncar por líneas completas
+  const lines = value.split('\n');
+  let result = '';
+  for (const line of lines) {
+    if ((result + '\n' + line).length > MAX - 20) break;
+    result = result ? `${result}\n${line}` : line;
+  }
+  return result + '\n*(truncado)*';
+};
+
+module.exports.rebuildEmbedFromSnapshot = rebuildEmbedFromSnapshot;
+module.exports.safeFieldValue = safeFieldValue;
 
 /**
  * Setea la imagen del embed
@@ -588,6 +627,8 @@ const createReminderComponents = (channelId, guildId = null) => {
 module.exports = {
   createEmbed,
   embedsMap,
+  rebuildEmbedFromSnapshot,
+  safeFieldValue,
   createBuildEmbed,
   createNoBuildEmbed,
   createReminderEmbed,

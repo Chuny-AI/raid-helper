@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { createEmbed, embedsMap, createMassNotificationEmbed, updateParticipantsCounter } = require("../../utils/embed");
+const { createEmbed, embedsMap, createMassNotificationEmbed, updateParticipantsCounter, safeFieldValue } = require("../../utils/embed");
 const { parseUTCTime, parseMinutes } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
 const { createSelect } = require("../../utils/select");
@@ -7,18 +7,35 @@ const { getTemplateNames, getTemplateByName } = require("../../services/template
 const { getOrCreateServer } = require("../../services/serverService");
 const { createErrorEmbed, createWarningEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { checkAuthorizedRole } = require('../../middleware/roleCheck');
-const { createRaidEvent, getRaidEvent } = require('../../services/raidEventService');
+const { createRaidEvent, getRaidEvent, updateRaidEvent, closeRaidEvent, syncEmbedSnapshot } = require('../../services/raidEventService');
 
+/** Persiste snapshot del embed en BD de forma no bloqueante. */
+function persistRaidStateKick(raidId, embed) {
+  setImmediate(async () => {
+    try { await syncEmbedSnapshot(raidId, embed.data); } catch (e) {
+      console.error('[WARN] kick: persistRaidState error:', e);
+    }
+  });
+}
+
+/** Garantiza que ningún campo del embed supere 1024 chars. */
+function sanitizeEmbedFields(embed) {
+  if (!embed?.data?.fields) return;
+  embed.data.fields.forEach(f => {
+    if (typeof f.value === 'string' && f.value.length > 1024) f.value = safeFieldValue(f.value);
+  });
+}
 
 /**
  * Elimina a un usuario del embed de un raid y decrementa los contadores afectados.
- * Devuelve true si el usuario estaba en un grupo de armas o looters.
+ * Devuelve { wasInSlot, freedGroup } donde freedGroup es el nombre del grupo liberado.
  * @param {Object} embed - EmbedBuilder con data.fields
  * @param {string} userMention - Mención del usuario (ej: "<@123456789>")
- * @returns {boolean}
+ * @returns {{ wasInSlot: boolean, freedGroup: string|null }}
  */
 function kickUserFromEmbed(embed, userMention) {
   let wasInSlot = false;
+  let freedGroup = null;
   const escapedMention = userMention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   embed.data.fields.forEach((field) => {
@@ -41,25 +58,32 @@ function kickUserFromEmbed(embed, userMention) {
         if (cur > 0) field.name = field.name.replace(/(\d+)\/(\d+)/, `${cur - 1}/${m[2]}`);
       }
       wasInSlot = true;
+      freedGroup = 'looters';
       return;
     }
 
-    // Campos de grupos de armas — entradas con formato: \n<:emoji:id> Arma <@userId>
-    const weaponLineRegex = new RegExp(`\\n<:[^:]+:[0-9]+>[^\\n]*${escapedMention}`, 'g');
-    field.value = field.value.replace(weaponLineRegex, '');
+    // Campos de grupos de armas — soporta primera línea sin \n previo
+    const weaponLineRegex = new RegExp(`(^|\\n)<:[^:]+:[0-9]+>[^\\n]*${escapedMention}`, 'gm');
+    const before = field.value;
+    field.value = field.value.replace(weaponLineRegex, (match, prefix) => prefix === '\n' ? '' : '');
+    field.value = field.value.replace(/^\n+/, '');
+    if (field.value.trim() === '') field.value = '\u200b';
 
-    // Decrementar contador (X/Y) en el nombre del campo
-    const unitMatch = field.name.match(/<:[\w]+:[\w]+>\s+.+?\s+\((\d+)\/(\d+)\):/);
-    if (unitMatch) {
-      const cur = parseInt(unitMatch[1]);
-      const total = unitMatch[2];
-      const newCount = Math.max(0, cur - 1);
-      field.name = field.name.replace(/(\d+)\/(\d+)/, `${newCount}/${total}`);
-      wasInSlot = true;
+    if (before !== field.value) {
+      const unitMatch = field.name.match(/<:[\w]+:[\w]+>\s+.+?\s+\((\d+)\/(\d+)\):/);
+      if (unitMatch) {
+        const cur = parseInt(unitMatch[1]);
+        const total = unitMatch[2];
+        const newCount = Math.max(0, cur - 1);
+        field.name = field.name.replace(/(\d+)\/(\d+)/, `${newCount}/${total}`);
+        wasInSlot = true;
+        const groupMatch = field.name.match(/<:[^:]+:[0-9]+>\s+(.+?)\s+\(/);
+        if (groupMatch) freedGroup = groupMatch[1];
+      }
     }
   });
 
-  return wasInSlot;
+  return { wasInSlot, freedGroup };
 }
 
 /**
@@ -104,23 +128,19 @@ async function executeKickSubcommand(interaction) {
 
   const userMention = targetUser.toString();
 
-  // 3. Verificar que el usuario está inscrito en un grupo (no solo en waitlist/cannotgo)
-  const activeGroupFields = embed.data.fields.filter(f =>
-    typeof f.name === 'string' &&
-    (f.name.startsWith('👑 Looters') || /\(\d+\/\d+\):/.test(f.name))
-  );
-  const isInGroup = activeGroupFields.some(f =>
+  // 3. Verificar que el usuario está en CUALQUIER sección del raid (grupo, waitlist o cannotgo)
+  const isInRaid = embed.data.fields.some(f =>
     typeof f.value === 'string' && f.value.includes(userMention)
   );
 
-  if (!isInGroup) {
+  if (!isInRaid) {
     return interaction.editReply({
-      content: `**${targetUser.username}** no está inscrito en ningún grupo de este raid.`,
+      content: `**${targetUser.username}** no está en este raid.`,
     });
   }
 
-  // 4. Eliminar usuario del embed
-  const wasInSlot = kickUserFromEmbed(embed, userMention);
+  // 4. Eliminar usuario del embed (funciona para grupos, waitlist, cannotgo y looters)
+  const { wasInSlot, freedGroup } = kickUserFromEmbed(embed, userMention);
 
   // 5. Actualizar contador de participantes
   try {
@@ -129,22 +149,62 @@ async function executeKickSubcommand(interaction) {
     console.error('[WARN] kick: No se pudo actualizar el contador:', e);
   }
 
-  // 6. Promover primer usuario de la lista de espera (si existe)
+  // 6. Promover primer usuario de la lista de espera del mismo grupo (si se liberó un slot)
   let promotedUserId = null;
-  if (wasInSlot) {
+  let promotedMention = null;
+  if (wasInSlot && freedGroup && freedGroup !== 'looters') {
     const waitlistField = embed.data.fields.find(f => f.name === '🕒 Lista de espera');
     if (waitlistField && waitlistField.value && waitlistField.value !== '\u200b') {
+      const waitlistGroups = targetEmbedEntry.waitlistGroups || {};
       const lines = waitlistField.value.split('\n').filter(l => l.trim());
-      if (lines.length > 0) {
-        const firstMention = lines[0].trim();
-        promotedUserId = firstMention.replace(/<@!?(\d+)>/, '$1');
-        const remaining = lines.slice(1);
-        waitlistField.value = remaining.length > 0 ? remaining.join('\n') : '\u200b';
+
+      // Buscar primero alguien que estaba esperando exactamente por este grupo
+      let promotionIdx = lines.findIndex(line => {
+        const uid = line.trim().replace(/<@!?(\d+)>/, '$1');
+        return waitlistGroups[uid] === freedGroup;
+      });
+
+      // Si nadie del mismo grupo, tomar el primero de la lista (comportamiento anterior)
+      if (promotionIdx === -1) promotionIdx = 0;
+
+      if (promotionIdx >= 0 && lines[promotionIdx]) {
+        promotedMention = lines[promotionIdx].trim();
+        promotedUserId = promotedMention.replace(/<@!?(\d+)>/, '$1');
+        lines.splice(promotionIdx, 1);
+        waitlistField.value = lines.length > 0 ? lines.join('\n') : '\u200b';
+
+        // Limpiar el grupo preferido registrado
+        if (targetEmbedEntry.waitlistGroups) {
+          delete targetEmbedEntry.waitlistGroups[promotedUserId];
+        }
+
+        // Asignar al usuario promovido en el primer slot disponible del grupo liberado
+        const groupField = embed.data.fields.find(f =>
+          typeof f.name === 'string' && f.name.includes(freedGroup) && /\(\d+\/\d+\):/.test(f.name)
+        );
+        if (groupField) {
+          const counterMatch = groupField.name.match(/\((\d+)\/(\d+)\):/);
+          if (counterMatch) {
+            const cur = parseInt(counterMatch[1]);
+            const max = parseInt(counterMatch[2]);
+            if (cur < max) {
+              // Añadir al campo del grupo (sin emoji de arma específica, usar placeholder)
+              const currentVal = (groupField.value === '\u200b' || groupField.value.trim() === '')
+                ? '' : groupField.value;
+              groupField.value = currentVal
+                ? `${currentVal}\n${promotedMention}`
+                : promotedMention;
+              groupField.name = groupField.name.replace(/(\d+)\/(\d+)/, `${cur + 1}/${max}`);
+            }
+          }
+        }
       }
     }
   }
 
-  // 7. Actualizar el mensaje del raid en Discord
+  // 7. Protección anti-overflow + actualizar embed en Discord
+  sanitizeEmbedFields(embed);
+
   try {
     const raidEvent = await getRaidEvent(raidId);
     if (raidEvent) {
@@ -158,9 +218,13 @@ async function executeKickSubcommand(interaction) {
     console.error('[ERROR] kick: No se pudo actualizar el mensaje del raid:', msgErr);
   }
 
+  // Persistir en BD
+  persistRaidStateKick(raidId, embed);
+
   // 8. Confirmar al ejecutor
+  const promotedNote = promotedUserId ? ` ${promotedMention} ha sido promovido desde la lista de espera.` : '';
   await interaction.editReply({
-    content: `✅ **${targetUser.username}** ha sido expulsado del raid **#${raidId}**.`,
+    content: `✅ **${targetUser.username}** ha sido expulsado del raid **#${raidId}**.${promotedNote}`,
   });
 
   // 9. DMs (no bloqueantes)
@@ -174,7 +238,9 @@ async function executeKickSubcommand(interaction) {
     if (promotedUserId) {
       try {
         const promotedMember = await interaction.guild.members.fetch(promotedUserId);
-        await promotedMember.send({ content: 'Se ha liberado un slot en el raid y has sido movido automáticamente.' });
+        await promotedMember.send({
+          content: `✅ ¡Se ha liberado un slot en el grupo **${freedGroup}** del raid **#${raidId}** y has sido promovido automáticamente!`,
+        });
       } catch (e) {
         console.log(`[INFO] kick: No se pudo enviar DM al promovido: ${e.message}`);
       }
@@ -193,6 +259,146 @@ function generateRaidId() {
     id += chars[Math.floor(Math.random() * chars.length)];
   }
   return id;
+}
+
+/**
+ * Manejador del subcomando /raid edit
+ */
+async function executeEditSubcommand(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+
+  const raidId = interaction.options.getString('raid_id').toUpperCase().trim();
+  const newTime = interaction.options.getString('time');
+  const newDescription = interaction.options.getString('description');
+  const newColor = interaction.options.getString('color');
+  const newTitle = interaction.options.getString('title');
+
+  // Buscar en embedsMap
+  let targetEmbedEntry = null;
+  for (const [, entries] of Object.entries(embedsMap)) {
+    const found = entries.find(e => e.raidId === raidId);
+    if (found) { targetEmbedEntry = found; break; }
+  }
+
+  if (!targetEmbedEntry) {
+    return interaction.editReply({
+      content: `No se encontró ningún raid activo con el ID **${raidId}**.`,
+    });
+  }
+
+  // Verificar permisos
+  const embed = targetEmbedEntry.embed;
+  const leaderField = embed.data.fields.find(f => f.name === 'Líder de la actividad:');
+  const isLeader = leaderField && leaderField.value.includes(interaction.user.toString());
+  const isAdmin = interaction.member.permissions.has('Administrator');
+  if (!isLeader && !isAdmin) {
+    return interaction.editReply({ content: 'Solo el líder del raid puede editarlo.' });
+  }
+
+  if (newColor && !isValidHex(newColor)) {
+    return interaction.editReply({ content: 'Color inválido. Usa formato hexadecimal: `#FFFFFF`' });
+  }
+
+  const dbUpdates = {};
+
+  // Aplicar cambios al embed en memoria
+  if (newTitle) {
+    embed.setTitle(newTitle);
+    dbUpdates.title = newTitle;
+  }
+  if (newDescription) {
+    embed.setDescription(newDescription);
+    dbUpdates.description = newDescription;
+  }
+  if (newColor) {
+    embed.setColor(newColor);
+    dbUpdates.color = newColor;
+  }
+  if (newTime) {
+    let eventTimestamp;
+    try {
+      eventTimestamp = parseUTCTime(newTime);
+    } catch (e) {
+      return interaction.editReply({ content: `Hora inválida: ${e.message}` });
+    }
+    // Actualizar el campo de hora en el embed
+    const timeFieldIdx = embed.data.fields?.findIndex(f => f.name === 'Hora de la actividad:');
+    if (timeFieldIdx !== undefined && timeFieldIdx >= 0) {
+      embed.data.fields[timeFieldIdx].value = `<t:${eventTimestamp}:F> (<t:${eventTimestamp}:R>)`;
+    }
+    dbUpdates.time = newTime;
+  }
+
+  // Actualizar el mensaje de Discord (sin recrearlo)
+  try {
+    const raidEvent = await getRaidEvent(raidId);
+    if (raidEvent) {
+      const channel = await interaction.guild.channels.fetch(raidEvent.channelId);
+      if (channel) {
+        const message = await channel.messages.fetch(raidEvent.messageId);
+        if (message) await message.edit({ embeds: [embed] });
+      }
+    }
+  } catch (e) {
+    console.error('[ERROR] edit: No se pudo actualizar el mensaje:', e);
+    return interaction.editReply({ content: 'No se pudo actualizar el mensaje del raid.' });
+  }
+
+  // Persistir en BD
+  if (Object.keys(dbUpdates).length > 0) {
+    setImmediate(async () => {
+      try {
+        await updateRaidEvent(raidId, dbUpdates);
+        await syncEmbedSnapshot(raidId, embed.data);
+      } catch (e) {
+        console.error('[WARN] edit: Error persistiendo cambios:', e);
+      }
+    });
+  }
+
+  await interaction.editReply({ content: `✅ Raid **#${raidId}** actualizado correctamente.` });
+}
+
+/**
+ * Manejador del subcomando /raid close
+ */
+async function executeCloseSubcommand(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+
+  const raidId = interaction.options.getString('raid_id').toUpperCase().trim();
+
+  let targetEmbedEntry = null;
+  let targetTemplateName = null;
+  for (const [tmplName, entries] of Object.entries(embedsMap)) {
+    const found = entries.find(e => e.raidId === raidId);
+    if (found) { targetEmbedEntry = found; targetTemplateName = tmplName; break; }
+  }
+
+  if (!targetEmbedEntry) {
+    return interaction.editReply({ content: `No se encontró ningún raid activo con ID **${raidId}**.` });
+  }
+
+  const embed = targetEmbedEntry.embed;
+  const leaderField = embed.data.fields.find(f => f.name === 'Líder de la actividad:');
+  const isLeader = leaderField && leaderField.value.includes(interaction.user.toString());
+  const isAdmin = interaction.member.permissions.has('Administrator');
+  if (!isLeader && !isAdmin) {
+    return interaction.editReply({ content: 'Solo el líder del raid puede cerrarlo.' });
+  }
+
+  // Remover de embedsMap
+  if (targetTemplateName && embedsMap[targetTemplateName]) {
+    embedsMap[targetTemplateName] = embedsMap[targetTemplateName].filter(e => e.raidId !== raidId);
+  }
+
+  // Cerrar en BD
+  setImmediate(async () => {
+    try { await closeRaidEvent(raidId); } catch (e) {
+      console.error('[WARN] close: Error cerrando raid:', e);
+    }
+  });
+
+  await interaction.editReply({ content: `✅ Raid **#${raidId}** cerrado y removido correctamente.` });
 }
 
 /**
@@ -303,6 +509,52 @@ module.exports = {
             .setDescription("Usuario a expulsar del raid")
             .setRequired(true)
         )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("edit")
+        .setDescription("Edita parámetros de un raid activo")
+        .addStringOption((option) =>
+          option
+            .setName("raid_id")
+            .setDescription("ID de 6 caracteres del raid")
+            .setRequired(true)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("title")
+            .setDescription("Nuevo título del raid (opcional)")
+            .setRequired(false)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("time")
+            .setDescription('Nueva hora en UTC (formato HH:MM, opcional)')
+            .setRequired(false)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("description")
+            .setDescription("Nueva descripción del raid (opcional)")
+            .setRequired(false)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("color")
+            .setDescription("Nuevo color en hexadecimal (#FFFFFF, opcional)")
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("close")
+        .setDescription("Cierra manualmente un raid activo")
+        .addStringOption((option) =>
+          option
+            .setName("raid_id")
+            .setDescription("ID de 6 caracteres del raid")
+            .setRequired(true)
+        )
     ),
 
   async autocomplete(interaction) {
@@ -365,6 +617,12 @@ module.exports = {
     const subcommand = interaction.options.getSubcommand();
     if (subcommand === 'kick') {
       return executeKickSubcommand(interaction);
+    }
+    if (subcommand === 'edit') {
+      return executeEditSubcommand(interaction);
+    }
+    if (subcommand === 'close') {
+      return executeCloseSubcommand(interaction);
     }
 
     // Subcomando 'create' — flujo de creación de raid
@@ -723,12 +981,16 @@ module.exports = {
             title: title || template.title,
             description: description || template.description,
             time,
+            color: color || null,
+            image: image || null,
             reminder: finalReminder || null,
             rolesToNotify: finalNotificationRoles,
             participants: [],
             cannotGo: [],
             weaponAssignments: [],
             waitList: [],
+            status: 'active',
+            embedSnapshot: embed.data,
           });
           console.log(`[INFO] Raid #${raidId} guardado en la base de datos (messageId: ${messageId})`);
         } catch (dbError) {

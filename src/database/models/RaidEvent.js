@@ -61,8 +61,25 @@ const RaidEventSchema = new mongoose.Schema({
   waitList: [{
     userId: String,
     username: String,
-    requestedWeapon: String
+    // El grupo (weaponCategory) que el usuario estaba esperando
+    requestedGroup: String,
+    timestamp: { type: Date, default: Date.now }
   }],
+  looters: [{
+    userId: String,
+    username: String
+  }],
+  // Estado del raid: 'active' | 'closed'
+  status: {
+    type: String,
+    default: 'active',
+    enum: ['active', 'closed']
+  },
+  // Snapshot del embed serializado para reconstruir embedsMap tras reinicio
+  embedSnapshot: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

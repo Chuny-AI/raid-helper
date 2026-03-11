@@ -232,5 +232,52 @@ module.exports = {
   getParticipants,
   getCannotGo,
   getWeaponAssignments,
-  deleteRaidEvent
+  deleteRaidEvent,
+  getActiveRaids,
+  closeRaidEvent,
+  syncEmbedSnapshot
 };
+
+/**
+ * Obtener todos los raids activos
+ */
+async function getActiveRaids() {
+  try {
+    return await RaidEvent.find({ status: 'active' });
+  } catch (error) {
+    console.error('[ERROR] Error obteniendo raids activos:', error);
+    return [];
+  }
+}
+
+/**
+ * Cerrar un raid (marcar como cerrado)
+ */
+async function closeRaidEvent(eventId) {
+  try {
+    return await RaidEvent.findOneAndUpdate(
+      { eventId },
+      { status: 'closed', updatedAt: new Date() },
+      { new: true }
+    );
+  } catch (error) {
+    console.error('[ERROR] Error cerrando raid:', error);
+    throw error;
+  }
+}
+
+/**
+ * Guardar snapshot del embed en la base de datos para reconstrucción post-reinicio
+ * @param {string} eventId
+ * @param {Object} embedData - embed.data serializable
+ */
+async function syncEmbedSnapshot(eventId, embedData) {
+  try {
+    await RaidEvent.findOneAndUpdate(
+      { eventId },
+      { embedSnapshot: embedData, updatedAt: new Date() }
+    );
+  } catch (error) {
+    console.error('[WARN] Error sincronizando snapshot del embed:', error);
+  }
+}

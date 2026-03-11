@@ -1917,6 +1917,10 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
         await handleUpdateWeaponQuantitiesModal(interaction);
         return;
       }
+      else if (interaction.customId.startsWith('edit_max_players_modal_')) {
+        await this.handleEditMaxPlayersModalSubmit(interaction);
+        return;
+      }
       // Mapear otros modals de creación a sus handlers específicos
       else if (interaction.customId.startsWith('template_')) {
         const createHandlers = require('../../lib/template/template-create-handlers');
@@ -2769,6 +2773,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
         const result = {
           displayName: weaponConfig?.displayName || 'Nuevo Grupo',
           defaultEmoji: weaponConfig?.defaultEmoji || '⚔️',
+          max_players: weaponConfig?.max_players,
           data: editorWeapons // Usar 'data' en lugar de 'categories'
         };
 
@@ -2926,6 +2931,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
       dbFormat[groupKey] = {
         displayName: group.name || group.displayName || 'Nuevo Grupo',
         defaultEmoji: group.defaultEmoji || '⚔️',
+        max_players: group.max_players,
         data: allWeapons
       };
     });
@@ -3752,6 +3758,12 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
         // Volver a la interface principal de edición
         return await this.showEditWeapons(interaction, tempSessionId);
 
+      } else if (customId.includes('group_edit_max_players_')) {
+        const mpParts = customId.replace('group_edit_max_players_', '').split('_');
+        const mpGroupIndex = parseInt(mpParts.pop());
+        const mpSessionId = mpParts.join('_');
+        return await this.handleEditMaxPlayersGroup(interaction, mpSessionId, mpGroupIndex);
+
       } else {
         console.warn('[WARN] CustomId de grupo no reconocido:', customId);
         await interaction.reply({ content: 'Acción no reconocida.', ephemeral: true });
@@ -3764,6 +3776,124 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
         await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
       } else {
         await interaction.followUp({ embeds: [errorEmbed], ephemeral: true });
+      }
+    }
+  },
+
+  // Mostrar modal para editar max_players de un grupo
+  async handleEditMaxPlayersGroup(interaction, sessionId, groupIndex) {
+    try {
+      const validSession = getValidSession(sessionId, interaction.user.id, interaction.guild.id);
+      if (!validSession) {
+        return await interaction.reply({ content: 'Sesión expirada. Por favor reinicia la edición.', ephemeral: true });
+      }
+
+      const { session } = validSession;
+      const weaponGroup = getWeaponGroupFromSession(session, groupIndex);
+      if (!weaponGroup) {
+        const errorEmbed = createErrorEmbed('Error', 'Grupo de armas no encontrado.');
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
+
+      const groupName = weaponGroup.displayName || weaponGroup.name || `Grupo ${groupIndex + 1}`;
+      const currentMaxPlayers = weaponGroup.max_players !== undefined ? String(weaponGroup.max_players) : '';
+
+      const modal = new ModalBuilder()
+        .setCustomId(`edit_max_players_modal_${sessionId}_${groupIndex}`)
+        .setTitle(`Max Players: ${groupName.substring(0, 35)}`);
+
+      const maxPlayersInput = new TextInputBuilder()
+        .setCustomId('max_players_value')
+        .setLabel('Límite máximo de jugadores')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Ej: 7')
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(4);
+
+      if (currentMaxPlayers) {
+        maxPlayersInput.setValue(currentMaxPlayers);
+      }
+
+      modal.addComponents(new ActionRowBuilder().addComponents(maxPlayersInput));
+      await interaction.showModal(modal);
+
+    } catch (error) {
+      console.error('[ERROR] Error en handleEditMaxPlayersGroup:', error);
+      const errorEmbed = createErrorEmbed('Error', 'No se pudo abrir el formulario de edición.');
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
+    }
+  },
+
+  // Manejar envío del modal de max_players
+  async handleEditMaxPlayersModalSubmit(interaction) {
+    try {
+      // Format: edit_max_players_modal_${sessionId}_${groupIndex}
+      const withoutPrefix = interaction.customId.replace('edit_max_players_modal_', '');
+      const lastUnder = withoutPrefix.lastIndexOf('_');
+      const groupIndex = parseInt(withoutPrefix.substring(lastUnder + 1));
+      const sessionId = withoutPrefix.substring(0, lastUnder);
+
+      const validSession = getValidSession(sessionId, interaction.user.id, interaction.guild.id);
+      if (!validSession) {
+        const errorEmbed = createErrorEmbed('Sesión expirada', 'La sesión de edición ha expirado.');
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
+
+      const { session, sessionId: actualSessionId } = validSession;
+      const rawValue = interaction.fields.getTextInputValue('max_players_value').trim();
+      const newMaxPlayers = parseInt(rawValue, 10);
+
+      if (isNaN(newMaxPlayers) || newMaxPlayers < 1) {
+        const errorEmbed = createErrorEmbed('Error de Validación', 'El límite máximo debe ser un número mayor a 0.');
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
+
+      const weaponGroup = getWeaponGroupFromSession(session, groupIndex);
+      if (!weaponGroup) {
+        const errorEmbed = createErrorEmbed('Error', 'Grupo de armas no encontrado.');
+        return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
+
+      const oldMaxPlayers = weaponGroup.max_players;
+      weaponGroup.max_players = newMaxPlayers;
+      session.hasChanges = true;
+
+      const groupName = weaponGroup.displayName || weaponGroup.name || `Grupo ${groupIndex + 1}`;
+
+      // Advertir si la suma de armas supera el nuevo límite
+      const totalWeaponUnits = Array.isArray(weaponGroup.data)
+        ? weaponGroup.data.reduce((acc, w) => acc + (parseInt(w.units) || 0), 0)
+        : 0;
+      const warningText = totalWeaponUnits > newMaxPlayers
+        ? `\n\n⚠️ **Aviso:** la suma de cupos de armas (${totalWeaponUnits}) supera el nuevo límite. El grupo seguirá limitado a **${newMaxPlayers}** jugadores; las armas actúan como sub-límites internos.`
+        : '';
+
+      const successEmbed = createSuccessEmbed(
+        'Max Players Actualizado',
+        `El límite máximo del grupo **${groupName}** ha sido actualizado a **${newMaxPlayers}**.${warningText}`,
+        [
+          { name: 'Grupo', value: groupName, inline: true },
+          { name: 'Antes', value: oldMaxPlayers !== undefined ? String(oldMaxPlayers) : 'Auto', inline: true },
+          { name: 'Ahora', value: String(newMaxPlayers), inline: true }
+        ]
+      );
+
+      const backButton = new ButtonBuilder()
+        .setCustomId(`back_to_group_${actualSessionId}_${groupIndex}`)
+        .setLabel('🔙 Volver al Grupo')
+        .setStyle(ButtonStyle.Primary);
+
+      const row = new ActionRowBuilder().addComponents(backButton);
+      await interaction.reply({ embeds: [successEmbed], components: [row], ephemeral: true });
+
+    } catch (error) {
+      console.error('[ERROR] Error en handleEditMaxPlayersModalSubmit:', error);
+      const errorEmbed = createErrorEmbed('Error', 'No se pudo actualizar el límite máximo.');
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
       }
     }
   },
@@ -3802,6 +3932,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
         : 'Sin categorías';
 
       const groupName = weaponGroup.displayName || weaponGroup.name || `Grupo ${groupIndex + 1}`;
+      const maxPlayersDisplay = weaponGroup.max_players !== undefined ? String(weaponGroup.max_players) : 'Auto (suma de armas)';
       const embed = new EmbedBuilder()
         .setTitle(`${renderEmoji(weaponGroup.defaultEmoji, interaction.client, interaction.guild)} Editar ${groupName}`)
         .setDescription('Administra las armas de este grupo. Puedes añadir más armas, eliminar existentes o modificar cantidades.')
@@ -3809,7 +3940,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
         .addFields([
           {
             name: 'Contenido Actual',
-            value: `**${totalWeapons}** armas configuradas\n**Categorías:** ${categoryNames}`,
+            value: `**${totalWeapons}** armas configuradas\n**Límite máximo:** ${maxPlayersDisplay}\n**Categorías:** ${categoryNames}`,
             inline: false
           }
         ]);
@@ -3863,6 +3994,11 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
 
       const buttonRow2 = new ActionRowBuilder()
         .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`group_edit_max_players_${tempSessionId}_${groupIndex}`)
+            .setLabel('Max Players')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('✏️'),
           new ButtonBuilder()
             .setCustomId(`group_edit_finish_${tempSessionId}`)
             .setLabel('Guardar Cambios')

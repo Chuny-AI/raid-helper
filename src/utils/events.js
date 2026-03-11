@@ -1,11 +1,46 @@
 const { InteractionType, Events, EmbedBuilder } = require("discord.js");
 const { client } = require("./client");
-const { embedsMap } = require("../utils/embed");
+const { embedsMap, rebuildEmbedFromSnapshot, safeFieldValue, updateParticipantsCounter } = require("../utils/embed");
 const { getOrCreateServer } = require("../services/serverService");
 const { filterCommand } = require("./commandFilter");
+const { getActiveRaids, closeRaidEvent, syncEmbedSnapshot, updateRaidEvent } = require('../services/raidEventService');
+const RaidEvent = require('../database/models/RaidEvent');
 
 // Import template command
 const templateCommand = require("../commands/utility/template");
+
+/**
+ * Persiste el estado actual del embed en la base de datos de forma no bloqueante.
+ * @param {string} raidId
+ * @param {Object} embed - EmbedBuilder con data
+ * @param {Object} [extra] - Campos adicionales a actualizar en el documento
+ */
+const persistRaidState = (raidId, embed, extra = {}) => {
+  setImmediate(async () => {
+    try {
+      await syncEmbedSnapshot(raidId, embed.data);
+      if (Object.keys(extra).length > 0) {
+        await updateRaidEvent(raidId, extra);
+      }
+    } catch (e) {
+      console.error('[WARN] persistRaidState error:', e);
+    }
+  });
+};
+
+/**
+ * Garantiza que el valor de un campo no supere el límite de 1024 chars de Discord.
+ * Aplica safeFieldValue a todos los campos de tipo string del embed.
+ * @param {Object} embed - EmbedBuilder
+ */
+const sanitizeEmbedFields = (embed) => {
+  if (!embed?.data?.fields) return;
+  embed.data.fields.forEach(f => {
+    if (typeof f.value === 'string' && f.value.length > 1024) {
+      f.value = safeFieldValue(f.value);
+    }
+  });
+};
 
 const getEvents = () => {
   client.once(Events.ClientReady, async (readyClient) => {
@@ -20,6 +55,74 @@ const getEvents = () => {
     } catch (error) {
       console.error('[ERROR] Error al registrar servidores:', error);
     }
+
+    // Reconstruir embedsMap desde la base de datos para raids activos
+    try {
+      const activeRaids = await getActiveRaids();
+      let rebuilt = 0;
+      const now = Date.now();
+      for (const raid of activeRaids) {
+        // Expirar raids cuya hora ya pasó hace más de 2 horas
+        if (raid.time) {
+          const { parseUTCTime } = require('../utils/time');
+          try {
+            const raidTs = parseUTCTime(raid.time) * 1000;
+            if (raidTs + 2 * 60 * 60 * 1000 < now) {
+              await closeRaidEvent(raid.eventId);
+              console.log(`[INFO] Raid #${raid.eventId} expirado y cerrado automáticamente.`);
+              continue;
+            }
+          } catch { /* ignorar parse errors */ }
+        }
+        if (!raid.embedSnapshot) continue;
+        try {
+          const embed = rebuildEmbedFromSnapshot(raid.embedSnapshot);
+          const tmplName = raid.templateName;
+          if (!embedsMap[tmplName]) embedsMap[tmplName] = [];
+          // Evitar duplicados (puede llamarse varias veces en dev)
+          const exists = embedsMap[tmplName].some(e => e.raidId === raid.eventId);
+          if (!exists) {
+            embedsMap[tmplName].push({
+              id: raid.messageId,
+              raidId: raid.eventId,
+              embed,
+              fullNotificationSent: false,
+            });
+            rebuilt++;
+          }
+        } catch (e) {
+          console.error(`[WARN] No se pudo reconstruir embed del raid #${raid.eventId}:`, e);
+        }
+      }
+      if (rebuilt > 0) console.log(`[INFO] ${rebuilt} raids activos reconstruidos en embedsMap.`);
+    } catch (error) {
+      console.error('[ERROR] Error reconstruyendo embedsMap:', error);
+    }
+
+    // Programar limpieza periódica de raids expirados (cada 30 min)
+    setInterval(async () => {
+      const now = Date.now();
+      for (const [tmplName, entries] of Object.entries(embedsMap)) {
+        const active = [];
+        for (const entry of entries) {
+          let expired = false;
+          try {
+            const dbRaid = await RaidEvent.findOne({ eventId: entry.raidId });
+            if (dbRaid?.time) {
+              const { parseUTCTime } = require('../utils/time');
+              const raidTs = parseUTCTime(dbRaid.time) * 1000;
+              if (raidTs + 2 * 60 * 60 * 1000 < now) {
+                await closeRaidEvent(entry.raidId);
+                console.log(`[INFO] Raid #${entry.raidId} expirado, removido de embedsMap.`);
+                expired = true;
+              }
+            }
+          } catch { /* continuar */ }
+          if (!expired) active.push(entry);
+        }
+        embedsMap[tmplName] = active;
+      }
+    }, 30 * 60 * 1000);
   });
 
   client.on(Events.GuildCreate, async (guild) => {
@@ -413,7 +516,8 @@ const getEvents = () => {
         interaction.customId.startsWith("modify_weapon_modal_") ||
         interaction.customId.startsWith("modify_weapon_full_modal_") ||
         interaction.customId.startsWith("modify_units_modal_") ||
-        interaction.customId.startsWith("add_url_modal_")) {
+        interaction.customId.startsWith("add_url_modal_") ||
+        interaction.customId.startsWith("edit_max_players_modal_")) {
         console.log('[DEBUG] Events: Redirigiendo group modal a templateCommand.handleModalSubmit');
         await templateCommand.handleModalSubmit(interaction);
         return;
@@ -655,12 +759,18 @@ const getEvents = () => {
           console.error('[WARN] No se pudo actualizar el contador de participantes:', counterErr);
         }
 
+        // Protección contra overflow de campos del embed
+        sanitizeEmbedFields(embed);
+
         // PRIMERO: Actualizar el embed inmediatamente para respuesta visual rápida
         try {
           await interaction.message.edit({ embeds: [embed] });
         } catch (updateError) {
           console.error('[ERROR] Error actualizando el mensaje del evento:', updateError);
         }
+
+        // Persistir estado en BD de forma no bloqueante
+        persistRaidState(currentEmbedEntry.raidId, embed);
 
         // SEGUNDO: Actualizar recordatorios (rápido)
         try {
@@ -722,6 +832,24 @@ const getEvents = () => {
           if (!currentEmbedEntry) return;
           const embed = currentEmbedEntry.embed;
 
+          // Capturar en qué grupo estaba el usuario antes de moverlo a la lista de espera
+          const userStr = interaction.user.toString();
+          let previousGroup = null;
+          for (const field of embed.data.fields) {
+            if (typeof field.name !== 'string') continue;
+            if (!/\(\d+\/\d+\):/.test(field.name)) continue;
+            if (field.name.startsWith('👑 Looters')) continue;
+            if (typeof field.value === 'string' && field.value.includes(userStr)) {
+              const groupMatch = field.name.match(/<:[^:]+:[0-9]+>\s+(.+?)\s+\(/);
+              if (groupMatch) previousGroup = groupMatch[1];
+              break;
+            }
+          }
+
+          // Registrar el grupo preferido del usuario en la lista de espera por grupo
+          if (!currentEmbedEntry.waitlistGroups) currentEmbedEntry.waitlistGroups = {};
+          if (previousGroup) currentEmbedEntry.waitlistGroups[interaction.user.id] = previousGroup;
+
           // Quitar usuario de cualquier arma y decrementar unidades
           deleteUserIfExistsOnCurrentField(embed, interaction);
 
@@ -753,7 +881,11 @@ const getEvents = () => {
           } catch (counterErr) {
             console.error('[WARN] No se pudo actualizar el contador (waitlist):', counterErr);
           }
+          sanitizeEmbedFields(embed);
           await interaction.message.edit({ embeds: [embed] });
+
+          // Persistir estado en BD
+          persistRaidState(currentEmbedEntry.raidId, embed);
 
           // Actualizar recordatorio con los participantes y añadir interesado
           try {
@@ -817,7 +949,11 @@ const getEvents = () => {
           } catch (counterErr) {
             console.error('[WARN] No se pudo actualizar el contador (cannotgo):', counterErr);
           }
+          sanitizeEmbedFields(embed);
           await interaction.message.edit({ embeds: [embed] });
+
+          // Persistir estado en BD
+          persistRaidState(currentEmbedEntry.raidId, embed);
 
           // Actualizar recordatorio con los participantes y añadir interesado
           try {
@@ -908,7 +1044,11 @@ const getEvents = () => {
             console.error('[WARN] No se pudo actualizar el contador (looter):', counterErr);
           }
 
+          sanitizeEmbedFields(embed);
           await interaction.message.edit({ embeds: [embed] });
+
+          // Persistir estado en BD
+          persistRaidState(currentEmbedEntry.raidId, embed);
 
           try {
             const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
@@ -983,19 +1123,26 @@ const deleteUserIfExistsOnCurrentField = (
         return;
       }
       // Regular weapon fields: emoji-prefixed entries
-      const regex = new RegExp(`\\n<:[^:]+:[0-9]+>[^\\n]*${interaction.user}`, "g");
-      if (regex) {
-        field.value = field.value.replace(regex, "");
-      }
-      const match = field.name.match(regexUnits);
-      if (match) {
-        const currentUnits = parseInt(match[3]);
-        const newUnits = currentUnits - 1;
-        const updatedName = field.name.replace(
-          /(\d+)\/(\d+)/,
-          `${newUnits}/${match[4]}`
-        );
-        field.name = updatedName;
+      // Use (^|\n) to also match when the user is the very first line of the field
+      const escapedUser = interaction.user.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(^|\\n)<:[^:]+:[0-9]+>[^\\n]*${escapedUser}`, "gm");
+      const before = field.value;
+      field.value = field.value.replace(regex, (match, prefix) => prefix === '\n' ? '' : '');
+      // Trim leading newline that may remain when first line was removed
+      field.value = field.value.replace(/^\n+/, '');
+      if (field.value.trim() === '') field.value = '\u200b';
+      const userWasRemoved = before !== field.value;
+      if (userWasRemoved) {
+        const match = field.name.match(regexUnits);
+        if (match) {
+          const currentUnits = parseInt(match[3]);
+          const newUnits = Math.max(0, currentUnits - 1);
+          const updatedName = field.name.replace(
+            /(\d+)\/(\d+)/,
+            `${newUnits}/${match[4]}`
+          );
+          field.name = updatedName;
+        }
       }
     }
   });
