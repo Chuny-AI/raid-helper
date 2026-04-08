@@ -1,9 +1,10 @@
-const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
 const { getTemplatesByServer, getTemplateByName, updateTemplate, createTemplate, deleteTemplate, getTemplateNames } = require('../../services/templateService');
 const { AttachmentBuilder } = require('discord.js');
 const { getOrCreateServer } = require('../../services/serverService');
 const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require('../../utils/errorEmbeds');
 const { checkPremiumAccess } = require('../../middleware/roleCheck');
+const { safeDeferUpdate } = require('../../utils/interaction');
 
 // Store temporal para manejar el estado del proceso de edición
 const templateEditSessions = new Map();
@@ -525,7 +526,7 @@ module.exports = {
         default:
           await interaction.reply({
             content: 'Subcomando no reconocido.',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
       }
     } catch (error) {
@@ -533,7 +534,7 @@ module.exports = {
       const errorMessage = 'Hubo un error al ejecutar este comando.';
 
       if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: errorMessage, ephemeral: true });
+        await interaction.reply({ content: errorMessage, flags: MessageFlags.Ephemeral });
       } else if (interaction.deferred) {
         await interaction.editReply({ content: errorMessage });
       }
@@ -1628,16 +1629,22 @@ module.exports = {
           template.title.toLowerCase().includes(focusedValue.toLowerCase())
         );
 
-        await interaction.respond(
-          filtered.slice(0, 25).map(template => ({
-            name: template.title,
-            value: template.title,
-          }))
-        );
+        if (!interaction.responded && !interaction.deferred && !interaction.replied) {
+          await interaction.respond(
+            filtered.slice(0, 25).map(template => ({
+              name: template.title,
+              value: template.title,
+            }))
+          );
+        }
       }
     } catch (error) {
       console.error(`[ERROR] Error en autocomplete template ${subcommand}:`, error);
-      await interaction.respond([]);
+      try {
+        if (!interaction.responded && !interaction.deferred && !interaction.replied) {
+          await interaction.respond([]);
+        }
+      } catch { /* ignore duplicate ack */ }
     }
   },
 
@@ -2127,7 +2134,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
           const creationSessions = getTemplateCreationSessions();
           const session = creationSessions.get(sessionId);
 
-          await interaction.deferUpdate();
+          await safeDeferUpdate(interaction);
 
           if (session && session.isEdit) {
             // Es una sesión de edición, sincronizar datos y volver al editor
@@ -2198,7 +2205,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
     try {
       const templateId = interaction.customId.replace('template_delete_confirm_', '');
 
-      await interaction.deferUpdate();
+      await safeDeferUpdate(interaction);
 
       const deletedTemplate = await deleteTemplate(templateId);
 
@@ -2370,7 +2377,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
           const creationSessions = getTemplateCreationSessions();
           const session = creationSessions.get(sessionId);
 
-          await interaction.deferUpdate();
+          await safeDeferUpdate(interaction);
 
           if (session && session.isEdit) {
             // Es una sesión de edición, sincronizar datos y volver al editor
@@ -3519,7 +3526,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
 
       // Diferir la interacción si es un botón
       if (interaction.isButton()) {
-        await interaction.deferUpdate();
+        await safeDeferUpdate(interaction);
       }
 
       // Mostrar selección de categorías de armas usando el sistema de template create
@@ -5248,7 +5255,7 @@ async function handleAddWeaponToGroup(interaction, sessionId, groupIndex) {
 
     // Diferir la interacción si es un botón
     if (interaction.isButton()) {
-      await interaction.deferUpdate();
+      await safeDeferUpdate(interaction);
     }
 
     // Mostrar selección de categorías de armas usando el sistema de template create
@@ -5727,7 +5734,7 @@ async function handleGroupEmojiSelect(interaction) {
     // Acknowledge the select interaction early to avoid timeouts
     if (!interaction.deferred && !interaction.replied) {
       // For select menus, prefer deferUpdate to keep the same message
-      await interaction.deferUpdate();
+      await safeDeferUpdate(interaction);
     }
     const sessionId = interaction.customId.replace('group_emoji_select_', '');
     const selectedWeaponData = interaction.values[0]; // "categoryId_weaponName"

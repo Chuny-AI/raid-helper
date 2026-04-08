@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js");
 const { getTemplateNames, getTemplatesByServer } = require("../../services/templateService");
 const { getServer } = require("../../services/serverService");
 const { createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
@@ -13,6 +13,7 @@ module.exports = {
 
   async execute(interaction) {
     try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       const guildId = interaction.guild.id;
       
@@ -69,7 +70,7 @@ module.exports = {
 
       await safeReply(interaction, {
         embeds: [embed],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       console.error('[ERROR] Error en comando status:', error);
@@ -84,7 +85,7 @@ module.exports = {
       );
       await safeReply(interaction, {
         embeds: [errorEmbed],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },

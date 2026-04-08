@@ -1,13 +1,21 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { createEmbed, embedsMap, createMassNotificationEmbed, updateParticipantsCounter, safeFieldValue } = require("../../utils/embed");
 const { parseUTCTime, parseMinutes } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
-const { createSelect } = require("../../utils/select");
+const { createSelect, createDisableWeaponsConfig } = require("../../utils/select");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { createErrorEmbed, createWarningEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { checkAuthorizedRole } = require('../../middleware/roleCheck');
+const { safeDeferUpdate } = require('../../utils/interaction');
 const { createRaidEvent, getRaidEvent, updateRaidEvent, closeRaidEvent, syncEmbedSnapshot } = require('../../services/raidEventService');
+
+/**
+ * Almacena temporalmente los parámetros de raid pendiente de publicación.
+ * key: originalInteractionId, value: { ...raidParams, disabledWeapons: [] }
+ * Se limpian automáticamente a los 15 minutos (expiración del token de Discord).
+ */
+const pendingRaids = new Map();
 
 /** Persiste snapshot del embed en BD de forma no bloqueante. */
 function persistRaidStateKick(raidId, embed) {
@@ -90,7 +98,7 @@ function kickUserFromEmbed(embed, userMention) {
  * Manejador del subcomando /raid kick
  */
 async function executeKickSubcommand(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const raidId = interaction.options.getString('raid_id').toUpperCase().trim();
   const targetUser = interaction.options.getUser('usuario');
@@ -139,7 +147,25 @@ async function executeKickSubcommand(interaction) {
     });
   }
 
-  // 4. Eliminar usuario del embed (funciona para grupos, waitlist, cannotgo y looters)
+  // 4a. Capturar el arma individual del usuario ANTES de eliminarlo (para auto-promoción exacta)
+  let freedIndividualWeapon = null;
+  let freedGroupFieldRef = null;
+  for (const field of embed.data.fields) {
+    if (!/\(\d+\/\d+\):/.test(field.name) || field.name.startsWith('👑')) continue;
+    if (!field.value?.includes(userMention)) continue;
+    for (const line of (field.value || '').split('\n')) {
+      if (!line.includes(userMention)) continue;
+      const wm = line.match(/<:[^:]+:[0-9]+>\s+(.+?)\s+<@/);
+      if (wm) {
+        freedIndividualWeapon = wm[1].trim();
+        freedGroupFieldRef = field;
+        break;
+      }
+    }
+    if (freedIndividualWeapon) break;
+  }
+
+  // 4b. Eliminar usuario del embed (funciona para grupos, waitlist, cannotgo y looters)
   const { wasInSlot, freedGroup } = kickUserFromEmbed(embed, userMention);
 
   // 5. Actualizar contador de participantes
@@ -149,52 +175,68 @@ async function executeKickSubcommand(interaction) {
     console.error('[WARN] kick: No se pudo actualizar el contador:', e);
   }
 
-  // 6. Promover primer usuario de la lista de espera del mismo grupo (si se liberó un slot)
+  // 6. Promover primer usuario de la waitlist que espera exactamente el arma liberada
   let promotedUserId = null;
   let promotedMention = null;
-  if (wasInSlot && freedGroup && freedGroup !== 'looters') {
+  const searchWeapon = freedIndividualWeapon || freedGroup;
+  if (wasInSlot && searchWeapon && searchWeapon !== 'looters') {
     const waitlistField = embed.data.fields.find(f => f.name === '🕒 Lista de espera');
     if (waitlistField && waitlistField.value && waitlistField.value !== '\u200b') {
-      const waitlistGroups = targetEmbedEntry.waitlistGroups || {};
+      const waitlistWeapons = targetEmbedEntry.waitlistWeapons || {};
       const lines = waitlistField.value.split('\n').filter(l => l.trim());
 
-      // Buscar primero alguien que estaba esperando exactamente por este grupo
-      let promotionIdx = lines.findIndex(line => {
-        const uid = line.trim().replace(/<@!?(\d+)>/, '$1');
-        return waitlistGroups[uid] === freedGroup;
-      });
+      // Buscar el primer candidato que espera exactamente este arma/grupo
+      // Soporte doble: nuevo formato (línea contiene el nombre) + legacy (in-memory map)
+      const seen = new Set();
+      let promotedEntry = null;
+      for (const line of lines) {
+        const uidMatch = line.match(/<@!?(\d+)>/);
+        if (!uidMatch) continue;
+        const uid = uidMatch[1];
+        if (seen.has(uid)) continue;
+        seen.add(uid);
 
-      // Si nadie del mismo grupo, tomar el primero de la lista (comportamiento anterior)
-      if (promotionIdx === -1) promotionIdx = 0;
+        const prefs = waitlistWeapons[uid];
+        const matchesNewFormat = freedIndividualWeapon && line.includes(freedIndividualWeapon);
+        const matchesLegacy = prefs?.weapons?.includes(searchWeapon);
 
-      if (promotionIdx >= 0 && lines[promotionIdx]) {
-        promotedMention = lines[promotionIdx].trim();
-        promotedUserId = promotedMention.replace(/<@!?(\d+)>/, '$1');
-        lines.splice(promotionIdx, 1);
-        waitlistField.value = lines.length > 0 ? lines.join('\n') : '\u200b';
+        if (matchesNewFormat || matchesLegacy) {
+          const emojiMatch = matchesNewFormat ? line.match(/^(<:[^:]+:[0-9]+>)/) : null;
+          promotedEntry = { uid, emoji: emojiMatch ? emojiMatch[1] : '' };
+          break;
+        }
+      }
 
-        // Limpiar el grupo preferido registrado
-        if (targetEmbedEntry.waitlistGroups) {
-          delete targetEmbedEntry.waitlistGroups[promotedUserId];
+      if (promotedEntry) {
+        promotedUserId = promotedEntry.uid;
+        promotedMention = `<@${promotedUserId}>`;
+
+        // Eliminar TODAS las líneas del usuario promovido de la waitlist
+        const newLines = lines.filter(l => !l.includes(promotedMention));
+        waitlistField.value = newLines.length > 0 ? newLines.join('\n') : '\u200b';
+
+        // Limpiar preferencias en memoria
+        if (targetEmbedEntry.waitlistWeapons) {
+          delete targetEmbedEntry.waitlistWeapons[promotedUserId];
         }
 
-        // Asignar al usuario promovido en el primer slot disponible del grupo liberado
-        const groupField = embed.data.fields.find(f =>
-          typeof f.name === 'string' && f.name.includes(freedGroup) && /\(\d+\/\d+\):/.test(f.name)
+        // Añadir al grupo con formato correcto: <emoji> NombreArma @user (o solo @user si no hay emoji)
+        const targetGroupField = freedGroupFieldRef || embed.data.fields.find(f =>
+          typeof f.name === 'string' && f.name.includes(freedGroup || '') && /\(\d+\/\d+\):/.test(f.name)
         );
-        if (groupField) {
-          const counterMatch = groupField.name.match(/\((\d+)\/(\d+)\):/);
+        if (targetGroupField) {
+          const counterMatch = targetGroupField.name.match(/\((\d+)\/(\d+)\):/);
           if (counterMatch) {
             const cur = parseInt(counterMatch[1]);
             const max = parseInt(counterMatch[2]);
             if (cur < max) {
-              // Añadir al campo del grupo (sin emoji de arma específica, usar placeholder)
-              const currentVal = (groupField.value === '\u200b' || groupField.value.trim() === '')
-                ? '' : groupField.value;
-              groupField.value = currentVal
-                ? `${currentVal}\n${promotedMention}`
+              const formattedEntry = promotedEntry.emoji && freedIndividualWeapon
+                ? `${promotedEntry.emoji} ${freedIndividualWeapon} ${promotedMention}`
                 : promotedMention;
-              groupField.name = groupField.name.replace(/(\d+)\/(\d+)/, `${cur + 1}/${max}`);
+              const currentVal = (targetGroupField.value === '\u200b' || targetGroupField.value.trim() === '')
+                ? '' : targetGroupField.value;
+              targetGroupField.value = currentVal ? `${currentVal}\n${formattedEntry}` : formattedEntry;
+              targetGroupField.name = targetGroupField.name.replace(/(\d+)\/(\d+)/, `${cur + 1}/${max}`);
             }
           }
         }
@@ -227,7 +269,7 @@ async function executeKickSubcommand(interaction) {
     content: `✅ **${targetUser.username}** ha sido expulsado del raid **#${raidId}**.${promotedNote}`,
   });
 
-  // 9. DMs (no bloqueantes)
+  // 9. DMs y notificación al líder (no bloqueantes)
   setImmediate(async () => {
     try {
       await targetUser.send({ content: 'Has sido removido del raid por el líder.' });
@@ -239,10 +281,38 @@ async function executeKickSubcommand(interaction) {
       try {
         const promotedMember = await interaction.guild.members.fetch(promotedUserId);
         await promotedMember.send({
-          content: `✅ ¡Se ha liberado un slot en el grupo **${freedGroup}** del raid **#${raidId}** y has sido promovido automáticamente!`,
+          content: `✅ Se liberó un espacio en el raid y has sido movido automáticamente desde la lista de espera al arma **${freedIndividualWeapon || freedGroup}**. ¡Buena suerte!`,
         });
       } catch (e) {
         console.log(`[INFO] kick: No se pudo enviar DM al promovido: ${e.message}`);
+      }
+
+      // Notificar al líder sobre la promoción automática
+      try {
+        const leaderField = embed.data.fields.find(f => f.name === 'Líder de la actividad:');
+        if (leaderField) {
+          const leaderId = leaderField.value.replace(/<@!?(\d+)>/, '$1');
+          const leader = await interaction.guild.members.fetch(leaderId);
+          await leader.send({
+            content: `✅ Un usuario fue movido automáticamente desde la lista de espera al slot de **${freedIndividualWeapon || freedGroup}** (liberado por el kick de **${targetUser.username}**).`,
+          });
+        }
+      } catch (e) {
+        console.log(`[INFO] kick: No se pudo enviar DM de notificación al líder: ${e.message}`);
+      }
+    } else if (wasInSlot) {
+      // Notificar al líder que se liberó un slot pero no había nadie en waitlist
+      try {
+        const leaderField = embed.data.fields.find(f => f.name === 'Líder de la actividad:');
+        if (leaderField) {
+          const leaderId = leaderField.value.replace(/<@!?(\d+)>/, '$1');
+          const leader = await interaction.guild.members.fetch(leaderId);
+          await leader.send({
+            content: `⚠️ **${targetUser.username}** ha sido expulsado del raid **#${raidId}** y se ha liberado un slot en **${freedIndividualWeapon || freedGroup || 'un grupo'}**.`,
+          });
+        }
+      } catch (e) {
+        console.log(`[INFO] kick: No se pudo enviar DM de notificación al líder: ${e.message}`);
       }
     }
   });
@@ -265,7 +335,7 @@ function generateRaidId() {
  * Manejador del subcomando /raid edit
  */
 async function executeEditSubcommand(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const raidId = interaction.options.getString('raid_id').toUpperCase().trim();
   const newTime = interaction.options.getString('time');
@@ -362,8 +432,7 @@ async function executeEditSubcommand(interaction) {
 /**
  * Manejador del subcomando /raid close
  */
-async function executeCloseSubcommand(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+async function executeCloseSubcommand(interaction) {  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const raidId = interaction.options.getString('raid_id').toUpperCase().trim();
 
@@ -399,6 +468,235 @@ async function executeCloseSubcommand(interaction) {
   });
 
   await interaction.editReply({ content: `✅ Raid **#${raidId}** cerrado y removido correctamente.` });
+}
+
+/**
+ * Manejador del select de configuración de armas (deshabilitar armas al crear raid).
+ * Se ejecuta cuando el líder selecciona armas a deshabilitar antes de publicar.
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction
+ */
+async function handleWeaponsConfigSelect(interaction) {
+  const originalId = interaction.customId.substring('raid_config_weapons-'.length);
+  const pending = pendingRaids.get(originalId);
+  if (!pending) {
+    try { await interaction.reply({ content: 'Esta sesión ha expirado. Ejecuta `/raid create` nuevamente.', flags: MessageFlags.Ephemeral }); } catch { /* ignored */ }
+    return;
+  }
+
+  // Guardar armas deshabilitadas
+  pending.disabledWeapons = interaction.values || [];
+
+  // Actualizar el mensaje ephemeral con la lista de lo que se deshabilitará
+  const disabledList = pending.disabledWeapons.length > 0
+    ? pending.disabledWeapons.map(v => `\`${v}\``).join(', ')
+    : 'ninguna (todas habilitadas)';
+
+  try {
+    await safeDeferUpdate(interaction);
+    await interaction.editReply({
+      content: `⚙️ **Configuración guardada.**\nArmas a deshabilitar: ${disabledList}\n\nPresiona **Confirmar y publicar raid** cuando estés listo.`,
+    });
+  } catch (e) {
+    console.error('[WARN] handleWeaponsConfigSelect: Error actualizando respuesta:', e);
+  }
+}
+
+/**
+ * Manejador del botón de confirmar y publicar raid.
+ * Lee los parámetros pendientes y publica el raid con las armas configuradas.
+ * @param {import('discord.js').ButtonInteraction} interaction
+ */
+async function handleConfirmRaidCreate(interaction) {
+  const originalId = interaction.customId.substring('raid_confirm_create-'.length);
+  const pending = pendingRaids.get(originalId);
+
+  if (!pending) {
+    await interaction.update({
+      content: '⏰ Esta sesión de creación ha expirado (15 min). Ejecuta `/raid create` nuevamente.',
+      components: [],
+    });
+    return;
+  }
+
+  // Marcar como procesado para evitar dobles publicaciones
+  pendingRaids.delete(originalId);
+
+  const {
+    templateName, template, eventTimestamp, title, color, image, description,
+    finalReminder, finalNotificationRoles, looters, guildId, user, disabledWeapons,
+  } = pending;
+
+  const raidId = generateRaidId();
+  const disabledWeaponValues = disabledWeapons || [];
+
+  // Construir embed con armas habilitadas
+  const embed = createEmbed({
+    title,
+    eventTimestamp,
+    template,
+    color,
+    image,
+    description,
+    user,
+    finalRoles: finalNotificationRoles,
+    looters,
+    raidId,
+    disabledWeapons: disabledWeaponValues,
+  });
+
+  // Construir select de armas con filtrado aplicado
+  const row = createSelect(template, templateName, { id: originalId }, disabledWeaponValues);
+
+  // Construir botones de participación
+  const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+  const extraRowComponents = [
+    new ButtonBuilder()
+      .setCustomId(`raid_waitlist-${templateName}-${originalId}`)
+      .setLabel('Lista de espera')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('🕒'),
+    new ButtonBuilder()
+      .setCustomId(`raid_cannotgo-${templateName}-${originalId}`)
+      .setLabel('No puedo ir')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🚫'),
+  ];
+  if (looters) {
+    extraRowComponents.push(
+      new ButtonBuilder()
+        .setCustomId(`raid_looter-${templateName}-${originalId}`)
+        .setLabel('Looters')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('👑')
+    );
+  }
+  const extraRow = new ActionRowBuilder().addComponents(extraRowComponents);
+
+  // Registrar en embedsMap ANTES de publicar para que botones puedan buscarlo
+  if (!embedsMap[templateName]) embedsMap[templateName] = [];
+  embedsMap[templateName].push({
+    id: originalId,
+    raidId,
+    embed,
+    fullNotificationSent: false,
+    disabledWeapons: disabledWeaponValues,
+    waitlistWeapons: {},
+  });
+
+  // Configurar recordatorio si aplica
+  if (finalReminder) {
+    try {
+      const { createReminder, addInterestedUser } = require('../../utils/reminderManager');
+      const activityTitle = title || template.title;
+      createReminder(
+        originalId,
+        finalReminder,
+        eventTimestamp * 1000,
+        templateName,
+        interaction.channel?.id,
+        guildId,
+        activityTitle,
+        []
+      );
+      addInterestedUser(originalId, user.id);
+    } catch (reminderError) {
+      console.error('[ERROR] handleConfirmRaidCreate: Error configurando recordatorio:', reminderError);
+    }
+  }
+
+  // Publicar el raid en el canal
+  let raidMessage;
+  let notificationContent = '';
+  if (finalNotificationRoles.length > 0) {
+    notificationContent = finalNotificationRoles.map(id => `<@&${id}>`).join(' ') + '\n';
+  }
+
+  try {
+    raidMessage = await interaction.channel.send({
+      content: notificationContent || undefined,
+      embeds: [embed],
+      components: [row, extraRow],
+      allowedMentions: finalNotificationRoles.length > 0 ? { roles: finalNotificationRoles } : undefined,
+    });
+  } catch (publishError) {
+    console.error('[ERROR] handleConfirmRaidCreate: Error publicando raid:', publishError);
+      await interaction.update({
+      content: '❌ No se pudo publicar el raid. Intenta de nuevo.',
+      components: [],
+    });
+    // Limpiar el embedsMap entry
+    if (embedsMap[templateName]) {
+      embedsMap[templateName] = embedsMap[templateName].filter(e => e.raidId !== raidId);
+    }
+    return;
+  }
+
+  // Confirmar al líder que el raid fue publicado (actualiza el mensaje ephemeral)
+  await interaction.update({
+    content: `✅ Raid **#${raidId}** publicado correctamente.${disabledWeaponValues.length > 0 ? ` (${disabledWeaponValues.length} arma(s)/grupo(s) deshabilitados)` : ''}`,
+    components: [],
+  });
+
+  // Enviar DMs de notificación masiva (no bloqueante)
+  if (finalNotificationRoles.length > 0 && raidMessage) {
+    setImmediate(async () => {
+      try {
+        const members = await interaction.guild.members.fetch();
+        const targetMembers = members.filter(member =>
+          finalNotificationRoles.some(roleId => member.roles.cache.has(roleId))
+        );
+        const activityTitle = title || template.title;
+        const discordTimestamp = `<t:${eventTimestamp}:F>`;
+        const messageUrl = `https://discord.com/channels/${interaction.guild.id}/${interaction.channel.id}/${raidMessage.id}`;
+        const massNotification = createMassNotificationEmbed(
+          activityTitle,
+          interaction.guild.name,
+          discordTimestamp,
+          user.toString(),
+          messageUrl
+        );
+        for (const member of targetMembers.values()) {
+          try {
+            await member.send({ embeds: massNotification.embeds, components: massNotification.components });
+          } catch { /* DMs cerrados, ignorar */ }
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        console.log(`[INFO] Notificación enviada a ${targetMembers.size} miembros`);
+      } catch (e) {
+        console.error('[ERROR] handleConfirmRaidCreate: Error enviando notificaciones:', e);
+      }
+    });
+  }
+
+  // Guardar en BD (no bloqueante)
+  setImmediate(async () => {
+    try {
+      await createRaidEvent({
+        eventId: raidId,
+        guildId,
+        channelId: interaction.channel.id,
+        messageId: raidMessage.id,
+        templateName,
+        title: title || template.title,
+        description: description || template.description,
+        time: pending.time,
+        color: color || null,
+        image: image || null,
+        reminder: finalReminder || null,
+        rolesToNotify: finalNotificationRoles,
+        participants: [],
+        cannotGo: [],
+        weaponAssignments: [],
+        waitList: [],
+        disabledWeapons: disabledWeaponValues,
+        status: 'active',
+        embedSnapshot: embed.data,
+      });
+      console.log(`[INFO] Raid #${raidId} guardado en DB (messageId: ${raidMessage.id})`);
+    } catch (dbError) {
+      console.error('[ERROR] handleConfirmRaidCreate: Error guardando raid en DB:', dbError);
+    }
+  });
 }
 
 /**
@@ -586,7 +884,7 @@ module.exports = {
           .slice(0, 25); // Discord limita a 25 opciones
 
         // Solo responder si la interacción no ha sido respondida
-        if (!interaction.responded) {
+        if (!interaction.responded && !interaction.deferred && !interaction.replied) {
           await interaction.respond(
             filtered.map(template => ({
               name: template.name,
@@ -599,7 +897,7 @@ module.exports = {
 
         // Solo responder si la interacción no ha sido respondida
         try {
-          if (!interaction.responded) {
+          if (!interaction.responded && !interaction.deferred && !interaction.replied) {
             await interaction.respond([]);
           }
         } catch (responseError) {
@@ -627,7 +925,7 @@ module.exports = {
 
     // Subcomando 'create' — flujo de creación de raid
     try {
-      // No hacer defer todavía, necesitamos verificar si hay roles a notificar primero
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       // Verificar roles autorizados (authorizedroles), independiente de economy/decode
       const hasAuthorizedRole = await checkAuthorizedRole(interaction);
@@ -636,7 +934,7 @@ module.exports = {
           'Acceso denegado',
           'No tienes un rol autorizado para usar el comando /raid en este servidor.\nPide a un administrador que te agregue a la lista de roles autorizados.'
         );
-        await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+        await safeReply(interaction, { embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
         return;
       }
 
@@ -679,7 +977,7 @@ module.exports = {
         );
         return await safeReply(interaction, {
           embeds: [errorEmbed],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -698,7 +996,7 @@ module.exports = {
         );
         return await safeReply(interaction, {
           embeds: [errorEmbed],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -738,7 +1036,7 @@ module.exports = {
           );
           return await safeReply(interaction, {
             embeds: [warningEmbed],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         if (reminderTimeMs <= 0) {
@@ -753,7 +1051,7 @@ module.exports = {
           );
           return await safeReply(interaction, {
             embeds: [warningEmbed],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
       }
@@ -770,7 +1068,7 @@ module.exports = {
         );
         return await safeReply(interaction, {
           embeds: [errorEmbed],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -789,216 +1087,37 @@ module.exports = {
         console.log(`[DEBUG RAID] No se especificaron roles para notificar`);
       }
 
-      // Si NO hay roles a notificar, hacer defer para evitar timeout
-      // Si SÍ hay roles, NO hacer defer para poder usar reply() con menciones
-      const hasRolesToNotify = finalNotificationRoles.length > 0;
-      if (!hasRolesToNotify) {
-        await interaction.deferReply();
-      }
-
-      // Generar ID único del raid
-      const raidId = generateRaidId();
-
-      const row = createSelect(template, templateName, interaction);
-
-      const embed = createEmbed({
-        title,
-        eventTimestamp,
+      // Almacenar los parámetros del raid pendiente de confirmación
+      pendingRaids.set(interaction.id, {
+        templateName,
         template,
+        eventTimestamp,
+        time,
+        title,
         color,
         image,
         description,
-        user,
-        finalRoles: finalNotificationRoles,
+        finalReminder,
+        finalNotificationRoles,
         looters,
-        raidId,
+        guildId,
+        user,
+        disabledWeapons: [],
+      });
+      // Auto-limpiar tras 15 minutos (expiración del token de Discord)
+      setTimeout(() => pendingRaids.delete(interaction.id), 15 * 60 * 1000);
+
+      // Mostrar el configurador de armas antes de publicar
+      const { selectRow, confirmRow } = createDisableWeaponsConfig(template, interaction.id);
+      const components = selectRow ? [selectRow, confirmRow] : [confirmRow];
+
+      await interaction.editReply({
+        content: '⚙️ **Configurar armas del raid**\n\nTodas las armas están habilitadas por defecto. Si deseas **deshabilitar** alguna arma o grupo, selecciónala(s) en el menú y luego confirma.\n\n*Deja el selector vacío para mantener todas las armas habilitadas.*',
+        components,
       });
 
-      if (!embedsMap[templateName]) {
-        embedsMap[templateName] = [];
-      }
-
-      embedsMap[templateName].push({ id: interaction.id, raidId, embed, fullNotificationSent: false });
-
-
-      /**
-       * Configurar recordatorio si se especificó o si el template tiene uno
-       */
-      if (finalReminder) {
-        try {
-          const { createReminder, addInterestedUser } = require('../../utils/reminderManager');
-          const activityTitle = title || template.title;
-
-          createReminder(
-            interaction.id,
-            finalReminder,
-            eventTimestamp * 1000,  // ms timestamp del evento
-            templateName,
-            interaction.channel.id,
-            guildId,
-            activityTitle,
-            [] // Los participantes se actualizarán dinámicamente
-          );
-
-          addInterestedUser(interaction.id, interaction.user.id);
-
-          console.log(`[INFO] Recordatorio configurado para ${templateName} en ${finalReminder}`);
-        } catch (reminderError) {
-          console.error('[ERROR] Error configurando recordatorio:', reminderError);
-        }
-      }
-
-      let notificationContent = '';
-
-      if (finalNotificationRoles.length > 0) {
-        console.log(`[DEBUG RAID] Roles a notificar:`, finalNotificationRoles);
-        const roleMentions = finalNotificationRoles.map(roleId => `<@&${roleId}>`).join(' ');
-        notificationContent += `${roleMentions}\n`;
-        console.log(`[DEBUG RAID] Contenido de notificación:`, notificationContent);
-      } else {
-        console.log(`[DEBUG RAID] No hay roles para notificar`);
-      }
-
-      /**
-       * Primero publicar el mensaje del raid
-       * Si hay roles a notificar, usar reply() directamente para que las menciones funcionen
-       * Si no hay roles, usar safeReply() normal
-       */
-      let raidMessage;
-      if (hasRolesToNotify) {
-        console.log(`[DEBUG RAID] Publicando con reply() para mencionar roles`);
-        const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-        const extraRowComponents = [
-          new ButtonBuilder()
-            .setCustomId(`raid_waitlist-${templateName}-${interaction.id}`)
-            .setLabel('Lista de espera')
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji('🕒'),
-          new ButtonBuilder()
-            .setCustomId(`raid_cannotgo-${templateName}-${interaction.id}`)
-            .setLabel('No puedo ir')
-            .setStyle(ButtonStyle.Danger)
-            .setEmoji('🚫'),
-        ];
-        if (looters) {
-          extraRowComponents.push(
-            new ButtonBuilder()
-              .setCustomId(`raid_looter-${templateName}-${interaction.id}`)
-              .setLabel('Looters')
-              .setStyle(ButtonStyle.Primary)
-              .setEmoji('👑')
-          );
-        }
-        const extraRow = new ActionRowBuilder().addComponents(extraRowComponents);
-        raidMessage = await interaction.reply({
-          embeds: [embed],
-          components: [row, extraRow],
-          content: notificationContent || undefined,
-        });
-      } else {
-        console.log(`[DEBUG RAID] Publicando con safeReply() sin roles`);
-        const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-        const extraRowComponents = [
-          new ButtonBuilder()
-            .setCustomId(`raid_waitlist-${templateName}-${interaction.id}`)
-            .setLabel('Lista de espera')
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji('🕒'),
-          new ButtonBuilder()
-            .setCustomId(`raid_cannotgo-${templateName}-${interaction.id}`)
-            .setLabel('No puedo ir')
-            .setStyle(ButtonStyle.Danger)
-            .setEmoji('🚫'),
-        ];
-        if (looters) {
-          extraRowComponents.push(
-            new ButtonBuilder()
-              .setCustomId(`raid_looter-${templateName}-${interaction.id}`)
-              .setLabel('Looters')
-              .setStyle(ButtonStyle.Primary)
-              .setEmoji('👑')
-          );
-        }
-        const extraRow = new ActionRowBuilder().addComponents(extraRowComponents);
-        raidMessage = await safeReply(interaction, {
-          embeds: [embed],
-          components: [row, extraRow],
-          content: notificationContent || undefined,
-        });
-      }
-
-      /**
-       * Enviar notificaciones por DM con enlace al evento después de publicar
-       */
-      if (finalNotificationRoles.length > 0 && raidMessage) {
-        try {
-          const members = await interaction.guild.members.fetch();
-          const targetMembers = members.filter(member =>
-            finalNotificationRoles.some(roleId => member.roles.cache.has(roleId))
-          );
-
-          const activityTitle = title || template.title;
-          const discordTimestamp = `<t:${eventTimestamp}:F>`;
-
-          // Crear el enlace al mensaje del raid
-          const messageUrl = `https://discord.com/channels/${interaction.guild.id}/${interaction.channel.id}/${raidMessage.id || interaction.id}`;
-
-          const massNotification = createMassNotificationEmbed(
-            activityTitle,
-            interaction.guild.name,
-            discordTimestamp,
-            user.toString(),
-            messageUrl
-          );
-
-          for (const member of targetMembers.values()) {
-            try {
-              await member.send({
-                embeds: massNotification.embeds,
-                components: massNotification.components
-              });
-            } catch (dmError) {
-              console.log(`[INFO] No se pudo enviar DM a ${member.user.username}: ${dmError.message}`);
-            }
-          }
-
-          console.log(`[INFO] Notificación enviada a ${targetMembers.size} miembros con enlace al evento`);
-        } catch (notifyError) {
-          console.error('[ERROR] Error enviando notificaciones a roles:', notifyError);
-        }
-      }
-
-      // Guardar el raid en la base de datos de forma no bloqueante
-      setImmediate(async () => {
-        try {
-          const messageId = raidMessage?.id || interaction.id;
-          await createRaidEvent({
-            eventId: raidId,
-            guildId,
-            channelId: interaction.channel.id,
-            messageId,
-            templateName,
-            title: title || template.title,
-            description: description || template.description,
-            time,
-            color: color || null,
-            image: image || null,
-            reminder: finalReminder || null,
-            rolesToNotify: finalNotificationRoles,
-            participants: [],
-            cannotGo: [],
-            weaponAssignments: [],
-            waitList: [],
-            status: 'active',
-            embedSnapshot: embed.data,
-          });
-          console.log(`[INFO] Raid #${raidId} guardado en la base de datos (messageId: ${messageId})`);
-        } catch (dbError) {
-          console.error('[ERROR] Error guardando raid en DB:', dbError);
-        }
-      });
     } catch (error) {
-      console.error('[ERROR] Error en comando raid:', error);
+      console.error('[ERROR] Error en comando raid create:', error);
       const errorEmbed = createErrorEmbed(
         "Error del Sistema",
         "Hubo un error ejecutando el comando de raid.",
@@ -1010,10 +1129,13 @@ module.exports = {
       );
       await safeReply(interaction, {
         embeds: [errorEmbed],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },
 
+  pendingRaids,
+  handleWeaponsConfigSelect,
+  handleConfirmRaidCreate,
 };
 

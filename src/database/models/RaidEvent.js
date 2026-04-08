@@ -63,6 +63,8 @@ const RaidEventSchema = new mongoose.Schema({
     username: String,
     // El grupo (weaponCategory) que el usuario estaba esperando
     requestedGroup: String,
+    // Las armas específicas para las que el usuario está esperando
+    weaponsWaitingFor: [{ type: String }],
     timestamp: { type: Date, default: Date.now }
   }],
   looters: [{
@@ -80,6 +82,8 @@ const RaidEventSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: null
   },
+  // Armas deshabilitadas al crear el raid (valores tipo "group~group_1" o "weapon~group_1~0")
+  disabledWeapons: [{ type: String }],
   createdAt: {
     type: Date,
     default: Date.now

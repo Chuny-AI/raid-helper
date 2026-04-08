@@ -4,6 +4,8 @@ const embedsMap = {};
 
 /**
  * Crear un objeto EmbedBuilder
+ * @param {string[]} [disabledWeapons=[]] - Valores de armas/grupos deshabilitados
+ *   (e.g. "group~group_1", "weapon~group_1~0")
  */
 const createEmbed = ({
   title,
@@ -16,6 +18,7 @@ const createEmbed = ({
   finalRoles = null,
   looters = null,
   raidId = null,
+  disabledWeapons = [],
 }) => {
   const embed = new EmbedBuilder(); // Crear una nueva instancia aquí
 
@@ -27,7 +30,7 @@ const createEmbed = ({
   setFooter(embed, raidId);
   setAuthor(embed);
   setTitleWeapons(embed);
-  setCategoriesAndUnitsFromTemplate(embed, template);
+  setCategoriesAndUnitsFromTemplate(embed, template, disabledWeapons);
   setImage(embed, image, template);
   pingRoles(embed, template, finalRoles);
   setLootersSection(embed, looters);
@@ -90,26 +93,37 @@ const setAuthor = (embed) => {
  * Crea los campos del embed a partir de un template
  * @param {*} embed - EmbedBuilder
  * @param {*} template - Template
+ * @param {string[]} disabledWeapons - Valores de armas/grupos deshabilitados
  */
-const setCategoriesAndUnitsFromTemplate = (embed, template) => {
+const setCategoriesAndUnitsFromTemplate = (embed, template, disabledWeapons = []) => {
   const fieldsArray = [];
   const entries = Object.entries(template.weapons);
   for (const [key, data] of entries) {
+    // Saltar grupos completamente deshabilitados
+    if (disabledWeapons.includes(`group~${key}`)) continue;
+
     const emojiId = data.defaultEmoji;
     const displayName = data.displayName;
-    const initialValue = 0;
 
     if (!data.data || !Array.isArray(data.data)) {
       console.error('Error: data.data no es un array:', data);
       continue;
     }
 
+    // Filtrar solo los ítems de armas habilitados
+    const enabledItems = data.data.filter(
+      (_, i) => !disabledWeapons.includes(`weapon~${key}~${i}`)
+    );
+
+    // Si todas las armas del grupo están deshabilitadas, omitir el grupo
+    if (enabledItems.length === 0) continue;
+
+    // Calcular capacidad máxima según armas habilitadas
+    const enabledSum = enabledItems.reduce((acc, item) => acc + (item.units || 1), 0);
     const units = data.max_players !== undefined
-      ? data.max_players
-      : data.data.reduce(
-          (acc, current) => acc + current.units,
-          initialValue
-        );
+      ? Math.min(data.max_players, enabledSum)
+      : enabledSum;
+
     if (displayName && emojiId) {
       const name = `<:${emojiId}:${emojiId}> ${displayName} (0/${units}):`;
       fieldsArray.push({

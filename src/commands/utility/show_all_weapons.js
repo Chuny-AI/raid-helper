@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js");
 const { getAllWeapons, getWeaponCategories } = require("../../services/weaponService");
 const { createInfoEmbed, createErrorEmbed, safeReply } = require("../../utils/errorEmbeds");
 
@@ -19,7 +19,7 @@ module.exports = {
       const guildId = interaction.guild.id;
 
       // Ejecutar el comando
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       const weapons = await getAllWeapons();
       const categories = await getWeaponCategories();
@@ -65,7 +65,7 @@ module.exports = {
         });
       }
 
-      await safeReply(interaction, { embeds: [embed] });
+      await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral });
     } catch (error) {
       console.error('[ERROR] Error en comando show_all_weapons:', error);
       const errorEmbed = createErrorEmbed(
@@ -81,7 +81,7 @@ module.exports = {
       if (interaction.deferred) {
         await interaction.editReply({ embeds: [errorEmbed] });
       } else {
-        await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+        await safeReply(interaction, { embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
       }
     }
   },

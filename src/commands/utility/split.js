@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { createErrorEmbed } = require('../../utils/errorEmbeds');
 
 /**
@@ -162,7 +162,7 @@ module.exports = {
       } else {
         await interaction.reply({
           embeds: [errorEmbed],
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
     }

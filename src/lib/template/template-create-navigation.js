@@ -1,7 +1,8 @@
-const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require("discord.js");
+const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags } = require("discord.js");
 const { createTemplate } = require("../../services/templateService");
 const { createSuccessEmbed, createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { getTemplateCreationSessions, getSession, updateSession, deleteSession } = require("./template-sessions");
+const { safeDeferUpdate } = require('../../utils/interaction');
 
 /**
  * Maneja la navegación hacia atrás en el proceso
@@ -12,10 +13,11 @@ async function handleBack(interaction) {
   const session = getSession(sessionId);
 
   if (!session) {
-    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: 64 });
+    if (interaction.deferred || interaction.replied) return;
+    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: MessageFlags.Ephemeral });
   }
 
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
 
   // Determinar a qué paso volver basado en el customId
   if (customId.includes('_roles_')) {
@@ -24,9 +26,10 @@ async function handleBack(interaction) {
     await showAdditionalConfigModal(interaction, sessionId);
   } else if (customId.includes('_weapons_')) {
     // Volver al inicio (ya no hay selección de roles)
+    if (interaction.deferred || interaction.replied) return;
     return await interaction.reply({
       content: 'Para modificar la información básica, cancela y reinicia el proceso con `/template create`.',
-      flags: 64
+      flags: MessageFlags.Ephemeral
     });
   } else if (customId.includes('_category_')) {
     // Volver a la selección de categorías
@@ -48,10 +51,11 @@ async function handleContinue(interaction) {
   const session = getSession(sessionId);
 
   if (!session) {
-    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: 64 });
+    if (interaction.deferred || interaction.replied) return;
+    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: MessageFlags.Ephemeral });
   }
 
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
 
   if (customId.includes('_roles_')) {
     if (session.isEdit) {
@@ -98,10 +102,11 @@ async function handlePagination(interaction) {
   const session = getSession(sessionId);
 
   if (!session) {
-    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: 64 });
+    if (interaction.deferred || interaction.replied) return;
+    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: MessageFlags.Ephemeral });
   }
 
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
 
   if (customId.includes('_prev_page_')) {
     updateSession(sessionId, { weaponPage: Math.max(0, (session.weaponPage || 0) - 1) });
@@ -129,7 +134,8 @@ async function showFinalSummary(interaction, sessionId) {
   const session = getSession(sessionId);
 
   if (!session) {
-    return await interaction.followUp({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: 64 });
+    if (interaction.deferred || interaction.replied) return;
+    return await interaction.followUp({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: MessageFlags.Ephemeral });
   }
 
   const { data } = session;
@@ -212,7 +218,7 @@ async function showFinalSummary(interaction, sessionId) {
   await interaction[method]({
     embeds: [embed],
     components: [actionRow],
-    flags: 64
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -229,12 +235,13 @@ async function handleConfirm(interaction) {
 
   if (!session) {
     console.log('[ERROR] handleConfirm: No session found');
-    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: 64 });
+    if (interaction.deferred || interaction.replied) return;
+    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: MessageFlags.Ephemeral });
   }
 
   try {
     console.log('[DEBUG] handleConfirm: Deferring update');
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
 
     console.log('[DEBUG] handleConfirm: Session data:', {
       title: session.data.title,
@@ -321,7 +328,8 @@ async function handleCancel(interaction) {
   const sessionId = extractSessionId(interaction.customId);
 
   if (!sessionId) {
-    return await interaction.reply({ content: 'Error al identificar la sesión.', flags: 64 });
+    if (interaction.deferred || interaction.replied) return;
+    return await interaction.reply({ content: 'Error al identificar la sesión.', flags: MessageFlags.Ephemeral });
   }
 
   console.log(`[DEBUG] handleCancel: Deleting session ${sessionId}`);
@@ -349,7 +357,8 @@ async function handleAdditionalConfigSubmit(interaction) {
   const session = getSession(sessionId);
 
   if (!session) {
-    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: 64 });
+    if (interaction.deferred || interaction.replied) return;
+    return await interaction.reply({ content: 'Sesión expirada. Inicia el proceso nuevamente.', flags: MessageFlags.Ephemeral });
   }
 
   // Obtener valores del modal
@@ -358,16 +367,18 @@ async function handleAdditionalConfigSubmit(interaction) {
 
   // Validar formato del recordatorio
   if (reminder && !isValidTimeFormat(reminder)) {
+    if (interaction.deferred || interaction.replied) return;
     return await interaction.reply({
       content: 'El formato del recordatorio no es válido. Usa formatos como: 5m, 10m, 15m, 30m, 1h, etc.',
-      flags: 64
+      flags: MessageFlags.Ephemeral
     });
   }
 
   // Esta función ya no se usa con el nuevo flujo simplificado
+  if (interaction.deferred || interaction.replied) return;
   return await interaction.reply({
     content: 'Esta función ya no está disponible. Usa `/template create` para crear un template.',
-    flags: 64
+    flags: MessageFlags.Ephemeral
   });
 }
 

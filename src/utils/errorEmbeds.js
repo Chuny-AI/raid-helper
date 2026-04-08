@@ -1,4 +1,5 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, MessageFlags } = require('discord.js');
+const { logDiscordError } = require('./logging');
 
 /**
  * Crea un embed de error hermoso con redes sociales
@@ -242,41 +243,30 @@ const createSuccessEmbed = (title, description, fields = []) => {
  * @param {Object} options - Opciones para la respuesta
  */
 const safeReply = async (interaction, options) => {
+  const payload = options ? { ...options } : {};
+  if ('ephemeral' in payload) {
+    if (payload.ephemeral) payload.flags = MessageFlags.Ephemeral;
+    delete payload.ephemeral;
+  }
+
   try {
-    // Verificar si la interacción ya fue respondida o diferida
     if (interaction.replied) {
-      console.log('[WARN] Interacción ya respondida, usando editReply');
-      return await interaction.editReply(options);
+      return await interaction.followUp(payload);
     }
 
     if (interaction.deferred) {
-      console.log('[WARN] Interacción diferida, usando editReply');
-      return await interaction.editReply(options);
+      const editOptions = { ...payload };
+      delete editOptions.flags;
+      return await interaction.editReply(editOptions);
     }
 
-    // Manejar ephemeral flag
-    if (options && 'ephemeral' in options) {
-      if (options.ephemeral) {
-        options.flags = 64;
-      }
-      delete options.ephemeral;
-    }
-
-    // Respuesta normal
-    console.log('[SAFE_REPLY] Enviando respuesta normal');
-    return await interaction.reply(options);
-
+    return await interaction.reply(payload);
   } catch (error) {
-    console.error('[ERROR] Error en safeReply:', error);
+    logDiscordError('safeReply failed', error);
 
-    // Si es error de interacción desconocida o ya reconocida, no intentar más respuestas
     if (error.code === 10062 || error.code === 40060) {
-      console.error('[ERROR] Interacción expirada, desconocida o ya reconocida, no se puede responder');
       return;
     }
-
-    // Para otros errores, NO intentar respuesta de emergencia para evitar conflictos
-    console.error('[ERROR] Error inesperado en safeReply, no intentando respuesta de emergencia');
   }
 };
 

@@ -3,11 +3,18 @@ const { client } = require("./client");
 const { embedsMap, rebuildEmbedFromSnapshot, safeFieldValue, updateParticipantsCounter } = require("../utils/embed");
 const { getOrCreateServer } = require("../services/serverService");
 const { filterCommand } = require("./commandFilter");
-const { getActiveRaids, closeRaidEvent, syncEmbedSnapshot, updateRaidEvent } = require('../services/raidEventService');
+const { getActiveRaids, closeRaidEvent, syncEmbedSnapshot, updateRaidEvent, getRaidEvent } = require('../services/raidEventService');
 const RaidEvent = require('../database/models/RaidEvent');
+const NotifyEvent = require('../database/models/NotifyEvent');
+const { safeReply } = require('./errorEmbeds');
+const { logDiscordError, logDatabaseError, logInteractionError } = require('./logging');
+const { safeDeferUpdate, wrapInteractionMethods } = require('./interaction');
 
 // Import template command
 const templateCommand = require("../commands/utility/template");
+
+// Import raid command handlers for the confirm/config flow
+const raidCommand = require("../commands/utility/raid");
 
 /**
  * Persiste el estado actual del embed en la base de datos de forma no bloqueante.
@@ -41,6 +48,323 @@ const sanitizeEmbedFields = (embed) => {
     }
   });
 };
+
+/**
+ * Envía un DM al líder del raid con el mensaje indicado (no bloqueante).
+ * @param {Object} embed - EmbedBuilder activo
+ * @param {import('discord.js').Guild} guild
+ * @param {string} message
+ */
+const notifyRaidLeader = (embed, guild, message) => {
+  setImmediate(async () => {
+    try {
+      const leaderField = embed.data.fields.find(f => f.name === 'Líder de la actividad:');
+      if (!leaderField) return;
+      const leaderId = leaderField.value.replace(/<@!?(\d+)>/, '$1');
+      const leader = await guild.members.fetch(leaderId);
+      await leader.send({ content: message });
+    } catch (e) {
+      console.log(`[INFO] notifyRaidLeader: No se pudo enviar DM al líder: ${e?.message}`);
+    }
+  });
+};
+
+/**
+ * Intenta promover al primer usuario de la waitlist que espera por un arma específica.
+ * Soporta el formato nuevo ("<emoji> NombreArma — @user") y el formato legacy (in-memory map).
+ * Si hay espacio en el grupo del arma liberado, el usuario es movido al slot.
+ * @param {Object} embed - EmbedBuilder activo
+ * @param {Object} embedEntry - Entrada del embedsMap
+ * @param {string} freedWeaponName - Nombre del arma cuyo slot fue liberado
+ * @param {Object} freedGroupField - Campo del embed que representa el grupo del arma liberada
+ * @param {import('discord.js').Guild} guild - Guild de Discord
+ * @returns {string|null} ID del usuario promovido, o null si no se pudo promover
+ */
+const tryPromoteFromWaitlist = async (embed, embedEntry, freedWeaponName, freedGroupField, guild) => {
+  if (!freedGroupField || !freedWeaponName) return null;
+
+  const waitlistField = embed.data.fields.find(f => f.name === '🕒 Lista de espera');
+  if (!waitlistField?.value || waitlistField.value === '\u200b') return null;
+
+  const waitlistLines = waitlistField.value.split('\n').filter(l => l.trim());
+  if (waitlistLines.length === 0) return null;
+
+  // Verificar que aún haya espacio en el grupo
+  const capMatch = freedGroupField.name.match(/\((\d+)\/(\d+)\)/);
+  if (!capMatch) return null;
+  const current = parseInt(capMatch[1]);
+  const max = parseInt(capMatch[2]);
+  if (current >= max) return null;
+
+  // Buscar el primer candidato que espere exactamente este arma.
+  // Soporte doble: nuevo formato (línea contiene el nombre del arma) + legacy (in-memory map).
+  const waitlistWeapons = embedEntry.waitlistWeapons || {};
+  const seen = new Set();
+  let promotedCandidate = null;
+
+  for (const line of waitlistLines) {
+    const uidMatch = line.match(/<@!?(\d+)>/);
+    if (!uidMatch) continue;
+    const uid = uidMatch[1];
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+
+    const prefs = waitlistWeapons[uid];
+    // Nuevo formato: la línea contiene el nombre del arma directamente
+    const matchesNewFormat = line.includes(freedWeaponName);
+    // Formato legacy: el in-memory map contiene el arma
+    const matchesLegacy = prefs?.weapons?.includes(freedWeaponName);
+
+    if (matchesNewFormat || matchesLegacy) {
+      // Capturar emoji de la línea si está en nuevo formato
+      const emojiMatch = matchesNewFormat ? line.match(/^(<:[^:]+:[0-9]+>)/) : null;
+      const emoji = emojiMatch ? emojiMatch[1] : '';
+      promotedCandidate = { uid, emoji, timestamp: prefs?.timestamp || 0 };
+      break; // Tomar el primero en orden de la waitlist (orden de llegada)
+    }
+  }
+
+  if (!promotedCandidate) return null;
+
+  const { uid: promotedId, emoji: promotedEmoji } = promotedCandidate;
+  const userMention = `<@${promotedId}>`;
+
+  // Remover TODAS las líneas del usuario promovido de la waitlist
+  const newLines = waitlistLines.filter(l => !l.includes(userMention));
+  waitlistField.value = newLines.length > 0 ? newLines.join('\n') : '\u200b';
+
+  // Añadir al campo del grupo con formato correcto: <emoji> NombreArma @user
+  const promotedEntry = promotedEmoji
+    ? `${promotedEmoji} ${freedWeaponName} ${userMention}`
+    : userMention;
+  const currentVal = (!freedGroupField.value || freedGroupField.value === '\u200b' || !freedGroupField.value.trim())
+    ? '' : freedGroupField.value;
+  freedGroupField.value = currentVal ? `${currentVal}\n${promotedEntry}` : promotedEntry;
+
+  // Incrementar el contador del grupo
+  freedGroupField.name = freedGroupField.name.replace(/(\d+)\/(\d+)/, `${current + 1}/${max}`);
+
+  // Limpiar preferencias del usuario promovido
+  if (embedEntry.waitlistWeapons?.[promotedId]) {
+    delete embedEntry.waitlistWeapons[promotedId];
+  }
+
+  // Enviar DM al usuario promovido (no bloqueante)
+  setImmediate(async () => {
+    try {
+      const member = await guild.members.fetch(promotedId);
+      await member.send({
+        content: `✅ Se liberó un espacio en el raid y has sido movido automáticamente desde la lista de espera al arma **${freedWeaponName}**. ¡Buena suerte!`,
+      });
+    } catch (e) {
+      console.log(`[INFO] tryPromoteFromWaitlist: No se pudo enviar DM a ${promotedId}: ${e?.message}`);
+    }
+  });
+
+  return promotedId;
+};
+
+/**
+ * Maneja la selección de armas en la lista de espera (raid_waitlist_weapons-).
+ * Si hay espacio en alguna arma seleccionada, el usuario es añadido directamente.
+ * Si no, se le añade a la waitlist con sus armas preferidas.
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction
+ */
+async function handleWaitlistWeaponsSelect(interaction) {
+  await safeDeferUpdate(interaction);
+
+  const lastDashIndex = interaction.customId.lastIndexOf('-');
+  const getCustomEmbedId = interaction.customId.substring(lastDashIndex + 1);
+  const templateName = interaction.customId.substring('raid_waitlist_weapons-'.length, lastDashIndex);
+
+  const embedsList = embedsMap[templateName];
+  const currentEmbedEntry = embedsList?.find(e => e.id.trim() === getCustomEmbedId);
+  if (!currentEmbedEntry) return;
+
+  const embed = currentEmbedEntry.embed;
+  const userStr = interaction.user.toString();
+
+  // Cargar template para obtener datos de armas seleccionadas
+  const { getTemplateByName } = require('../services/templateService');
+  const template = await getTemplateByName(templateName, interaction.guild.id).catch(() => null);
+  if (!template) {
+    try { await interaction.editReply({ content: '⚠️ No se pudo cargar el template.', components: [] }); } catch { /* ignored */ }
+    return;
+  }
+
+  // Resolver los datos de cada arma seleccionada
+  const selectedWeapons = [];
+  for (const val of interaction.values) {
+    const tildeIdx = val.indexOf('~');
+    if (tildeIdx < 0) continue;
+    const groupKey = val.substring(0, tildeIdx);
+    const itemIdx = parseInt(val.substring(tildeIdx + 1));
+    const groupData = template.weapons[groupKey];
+    if (!groupData) continue;
+    const item = groupData.data?.[itemIdx];
+    if (!item) continue;
+    selectedWeapons.push({
+      groupKey, itemIdx,
+      weaponName: item.name || groupData.displayName,
+      weaponCategory: groupData.displayName,
+      emojiId: item.emojiId || item.emoji,
+      units: item.units || 1,
+      value: val,
+    });
+  }
+
+  if (selectedWeapons.length === 0) {
+    try { await interaction.editReply({ content: '⚠️ No se seleccionó ninguna arma válida.', components: [] }); } catch { /* ignored */ }
+    return;
+  }
+
+  // Intentar añadir directamente si hay espacio en alguna arma seleccionada
+  let directlyAddedWeapon = null;
+
+  for (const wd of selectedWeapons) {
+    const groupField = embed.data.fields.find(f =>
+      typeof f.name === 'string' && f.name.includes(wd.weaponCategory) && /\(\d+\/\d+\):/.test(f.name)
+    );
+    if (!groupField) continue;
+
+    // Verificar capacidad del grupo
+    const groupCapMatch = groupField.name.match(/\((\d+)\/(\d+)\)/);
+    if (!groupCapMatch) continue;
+    const groupCurrent = parseInt(groupCapMatch[1]);
+    const groupMax = parseInt(groupCapMatch[2]);
+    if (groupCurrent >= groupMax) continue;
+
+    // Verificar capacidad individual del arma
+    const escapedName = wd.weaponName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const weaponCount = (groupField.value.match(new RegExp(escapedName, 'g')) || []).length;
+    if (weaponCount >= wd.units) continue;
+
+    // ¡Hay espacio! Eliminar de su slot actual y añadir al arma disponible
+    deleteUserIfExistsOnCurrentField(embed, interaction);
+
+    // Limpiar de waitlist y cannotgo si estaba
+    const waitlistField = embed.data.fields.find(f => f.name === '🕒 Lista de espera');
+    if (waitlistField?.value?.includes(userStr)) {
+      const lines = waitlistField.value.split('\n').filter(l => !l.includes(userStr));
+      waitlistField.value = lines.join('\n') || '\u200b';
+    }
+    const cannotGoField = embed.data.fields.find(f => f.name === '🚫 No puedo ir');
+    if (cannotGoField?.value?.includes(userStr)) {
+      const lines = cannotGoField.value.split('\n').filter(l => !l.includes(userStr));
+      cannotGoField.value = lines.join('\n') || '\u200b';
+    }
+
+    // Incrementar contador y añadir al campo
+    modifyUnitsFromName(embed, wd.weaponCategory);
+    let formattedEmoji = wd.emojiId;
+    if (wd.emojiId && String(wd.emojiId).match(/^\d+$/)) {
+      formattedEmoji = `<:weapon:${wd.emojiId}>`;
+    }
+    const currentVal = (!groupField.value || groupField.value === '\u200b' || !groupField.value.trim()) ? '' : groupField.value;
+    groupField.value = currentVal
+      ? `${currentVal}\n${formattedEmoji} ${wd.weaponName} ${interaction.user}`
+      : `${formattedEmoji} ${wd.weaponName} ${interaction.user}`;
+
+    directlyAddedWeapon = wd.weaponName;
+    break;
+  }
+
+  let replyContent;
+
+  if (directlyAddedWeapon) {
+    updateParticipantsCounter(embed);
+    sanitizeEmbedFields(embed);
+
+    // Actualizar mensaje del raid
+    try {
+      const raidEvent = await getRaidEvent(currentEmbedEntry.raidId);
+      if (raidEvent) {
+        const channel = await interaction.guild.channels.fetch(raidEvent.channelId);
+        const msg = await channel?.messages.fetch(raidEvent.messageId);
+        if (msg) await msg.edit({ embeds: [embed] });
+      }
+    } catch (e) {
+      console.error('[ERROR] handleWaitlistWeaponsSelect (direct add): No se pudo actualizar el mensaje:', e);
+    }
+
+    persistRaidState(currentEmbedEntry.raidId, embed);
+    replyContent = `✅ Había un espacio disponible en **${directlyAddedWeapon}** y has sido añadido automáticamente.`;
+
+  } else {
+    // No hay espacio → añadir a la waitlist con preferencias de armas
+    deleteUserIfExistsOnCurrentField(embed, interaction);
+
+    // Asegurar campo de waitlist
+    const waitlistFieldName = '🕒 Lista de espera';
+    let waitlistField = embed.data.fields.find(f => f.name === waitlistFieldName);
+    if (!waitlistField) {
+      waitlistField = { name: waitlistFieldName, value: '\u200b', inline: false };
+      embed.data.fields.push(waitlistField);
+    }
+
+    // Añadir una línea por cada arma seleccionada con formato: <emoji> NombreArma — @user
+    for (const wd of selectedWeapons) {
+      // Evitar duplicado si el usuario ya tiene una línea para este arma
+      const alreadyInLine = waitlistField.value !== '\u200b' &&
+        waitlistField.value.split('\n').some(l => l.includes(wd.weaponName) && l.includes(userStr));
+      if (alreadyInLine) continue;
+
+      let wdEmoji = wd.emojiId;
+      if (wd.emojiId && String(wd.emojiId).match(/^\d+$/)) {
+        wdEmoji = `<:weapon:${wd.emojiId}>`;
+      }
+      const line = `${wdEmoji} ${wd.weaponName} — ${interaction.user}`;
+      const curr = (!waitlistField.value || waitlistField.value === '\u200b' || !waitlistField.value.trim()) ? '' : waitlistField.value;
+      waitlistField.value = curr ? `${curr}\n${line}` : line;
+    }
+
+    // Limpiar de cannotgo
+    const cannotGoField = embed.data.fields.find(f => f.name === '🚫 No puedo ir');
+    if (cannotGoField?.value?.includes(userStr)) {
+      const lines = cannotGoField.value.split('\n').filter(l => !l.includes(userStr));
+      cannotGoField.value = lines.join('\n') || '\u200b';
+    }
+
+    // Guardar preferencias de armas en memoria (para auto-promoción)
+    if (!currentEmbedEntry.waitlistWeapons) currentEmbedEntry.waitlistWeapons = {};
+    currentEmbedEntry.waitlistWeapons[interaction.user.id] = {
+      weapons: selectedWeapons.map(wd => wd.weaponName),
+      timestamp: Date.now(),
+    };
+
+    updateParticipantsCounter(embed);
+    sanitizeEmbedFields(embed);
+
+    // Actualizar mensaje del raid
+    try {
+      const raidEvent = await getRaidEvent(currentEmbedEntry.raidId);
+      if (raidEvent) {
+        const channel = await interaction.guild.channels.fetch(raidEvent.channelId);
+        const msg = await channel?.messages.fetch(raidEvent.messageId);
+        if (msg) await msg.edit({ embeds: [embed] });
+      }
+    } catch (e) {
+      console.error('[ERROR] handleWaitlistWeaponsSelect (waitlist add): No se pudo actualizar el mensaje:', e);
+    }
+
+    persistRaidState(currentEmbedEntry.raidId, embed);
+
+    try {
+      const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
+      updateReminderParticipants(getCustomEmbedId, extractParticipantsFromEmbed(embed));
+      addInterestedUser(getCustomEmbedId, interaction.user.id);
+    } catch { /* ignored */ }
+
+    const weaponNames = selectedWeapons.map(wd => `**${wd.weaponName}**`).join(', ');
+    replyContent = `🕒 Has sido añadido a la lista de espera para: ${weaponNames}.`;
+  }
+
+  try {
+    await interaction.editReply({ content: replyContent, components: [] });
+  } catch (e) {
+    try { await interaction.followUp({ content: replyContent, ephemeral: true }); } catch { /* ignored */ }
+  }
+}
 
 const getEvents = () => {
   client.once(Events.ClientReady, async (readyClient) => {
@@ -87,6 +411,8 @@ const getEvents = () => {
               raidId: raid.eventId,
               embed,
               fullNotificationSent: false,
+              disabledWeapons: raid.disabledWeapons || [],
+              waitlistWeapons: {},
             });
             rebuilt++;
           }
@@ -97,6 +423,19 @@ const getEvents = () => {
       if (rebuilt > 0) console.log(`[INFO] ${rebuilt} raids activos reconstruidos en embedsMap.`);
     } catch (error) {
       console.error('[ERROR] Error reconstruyendo embedsMap:', error);
+    }
+
+    // Reconstruir botones de notificaciones activas (spec #8)
+    // Los componentes de Discord persisten en los mensajes entre reinicios,
+    // así que sólo necesitamos asegurarnos de que el handler puede responder.
+    // Aquí verificamos que los registros existen y logueamos su estado.
+    try {
+      const activeNotifies = await NotifyEvent.find({});
+      if (activeNotifies.length > 0) {
+        console.log(`[INFO] ${activeNotifies.length} notificación(es) activa(s) cargada(s) desde BD. Los botones siguen operativos.`);
+      }
+    } catch (error) {
+      console.error('[ERROR] Error cargando notificaciones activas:', error);
     }
 
     // Programar limpieza periódica de raids expirados (cada 30 min)
@@ -152,6 +491,8 @@ const getEvents = () => {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    wrapInteractionMethods(interaction);
+
     if (interaction.isChatInputCommand()) {
       const shouldExecute = await filterCommand(interaction);
       if (!shouldExecute) {
@@ -175,18 +516,14 @@ const getEvents = () => {
       try {
         await command.execute(interaction);
       } catch (error) {
-        console.error(error);
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp({
-            content: "Hubo un error ejecutando el comando",
-            ephemeral: true,
-          });
-        } else {
-          await interaction.reply({
-            content: "Hubo un error ejecutando el comando",
-            ephemeral: true,
-          });
+        logInteractionError('command.execute failed', error);
+        if (error?.code === 10062 || error?.code === 40060) {
+          return;
         }
+        await safeReply(interaction, {
+          content: "Hubo un error ejecutando el comando",
+          ephemeral: true,
+        });
       }
     }
 
@@ -201,13 +538,27 @@ const getEvents = () => {
       }
 
       try {
-        await command.autocomplete(interaction);
+        if (!interaction.responded && !interaction.deferred && !interaction.replied) {
+          await command.autocomplete(interaction);
+        }
       } catch (error) {
-        console.error(error);
+        logInteractionError('autocomplete failed', error);
       }
     }
 
     if (interaction.isStringSelectMenu()) {
+      // Configuración de armas al crear raid (deshabilitar armas)
+      if (interaction.customId.startsWith('raid_config_weapons-')) {
+        await raidCommand.handleWeaponsConfigSelect(interaction);
+        return;
+      }
+
+      // Selección de armas para la lista de espera
+      if (interaction.customId.startsWith('raid_waitlist_weapons-')) {
+        await handleWaitlistWeaponsSelect(interaction);
+        return;
+      }
+
       if (interaction.customId.startsWith("template_weapon_select_")) {
         await templateCommand.handleSelectMenu(interaction);
         return;
@@ -316,7 +667,23 @@ const getEvents = () => {
     }
 
     if (interaction.isButton()) {
+      // Confirmar creación de raid (publicar con armas configuradas)
+      if (interaction.customId.startsWith('raid_confirm_create-')) {
+        await raidCommand.handleConfirmRaidCreate(interaction);
+        return;
+      }
+
+      // ── Botones de respuesta de notificación masiva (/notify send)
+      if (
+        interaction.customId.startsWith('notify_attending-') ||
+        interaction.customId.startsWith('notify_notattending-')
+      ) {
+        await handleNotifyResponse(interaction);
+        return;
+      }
+
       if (interaction.customId === "template_continue") {
+        if (interaction.deferred || interaction.replied) return;
         await interaction.reply({
           content: "Por favor selecciona al menos una arma para continuar.",
           ephemeral: true
@@ -576,11 +943,7 @@ const getEvents = () => {
       const { customId, values } = interaction;
       if (customId.startsWith("weapons-")) {
         // Acknowledge immediately to avoid "This interaction failed" due to long processing
-        try {
-          await interaction.deferUpdate();
-        } catch (ackError) {
-          console.error('[WARN] No se pudo deferUpdate en interacción de registro:', ackError);
-        }
+        await safeDeferUpdate(interaction);
 
         // Extract templateName and interactionId from customId: weapons-{templateName}-{interactionId}
         // Since templateName can contain dashes, we need to extract the interactionId (last part) first
@@ -713,8 +1076,22 @@ const getEvents = () => {
           });
           return;
         }
-        // Para usuarios que NO estaban en este grupo: eliminar de cualquier otra arma/sección
+        // Para usuarios que NO estaban en este grupo: capturar el slot anterior y luego eliminar
+        let freedAssignments = [];
         if (!userAlreadyInGroup) {
+          // Capturar datos del slot actual ANTES de eliminar (para auto-promoción)
+          const userStr = interaction.user.toString();
+          for (const field of embed.data.fields) {
+            if (!/\(\d+\/\d+\):/.test(field.name) || field.name.startsWith('👑')) continue;
+            if (!field.value?.includes(userStr)) continue;
+            for (const line of (field.value || '').split('\n')) {
+              if (!line.includes(userStr)) continue;
+              const weaponMatch = line.match(/<:[^:]+:[0-9]+>\s+(.+?)\s+<@/);
+              if (weaponMatch) {
+                freedAssignments.push({ weaponName: weaponMatch[1].trim(), groupField: field });
+              }
+            }
+          }
           deleteUserIfExistsOnCurrentField(embed, interaction);
         }
         // Asegurar visibilidad permanente de las secciones
@@ -785,6 +1162,28 @@ const getEvents = () => {
         // CUARTO: Notificar al creador si el raid se llenó por primera vez
         setImmediate(() => checkAndNotifyRaidFull(currentEmbedEntry, interaction.guild));
 
+        // QUINTO: Auto-promover desde waitlist para los slots que quedaron libres
+        if (freedAssignments.length > 0) {
+          setImmediate(async () => {
+            for (const { weaponName: fw, groupField: fgf } of freedAssignments) {
+              const promoted = await tryPromoteFromWaitlist(embed, currentEmbedEntry, fw, fgf, interaction.guild);
+              if (promoted) {
+                try {
+                  updateParticipantsCounter(embed);
+                  sanitizeEmbedFields(embed);
+                  await interaction.message.edit({ embeds: [embed] });
+                  persistRaidState(currentEmbedEntry.raidId, embed);
+                  notifyRaidLeader(embed, interaction.guild,
+                    `✅ Un usuario fue movido automáticamente desde la lista de espera al slot de **${fw}** (liberado al cambiar de arma).`
+                  );
+                } catch (e) {
+                  console.error('[WARN] Auto-promotion embed update error:', e);
+                }
+              }
+            }
+          });
+        }
+
         // TERCERO: Enviar build en segundo plano (puede tomar tiempo)
         // Usar setImmediate para no bloquear la respuesta visual
         setImmediate(async () => {
@@ -817,90 +1216,45 @@ const getEvents = () => {
         });
       }
 
-      // Botón: mover a Lista de espera (libera cupo)
+      // Botón: mover a Lista de espera — muestra selector de armas
       if (customId.startsWith('raid_waitlist-')) {
-        // Acknowledge quickly to avoid interaction failure
-        try { await interaction.deferUpdate(); } catch (e) { }
         const lastDashIndex = customId.lastIndexOf('-');
         const getCustomEmbedId = customId.substring(lastDashIndex + 1);
         const templateName = customId.substring('raid_waitlist-'.length, lastDashIndex);
 
         try {
-          // Obtener el embed actual
           const embedsList = embedsMap[templateName];
           const currentEmbedEntry = embedsList?.find((entry) => entry.id.trim() === getCustomEmbedId);
           if (!currentEmbedEntry) return;
-          const embed = currentEmbedEntry.embed;
 
-          // Capturar en qué grupo estaba el usuario antes de moverlo a la lista de espera
-          const userStr = interaction.user.toString();
-          let previousGroup = null;
-          for (const field of embed.data.fields) {
-            if (typeof field.name !== 'string') continue;
-            if (!/\(\d+\/\d+\):/.test(field.name)) continue;
-            if (field.name.startsWith('👑 Looters')) continue;
-            if (typeof field.value === 'string' && field.value.includes(userStr)) {
-              const groupMatch = field.name.match(/<:[^:]+:[0-9]+>\s+(.+?)\s+\(/);
-              if (groupMatch) previousGroup = groupMatch[1];
-              break;
-            }
+          // Cargar el template para construir el selector de armas
+          const { getTemplateByName } = require('../services/templateService');
+          const template = await getTemplateByName(templateName, interaction.guild.id);
+          if (!template) {
+            if (interaction.deferred || interaction.replied) return;
+            await interaction.reply({ content: '⚠️ No se pudo cargar el template del raid.', ephemeral: true });
+            return;
           }
 
-          // Registrar el grupo preferido del usuario en la lista de espera por grupo
-          if (!currentEmbedEntry.waitlistGroups) currentEmbedEntry.waitlistGroups = {};
-          if (previousGroup) currentEmbedEntry.waitlistGroups[interaction.user.id] = previousGroup;
+          const disabledWeapons = currentEmbedEntry.disabledWeapons || [];
+          const { createWaitlistWeaponsSelect } = require('./select');
+          const weaponSelectRow = createWaitlistWeaponsSelect(template, disabledWeapons, templateName, getCustomEmbedId);
 
-          // Quitar usuario de cualquier arma y decrementar unidades
-          deleteUserIfExistsOnCurrentField(embed, interaction);
-
-          // Asegurar campo de Lista de espera
-          const waitlistFieldName = '🕒 Lista de espera';
-          let waitlistField = embed.data.fields.find(f => f.name === waitlistFieldName);
-          if (!waitlistField) {
-            waitlistField = { name: waitlistFieldName, value: '\u200b', inline: false };
-            embed.data.fields.push(waitlistField);
-          }
-          // Añadir usuario a la lista si no está ya
-          if (!waitlistField.value.includes(interaction.user.toString())) {
-            const current = (waitlistField.value === '\u200b' || waitlistField.value.trim() === '') ? '' : waitlistField.value;
-            waitlistField.value = current ? `${current}\n${interaction.user}` : `${interaction.user}`;
+          if (!weaponSelectRow) {
+            if (interaction.deferred || interaction.replied) return;
+            await interaction.reply({ content: '⚠️ No hay armas disponibles en este raid.', ephemeral: true });
+            return;
           }
 
-          // Remover del apartado "No puedo ir" si estaba allí
-          const cannotGoFieldName = '🚫 No puedo ir';
-          const cannotGoField = embed.data.fields.find(f => f.name === cannotGoFieldName);
-          if (cannotGoField && typeof cannotGoField.value === 'string' && cannotGoField.value.includes(interaction.user.toString())) {
-            const lines = cannotGoField.value.split('\n').filter(line => !line.includes(interaction.user.toString()));
-            cannotGoField.value = lines.join('\n') || '\u200b';
-          }
-
-          // Actualizar contador de participantes y visualmente el mensaje
-          try {
-            const { updateParticipantsCounter } = require('./embed');
-            updateParticipantsCounter(embed);
-          } catch (counterErr) {
-            console.error('[WARN] No se pudo actualizar el contador (waitlist):', counterErr);
-          }
-          sanitizeEmbedFields(embed);
-          await interaction.message.edit({ embeds: [embed] });
-
-          // Persistir estado en BD
-          persistRaidState(currentEmbedEntry.raidId, embed);
-
-          // Actualizar recordatorio con los participantes y añadir interesado
-          try {
-            const { updateReminderParticipants, addInterestedUser } = require('./reminderManager');
-            const participants = extractParticipantsFromEmbed(embed);
-            updateReminderParticipants(getCustomEmbedId, participants);
-            addInterestedUser(getCustomEmbedId, interaction.user.id);
-          } catch (remErr) {
-            console.error('[ERROR] Actualizando recordatorio (waitlist):', remErr);
-          }
-
-          await interaction.followUp({ content: 'Has sido movido a la lista de espera.', ephemeral: true });
+          if (interaction.deferred || interaction.replied) return;
+          await interaction.reply({
+            content: '🕒 **Lista de espera** — Selecciona las armas para las que quieres esperar.\n*Si hay espacio disponible en alguna arma seleccionada, serás añadido automáticamente al slot.*',
+            components: [weaponSelectRow],
+            ephemeral: true,
+          });
         } catch (err) {
           console.error('[ERROR] raid_waitlist handler:', err);
-          await interaction.followUp({ content: 'No se pudo mover a la lista de espera.', ephemeral: true });
+          try { await interaction.reply({ content: 'No se pudo mostrar el selector de armas.', ephemeral: true }); } catch { /* ignored */ }
         }
         return;
       }
@@ -908,7 +1262,7 @@ const getEvents = () => {
       // Botón: marcar No puedo ir (mueve a Lista de espera y libera cupo)
       if (customId.startsWith('raid_cannotgo-')) {
         // Acknowledge quickly to avoid interaction failure
-        try { await interaction.deferUpdate(); } catch (e) { }
+        await safeDeferUpdate(interaction);
         const lastDashIndex = customId.lastIndexOf('-');
         const getCustomEmbedId = customId.substring(lastDashIndex + 1);
         const templateName = customId.substring('raid_cannotgo-'.length, lastDashIndex);
@@ -918,6 +1272,21 @@ const getEvents = () => {
           const currentEmbedEntry = embedsList?.find((entry) => entry.id.trim() === getCustomEmbedId);
           if (!currentEmbedEntry) return;
           const embed = currentEmbedEntry.embed;
+
+          // Capturar asignaciones del usuario ANTES de eliminarlo (para auto-promoción)
+          const userStr = interaction.user.toString();
+          const freedAssignments = [];
+          for (const field of embed.data.fields) {
+            if (!/\(\d+\/\d+\):/.test(field.name) || field.name.startsWith('👑')) continue;
+            if (!field.value?.includes(userStr)) continue;
+            for (const line of (field.value || '').split('\n')) {
+              if (!line.includes(userStr)) continue;
+              const weaponMatch = line.match(/<:[^:]+:[0-9]+>\s+(.+?)\s+<@/);
+              if (weaponMatch) {
+                freedAssignments.push({ weaponName: weaponMatch[1].trim(), groupField: field });
+              }
+            }
+          }
 
           // Quitar usuario de cualquier arma y decrementar unidades
           deleteUserIfExistsOnCurrentField(embed, interaction);
@@ -965,6 +1334,33 @@ const getEvents = () => {
             console.error('[ERROR] Actualizando recordatorio (cannotgo):', remErr);
           }
 
+          // Notificar al líder que el usuario abandonó
+          notifyRaidLeader(embed, interaction.guild,
+            `⚠️ **${interaction.user.username}** ha marcado que no puede ir al raid y se ha liberado un slot.`
+          );
+
+          // Auto-promover desde waitlist para cada slot liberado
+          if (freedAssignments.length > 0) {
+            setImmediate(async () => {
+              for (const { weaponName: fw, groupField: fgf } of freedAssignments) {
+                const promoted = await tryPromoteFromWaitlist(embed, currentEmbedEntry, fw, fgf, interaction.guild);
+                if (promoted) {
+                  try {
+                    updateParticipantsCounter(embed);
+                    sanitizeEmbedFields(embed);
+                    await interaction.message.edit({ embeds: [embed] });
+                    persistRaidState(currentEmbedEntry.raidId, embed);
+                    notifyRaidLeader(embed, interaction.guild,
+                      `✅ Un usuario fue movido automáticamente desde la lista de espera al slot de **${fw}** (liberado por ${interaction.user.username}).`
+                    );
+                  } catch (e) {
+                    console.error('[WARN] cannotgo: auto-promotion embed update error:', e);
+                  }
+                }
+              }
+            });
+          }
+
           await interaction.followUp({ content: 'Has marcado que no puedes ir. Se actualizó tu estado.', ephemeral: true });
         } catch (err) {
           console.error('[ERROR] raid_cannotgo handler:', err);
@@ -975,7 +1371,7 @@ const getEvents = () => {
 
       // Botón: inscribirse como Looter
       if (customId.startsWith('raid_looter-')) {
-        try { await interaction.deferUpdate(); } catch (e) { }
+        await safeDeferUpdate(interaction);
         const lastDashIndex = customId.lastIndexOf('-');
         const getCustomEmbedId = customId.substring(lastDashIndex + 1);
         const templateName = customId.substring('raid_looter-'.length, lastDashIndex);
@@ -1364,3 +1760,86 @@ module.exports = {
   getEvents,
   extractParticipantsFromEmbed,
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notify button handler
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Maneja los botones "✅ Asistiré" y "❌ No asistiré" del embed público de notificaciones.
+ * Actualiza las listas en BD y edita el mensaje del canal en tiempo real.
+ * @param {import('discord.js').ButtonInteraction} interaction
+ */
+async function handleNotifyResponse(interaction) {
+  if (interaction.deferred || interaction.replied) return;
+  const { customId } = interaction;
+  const isAttending = customId.startsWith('notify_attending-');
+  const notifyId = customId.substring(
+    isAttending ? 'notify_attending-'.length : 'notify_notattending-'.length,
+  );
+  const userId = interaction.user.id;
+
+  // 1. Load record from DB
+  let event;
+  try {
+    event = await NotifyEvent.findOne({ notifyId });
+  } catch (e) {
+    logDatabaseError(`handleNotifyResponse lookup #${notifyId}`, e);
+    return interaction.reply({ content: '❌ Error interno. Inténtalo de nuevo.', ephemeral: true });
+  }
+
+  if (!event) {
+    return interaction.reply({
+      content: '❌ Esta notificación ya no está disponible.',
+      ephemeral: true,
+    });
+  }
+
+  // 2. Move user to the correct list (remove from both, then add to chosen)
+  event.attending = event.attending.filter((id) => id !== userId);
+  event.not_attending = event.not_attending.filter((id) => id !== userId);
+  if (isAttending) {
+    event.attending.push(userId);
+  } else {
+    event.not_attending.push(userId);
+  }
+
+  // 3. Persist updated lists
+  try {
+    await event.save();
+  } catch (e) {
+    logDatabaseError(`handleNotifyResponse save #${notifyId}`, e);
+    return interaction.reply({ content: '❌ Error al guardar tu respuesta.', ephemeral: true });
+  }
+
+  // 4. Rebuild the channel embed with updated lists
+  const { buildNotifyEmbed, buildNotifyButtons } = require('../commands/utility/notify');
+  const updatedEmbed = buildNotifyEmbed(
+    event.message,
+    event.hora,
+    event.createdBy,
+    event.attending,
+    event.not_attending,
+    event.totalMembers,
+  );
+  const buttons = buildNotifyButtons(notifyId);
+
+  // 5. Update the original channel message via interaction.update()
+  try {
+    await interaction.update({ embeds: [updatedEmbed], components: [buttons] });
+  } catch (e) {
+    logDiscordError(`handleNotifyResponse update #${notifyId}`, e);
+    try {
+      await interaction.reply({ content: '⚠️ Tu respuesta fue guardada pero no se pudo actualizar el embed.', ephemeral: true });
+    } catch { /* already ack'd */ }
+    return;
+  }
+
+  // 6. Ephemeral confirmation
+  const replyText = isAttending
+    ? '✅ Has confirmado tu asistencia.'
+    : '❌ Has indicado que no podrás asistir.';
+  try {
+    await interaction.followUp({ content: replyText, ephemeral: true });
+  } catch { /* ignore if interaction window expired */ }
+}
+

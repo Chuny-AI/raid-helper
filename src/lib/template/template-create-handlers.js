@@ -1,9 +1,10 @@
-const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
+const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require("discord.js");
 const { createTemplate, updateTemplate } = require("../../services/templateService");
 const { getAllWeapons, getWeaponCategories } = require("../../services/weaponService");
 const { createSuccessEmbed, createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { getTemplateCreationSessions, getSession, updateSession, findSessionByUser, findSessionByCriteria } = require("./template-sessions");
 const { extractSessionId } = require("./template-create-navigation");
+const { safeDeferUpdate } = require('../../utils/interaction');
 const fs = require('fs');
 const path = require('path');
 
@@ -414,7 +415,7 @@ async function handleRoleSelection(interaction) {
     step: 'weapon_categories'
   });
 
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
   await showWeaponCategorySelection(interaction, sessionId);
 }
 
@@ -717,7 +718,7 @@ async function handleBasicWeaponGroupSubmit(interaction) {
   console.log('[DEBUG] handleBasicWeaponGroupSubmit: session updated:', !!updatedSession);
   console.log('[DEBUG] handleBasicWeaponGroupSubmit: updatedSession.tempGroupConfig:', updatedSession?.tempGroupConfig);
 
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
   await showEmojiCategorySelection(interaction, sessionId);
 }
 
@@ -804,7 +805,7 @@ async function handleEmojiCategorySelection(interaction) {
   const selectedCategory = interaction.values[0];
   updateSession(sessionId, { emojiCategory: selectedCategory });
   if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
   }
   await showEmojiWeaponSelection(interaction, sessionId, selectedCategory);
 }
@@ -890,7 +891,7 @@ async function handleEmojiWeaponSelection(interaction) {
   }
 
   if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
   }
 
   const selectedEmojiId = interaction.values[0];
@@ -966,7 +967,7 @@ async function handleWeaponConfigSubmit(interaction) {
       currentWeaponIndex: nextIndex
     });
 
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
     await showWeaponConfigModal(interaction, sessionId, allSelectedWeapons[nextIndex], nextIndex, allSelectedWeapons.length);
   } else {
     // Todas las armas procesadas, agregar al grupo y continuar
@@ -980,7 +981,7 @@ async function handleWeaponConfigSubmit(interaction) {
       currentWeaponIndex: null
     });
 
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
     await showMultipleWeaponSelection(interaction, sessionId);
   }
 }
@@ -1328,7 +1329,7 @@ async function handleGroupConfigSubmit(interaction) {
 
   updateSession(sessionId, { groupConfig });
 
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
   // Ahora mostrar la selección de armas
   await showWeaponSelection(interaction, sessionId, session.selectedCategory);
 }
@@ -1536,7 +1537,7 @@ async function handleMultiCategorySelection(interaction) {
   const selectedCategory = interaction.values[0];
   console.log(`[DEBUG] Selected category: ${selectedCategory}`);
 
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
   await showCategoryWeapons(interaction, sessionId, selectedCategory);
 }
 
@@ -1777,7 +1778,7 @@ async function handleSingleWeaponConfigSubmit(interaction) {
 
     console.log(`[DEBUG] Added weapon ${currentWeapon.name} with quantity ${quantity} to group ${tempConfig.displayName}`);
 
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
     await showMultipleWeaponSelection(interaction, sessionId);
   } catch (error) {
     console.error('[ERROR] Error in handleSingleWeaponConfigSubmit:', error);
@@ -1891,7 +1892,7 @@ async function handleFinishGroup(interaction) {
 
     console.log('[DEBUG] handleFinishGroup: Cleaned temp config');
 
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
 
     if (session.originalSessionId) {
       console.log('[DEBUG] handleFinishGroup: Es sesión de edición, sincronizando datos y regresando al editor');

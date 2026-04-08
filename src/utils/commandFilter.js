@@ -8,6 +8,7 @@ const permissionsConfig = {
   roles: ['admin'],
   status: ['admin'],
   split: [['admin', 'authorizedroles']],
+  notify: [['admin', 'authorizedroles']],
   show_all_weapons: [['admin', 'authorizedroles']],
   show_all_categories: [['admin', 'authorizedroles']]
 };

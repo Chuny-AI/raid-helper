@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js");
 const { getWeaponCategories } = require("../../services/weaponService");
 const { createInfoEmbed, createErrorEmbed, safeReply } = require("../../utils/errorEmbeds");
 
@@ -12,6 +12,7 @@ module.exports = {
 
   async execute(interaction) {
     try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       // JERARQUÍA DE VALIDACIONES:
       // 1. Verificar estado premium del servidor
       // 2. Proceder con la ejecución del comando
@@ -48,7 +49,7 @@ module.exports = {
         );
       }
 
-      await safeReply(interaction, { embeds: [embed], ephemeral: true });
+      await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral });
     } catch (error) {
       console.error('[ERROR] Error en comando show_all_categories:', error);
       const errorEmbed = createErrorEmbed(
@@ -63,7 +64,7 @@ module.exports = {
 
       await safeReply(interaction, {
         embeds: [errorEmbed],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },

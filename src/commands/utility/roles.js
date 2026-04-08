@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { getAuthorizedRoles, addAuthorizedRole, removeAuthorizedRole, clearAuthorizedRoles } = require("../../services/authorizedRoleService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { checkOwner } = require("../../middleware/ownerCheck");
@@ -46,7 +46,9 @@ module.exports = {
 
   async execute(interaction) {
     try {
-            const isOwner = await checkOwner(interaction);
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      const isOwner = await checkOwner(interaction);
       const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
       
       if (!isOwner && !isAdmin) {
@@ -59,7 +61,7 @@ module.exports = {
             inline: false
           }]
         );
-        return await safeReply(interaction, { embeds: [errorEmbed], ephemeral: true });
+        return await safeReply(interaction, { embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
       }
 
       // 3. TERCERA PRIORIDAD: Validaciones adicionales completadas
@@ -92,7 +94,7 @@ module.exports = {
               }]
             );
 
-            await safeReply(interaction, { embeds: [embed], ephemeral: true });
+            await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral });
           } catch (error) {
             const errorEmbed = createErrorEmbed(
               "Error Agregando Rol",
@@ -105,7 +107,7 @@ module.exports = {
             );
             await safeReply(interaction, {
               embeds: [errorEmbed],
-              ephemeral: true,
+              flags: MessageFlags.Ephemeral,
             });
           }
           break;
@@ -127,7 +129,7 @@ module.exports = {
               }]
             );
 
-            await safeReply(interaction, { embeds: [embed], ephemeral: true });
+            await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral });
           } catch (error) {
             const errorEmbed = createErrorEmbed(
               "Error Eliminando Rol",
@@ -140,7 +142,7 @@ module.exports = {
             );
             await safeReply(interaction, {
               embeds: [errorEmbed],
-              ephemeral: true,
+              flags: MessageFlags.Ephemeral,
             });
           }
           break;
@@ -180,7 +182,7 @@ module.exports = {
             );
           }
 
-          await safeReply(interaction, { embeds: [embed], ephemeral: true });
+          await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral });
           break;
         }
 
@@ -198,7 +200,7 @@ module.exports = {
               }]
             );
 
-            await safeReply(interaction, { embeds: [embed], ephemeral: true });
+            await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral });
           } catch (error) {
             const errorEmbed = createErrorEmbed(
               "Error Limpiando Roles",
@@ -211,7 +213,7 @@ module.exports = {
             );
             await safeReply(interaction, {
               embeds: [errorEmbed],
-              ephemeral: true,
+              flags: MessageFlags.Ephemeral,
             });
           }
           break;
@@ -230,7 +232,7 @@ module.exports = {
       );
       await safeReply(interaction, {
         embeds: [errorEmbed],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },
