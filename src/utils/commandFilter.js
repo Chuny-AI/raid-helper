@@ -13,6 +13,9 @@ const permissionsConfig = {
   show_all_categories: [['admin', 'authorizedroles']]
 };
 
+// Comandos que gestionan sus propios permisos internamente (no requieren política en el filtro)
+const selfManagedCommands = new Set(['eco']);
+
 const filterCommand = async (interaction) => {
   try {
     if (!interaction.isChatInputCommand()) {
@@ -32,7 +35,9 @@ const filterCommand = async (interaction) => {
     }
 
     if (!policy) {
-      console.log(`[FILTER] Comando ${commandName} sin política definida, permitiendo ejecución`);
+      if (!selfManagedCommands.has(commandName)) {
+        console.log(`[FILTER] Comando ${commandName} sin política definida, permitiendo ejecución`);
+      }
       return true;
     }
 

@@ -3,6 +3,10 @@ const Template = require('../database/models/Template');
 const AuthorizedRole = require('../database/models/AuthorizedRole');
 const RaidEvent = require('../database/models/RaidEvent');
 const Weapon = require('../database/models/Weapon');
+const EconomyBalance = require('../database/models/economy/EconomyBalance');
+const EconomyTransaction = require('../database/models/economy/EconomyTransaction');
+const EconomyRole = require('../database/models/economy/EconomyRole');
+const EconomyLogChannel = require('../database/models/economy/EconomyLogChannel');
 
 /**
  * Crea las colecciones en MongoDB si no existen.
@@ -14,7 +18,11 @@ const ensureCollections = async () => {
     Template,
     AuthorizedRole,
     RaidEvent,
-    Weapon
+    Weapon,
+    EconomyBalance,
+    EconomyTransaction,
+    EconomyRole,
+    EconomyLogChannel,
   ];
 
   for (const model of models) {
