@@ -6,7 +6,8 @@
     "start": "node --env-file=.env index.js",
     "destroy-node-instances": "taskkill /F /IM node.exe",
     "check-commands": "node --env-file=.env check-commands.js",
-    "cli": "node --env-file=.env scripts/cli.js"
+    "cli": "node --env-file=.env scripts/cli.js",
+    "railway": "node index.js"
   },
   "keywords": [
     "discord",
