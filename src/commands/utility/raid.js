@@ -3,19 +3,35 @@ const { createMassNotificationEmbed } = require("../../utils/embed");
 const { renderRaidEmbed, renderRaidComponents } = require("../../utils/raidRender");
 const { parseUTCTime, parseMinutes } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
-const { createDisableWeaponsConfig } = require("../../utils/select");
+const {
+  emptyOverrides,
+  ensureGroup,
+  ensureWeapon,
+  resetGroup,
+  toDisabledWeapons,
+  toPositiveInt,
+  getTotalCapacity,
+  describeOverrides,
+} = require("../../utils/raidWeaponConfig");
+const {
+  parseId,
+  buildOverviewPanel,
+  buildGroupPanel,
+  buildWeaponPanel,
+  buildGroupMaxModal,
+  buildWeaponUnitsModal,
+} = require("../../lib/raid/raid-weapon-config-ui");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
 const { getOrCreateServer } = require("../../services/serverService");
 const { createErrorEmbed, createWarningEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { checkAuthorizedRole } = require('../../middleware/roleCheck');
-const { safeDeferUpdate } = require('../../utils/interaction');
 const raidState = require('../../services/raidState');
 const raidRegistry = require('../../services/raidRegistry');
 const { getOrLoadRuntime, finishRaid } = require('../../utils/raidInteractions');
 
 /**
  * Almacena temporalmente los parámetros de raid pendiente de publicación.
- * key: originalInteractionId, value: { ...raidParams, disabledWeapons: [] }
+ * key: originalInteractionId, value: { ...raidParams, weaponOverrides }
  * Se limpian automáticamente a los 15 minutos (expiración del token de Discord).
  */
 const pendingRaids = new Map();
@@ -198,33 +214,205 @@ async function executeCloseSubcommand(interaction) {
 }
 
 /**
- * Manejador del select de configuración de armas (deshabilitar armas al crear raid).
- * Se ejecuta cuando el líder selecciona armas a deshabilitar antes de publicar.
- * @param {import('discord.js').StringSelectMenuInteraction} interaction
+ * Enrutador de todas las interacciones del panel de configuración de armas
+ * de `/raid create` (customId con prefijo `raidcfg-`).
+ *
+ * Cubre: selección de grupo/arma, botones de deshabilitar y restablecer,
+ * y los modales de cupo del grupo / cupo del arma.
+ * @param {import('discord.js').Interaction} interaction
  */
-async function handleWeaponsConfigSelect(interaction) {
-  const originalId = interaction.customId.substring('raid_config_weapons-'.length);
-  const pending = pendingRaids.get(originalId);
+async function handleWeaponConfigInteraction(interaction) {
+  const parsed = parseId(interaction.customId);
+  if (!parsed) return;
+
+  const { action, pendingId, groupKey, weaponIndex } = parsed;
+  const pending = pendingRaids.get(pendingId);
+
   if (!pending) {
-    try { await interaction.reply({ content: 'Esta sesión ha expirado. Ejecuta `/raid create` nuevamente.', flags: MessageFlags.Ephemeral }); } catch { /* ignored */ }
+    const expired = {
+      content: '⏰ Esta sesión de creación ha expirado (15 min). Ejecuta `/raid create` nuevamente.',
+      embeds: [],
+      components: [],
+    };
+    try {
+      if (interaction.isModalSubmit() && !interaction.isFromMessage?.()) {
+        await interaction.reply({ ...expired, flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.update(expired);
+      }
+    } catch { /* ignored */ }
     return;
   }
 
-  // Guardar armas deshabilitadas
-  pending.disabledWeapons = interaction.values || [];
+  // Sólo el líder que lanzó el comando puede tocar el panel
+  if (pending.user?.id && interaction.user.id !== pending.user.id) {
+    try {
+      await interaction.reply({
+        content: 'Solo quien ejecutó `/raid create` puede configurar este raid.',
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch { /* ignored */ }
+    return;
+  }
 
-  // Actualizar el mensaje ephemeral con la lista de lo que se deshabilitará
-  const disabledList = pending.disabledWeapons.length > 0
-    ? pending.disabledWeapons.map(v => `\`${v}\``).join(', ')
-    : 'ninguna (todas habilitadas)';
+  const { template } = pending;
+  const overrides = pending.weaponOverrides;
+
+  // Validar que el grupo/arma referidos sigan existiendo en el template
+  const group = groupKey ? template.weapons?.[groupKey] : null;
+  if (groupKey && !group) {
+    try {
+      await interaction.update(buildOverviewPanel(template, overrides, pendingId));
+    } catch { /* ignored */ }
+    return;
+  }
+  const hasWeapon = weaponIndex !== null && !isNaN(weaponIndex)
+    && Array.isArray(group?.data) && !!group.data[weaponIndex];
 
   try {
-    await safeDeferUpdate(interaction);
-    await interaction.editReply({
-      content: `⚙️ **Configuración guardada.**\nArmas a deshabilitar: ${disabledList}\n\nPresiona **Confirmar y publicar raid** cuando estés listo.`,
-    });
-  } catch (e) {
-    console.error('[WARN] handleWeaponsConfigSelect: Error actualizando respuesta:', e);
+    switch (action) {
+      // ── Navegación
+      case 'home':
+        return await interaction.update(buildOverviewPanel(template, overrides, pendingId));
+
+      case 'grp': {
+        const selected = interaction.values?.[0];
+        if (!selected || !template.weapons?.[selected]) {
+          return await interaction.update(buildOverviewPanel(template, overrides, pendingId));
+        }
+        return await interaction.update(buildGroupPanel(template, overrides, pendingId, selected));
+      }
+
+      case 'gback':
+        return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+
+      case 'wpn': {
+        const selectedIndex = parseInt(interaction.values?.[0], 10);
+        if (isNaN(selectedIndex) || !group.data?.[selectedIndex]) {
+          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        }
+        return await interaction.update(
+          buildWeaponPanel(template, overrides, pendingId, groupKey, selectedIndex)
+        );
+      }
+
+      // ── Acciones sobre el grupo
+      case 'gtoggle': {
+        const entry = ensureGroup(overrides, groupKey);
+        entry.disabled = !entry.disabled;
+        return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+      }
+
+      case 'greset': {
+        resetGroup(overrides, groupKey);
+        return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+      }
+
+      case 'resetall': {
+        pending.weaponOverrides = emptyOverrides();
+        return await interaction.update(
+          buildOverviewPanel(template, pending.weaponOverrides, pendingId)
+        );
+      }
+
+      case 'gmax':
+        return await interaction.showModal(
+          buildGroupMaxModal(template, overrides, pendingId, groupKey)
+        );
+
+      // ── Acciones sobre un arma
+      case 'wtoggle': {
+        if (!hasWeapon) {
+          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        }
+        const entry = ensureWeapon(overrides, groupKey, weaponIndex);
+        entry.disabled = !entry.disabled;
+        return await interaction.update(
+          buildWeaponPanel(template, overrides, pendingId, groupKey, weaponIndex)
+        );
+      }
+
+      case 'wreset': {
+        if (!hasWeapon) {
+          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        }
+        delete overrides.groups?.[groupKey]?.weapons?.[String(weaponIndex)];
+        return await interaction.update(
+          buildWeaponPanel(template, overrides, pendingId, groupKey, weaponIndex)
+        );
+      }
+
+      case 'wunits': {
+        if (!hasWeapon) {
+          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        }
+        return await interaction.showModal(
+          buildWeaponUnitsModal(template, overrides, pendingId, groupKey, weaponIndex)
+        );
+      }
+
+      // ── Modales
+      case 'mgmax': {
+        const raw = interaction.fields.getTextInputValue('value').trim();
+        const entry = ensureGroup(overrides, groupKey);
+
+        if (raw === '') {
+          // Vacío = volver al valor del template (auto = suma de armas)
+          entry.maxPlayers = null;
+        } else {
+          const parsedValue = toPositiveInt(raw);
+          if (parsedValue === null) {
+            return await interaction.reply({
+              content: '⚠️ El cupo del grupo debe ser un número mayor a 0 (o vacío para usar el del template).',
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+          entry.maxPlayers = parsedValue;
+        }
+        return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+      }
+
+      case 'mwunits': {
+        if (!hasWeapon) {
+          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        }
+        const raw = interaction.fields.getTextInputValue('value').trim();
+        const entry = ensureWeapon(overrides, groupKey, weaponIndex);
+
+        if (raw === '0') {
+          // 0 equivale a deshabilitar el arma
+          entry.disabled = true;
+          entry.units = null;
+        } else {
+          const parsedValue = toPositiveInt(raw);
+          if (parsedValue === null) {
+            return await interaction.reply({
+              content: '⚠️ El cupo del arma debe ser un número mayor o igual a 0 (0 la deshabilita).',
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+          entry.units = parsedValue;
+          entry.disabled = false;
+        }
+        return await interaction.update(
+          buildWeaponPanel(template, overrides, pendingId, groupKey, weaponIndex)
+        );
+      }
+
+      default:
+        console.warn('[WARN] handleWeaponConfigInteraction: acción no reconocida:', action);
+        return await interaction.update(buildOverviewPanel(template, overrides, pendingId));
+    }
+  } catch (error) {
+    console.error('[ERROR] handleWeaponConfigInteraction:', error);
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: 'No se pudo aplicar el cambio de configuración. Inténtalo de nuevo.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    } catch { /* ignored */ }
   }
 }
 
@@ -246,21 +434,33 @@ async function handleConfirmRaidCreate(interaction) {
     return;
   }
 
+  const {
+    templateName, template, eventTimestamp, title, color, image, description,
+    finalReminder, finalNotificationRoles, looters, guildId, user,
+  } = pending;
+
+  const weaponOverrides = pending.weaponOverrides || emptyOverrides();
+
+  // No tiene sentido publicar un raid sin ninguna plaza disponible
+  if (getTotalCapacity(template, weaponOverrides) <= 0) {
+    await interaction.update({
+      content: '⚠️ No puedes publicar el raid: todas las armas están deshabilitadas. ' +
+        'Habilita al menos un grupo o arma antes de confirmar.',
+      ...buildOverviewPanel(template, weaponOverrides, originalId),
+    });
+    return;
+  }
+
   // Marcar como procesado para evitar dobles publicaciones
   pendingRaids.delete(originalId);
 
-  const {
-    templateName, template, eventTimestamp, title, color, image, description,
-    finalReminder, finalNotificationRoles, looters, guildId, user, disabledWeapons,
-  } = pending;
-
   const raidId = generateRaidId();
-  const disabledWeaponValues = disabledWeapons || [];
+  const disabledWeaponValues = toDisabledWeapons(weaponOverrides);
 
   const RaidEvent = require('../../database/models/RaidEvent');
   const initialState = raidState.buildInitialState({
     template,
-    disabledWeapons: disabledWeaponValues,
+    weaponOverrides,
     lootersMax: looters || 0,
     leaderId: user.id,
   });
@@ -287,6 +487,7 @@ async function handleConfirmRaidCreate(interaction) {
     looters: initialState.looters,
     fullNotificationSent: false,
     disabledWeapons: disabledWeaponValues,
+    weaponOverrides,
     status: 'active',
   });
 
@@ -782,6 +983,7 @@ module.exports = {
       }
 
       // Almacenar los parámetros del raid pendiente de confirmación
+      const weaponOverrides = emptyOverrides();
       pendingRaids.set(interaction.id, {
         templateName,
         template,
@@ -796,19 +998,13 @@ module.exports = {
         looters,
         guildId,
         user,
-        disabledWeapons: [],
+        weaponOverrides,
       });
       // Auto-limpiar tras 15 minutos (expiración del token de Discord)
       setTimeout(() => pendingRaids.delete(interaction.id), 15 * 60 * 1000);
 
-      // Mostrar el configurador de armas antes de publicar
-      const { selectRow, confirmRow } = createDisableWeaponsConfig(template, interaction.id);
-      const components = selectRow ? [selectRow, confirmRow] : [confirmRow];
-
-      await interaction.editReply({
-        content: '⚙️ **Configurar armas del raid**\n\nTodas las armas están habilitadas por defecto. Si deseas **deshabilitar** alguna arma o grupo, selecciónala(s) en el menú y luego confirma.\n\n*Deja el selector vacío para mantener todas las armas habilitadas.*',
-        components,
-      });
+      // Mostrar el panel de configuración de armas antes de publicar
+      await interaction.editReply(buildOverviewPanel(template, weaponOverrides, interaction.id));
 
     } catch (error) {
       console.error('[ERROR] Error en comando raid create:', error);
@@ -829,7 +1025,7 @@ module.exports = {
   },
 
   pendingRaids,
-  handleWeaponsConfigSelect,
+  handleWeaponConfigInteraction,
   handleConfirmRaidCreate,
 };
 

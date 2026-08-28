@@ -6268,11 +6268,13 @@ templateModule.saveTemplateChanges = async function(interaction, sessionId) {
         const group = finalData.weapons[key];
         if (!group || typeof group !== 'object') continue;
         const normalized = normalizeGroupToData(group);
-        if (group.max_players !== undefined && group.max_players !== null) {
-          normalized.max_players = group.max_players;
-        } else {
-          normalized.max_players = computeGroupMaxPlayers(normalized);
-        }
+        // El cupo del grupo manda sobre el de las armas al crear un raid, así que
+        // debe quedar siempre definido y > 0: un 0 o un valor inválido dejaría el
+        // grupo sin plazas y desaparecería del embed en silencio.
+        const declaredMax = parseInt(group.max_players, 10);
+        normalized.max_players = Number.isFinite(declaredMax) && declaredMax > 0
+          ? declaredMax
+          : computeGroupMaxPlayers(normalized);
         finalData.weapons[key] = normalized;
       }
     }
@@ -6356,7 +6358,8 @@ async function showRemoveWeaponsInterface(interaction, sessionId, groupIndex, se
         const option = {
           label: `${getItemLabel(weapon)}`,
           value: `data_${weaponIndex}`, // Usar prefijo 'data_' para distinguir
-          description: `Arma del grupo`
+          // El índice y el cupo permiten distinguir entradas repetidas del mismo arma
+          description: `#${weaponIndex} · cupo ${weapon.units || weapon.quantity || 1}`
         };
 
         // Agregar emoji si existe

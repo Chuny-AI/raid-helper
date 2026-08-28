@@ -17,6 +17,10 @@ const templateCommand = require("../commands/utility/template");
 
 // Import raid command handlers for the confirm/config flow
 const raidCommand = require("../commands/utility/raid");
+
+// Prefijo de los customId del panel de configuración de armas de /raid create
+const RAID_CONFIG_PREFIX = 'raidcfg-';
+
 const getEvents = () => {
   client.once(Events.ClientReady, async (readyClient) => {
     console.log(`El bot ${readyClient.user.tag} está listo.`);
@@ -216,9 +220,9 @@ const getEvents = () => {
     }
 
     if (interaction.isStringSelectMenu()) {
-      // Configuración de armas al crear raid (deshabilitar armas)
-      if (interaction.customId.startsWith('raid_config_weapons-')) {
-        await raidCommand.handleWeaponsConfigSelect(interaction);
+      // Panel de configuración de armas al crear raid (grupos/armas, cupos)
+      if (interaction.customId.startsWith(RAID_CONFIG_PREFIX)) {
+        await raidCommand.handleWeaponConfigInteraction(interaction);
         return;
       }
 
@@ -334,6 +338,12 @@ const getEvents = () => {
       // Confirmar creación de raid (publicar con armas configuradas)
       if (interaction.customId.startsWith('raid_confirm_create-')) {
         await raidCommand.handleConfirmRaidCreate(interaction);
+        return;
+      }
+
+      // Panel de configuración de armas al crear raid (navegación y toggles)
+      if (interaction.customId.startsWith(RAID_CONFIG_PREFIX)) {
+        await raidCommand.handleWeaponConfigInteraction(interaction);
         return;
       }
 
@@ -534,6 +544,12 @@ const getEvents = () => {
     }
 
     if (interaction.isModalSubmit()) {
+      // Modales del panel de configuración de armas al crear raid (cupos)
+      if (interaction.customId.startsWith(RAID_CONFIG_PREFIX)) {
+        await raidCommand.handleWeaponConfigInteraction(interaction);
+        return;
+      }
+
       // Handle template basic info modal (first modal in template creation)
       if (interaction.customId.startsWith("template_basic_info_")) {
         await templateCommand.handleModalSubmit(interaction);

@@ -687,7 +687,16 @@ async function handleBasicWeaponGroupSubmit(interaction) {
     const maxPlayersRaw = interaction.fields.getTextInputValue('maxPlayers');
     if (maxPlayersRaw && maxPlayersRaw.trim() !== '') {
       const parsed = parseInt(maxPlayersRaw.trim(), 10);
-      if (!isNaN(parsed) && parsed > 0) maxPlayers = parsed;
+      // Se valida explícitamente: un valor inválido no debe caer en "auto" en
+      // silencio, porque el cupo del grupo es el que manda al crear un raid.
+      if (isNaN(parsed) || parsed <= 0) {
+        return await interaction.reply({
+          content: `⚠️ El máximo de jugadores del grupo debe ser un número mayor a 0 (recibido: "${maxPlayersRaw.trim()}"). ` +
+            'Déjalo vacío para usar la suma de los cupos de las armas.',
+          flags: 64
+        });
+      }
+      maxPlayers = parsed;
     }
   } catch (_) { /* campo opcional, ignorar si no existe */ }
 
@@ -1002,14 +1011,38 @@ async function showMultipleWeaponSelection(interaction, sessionId) {
       .setFooter({ text: '📍 Editor Principal > Grupos de Armas > Configurar Grupo > Seleccionar Categorías' });
 
     // Mostrar armas ya seleccionadas con cantidades
+    // Se muestra también el cupo resultante del grupo: manda sobre la suma de las
+    // armas, así que conviene avisar en cuanto la recorta.
     if (session.tempGroupConfig.weapons.length > 0) {
+      const totalUnits = session.tempGroupConfig.weapons
+        .reduce((acc, w) => acc + (parseInt(w.quantity, 10) || 0), 0);
+      const declaredMax = session.tempGroupConfig.maxPlayers;
+      const hasMax = declaredMax && declaredMax > 0;
+      const groupCapacity = hasMax ? Math.min(declaredMax, totalUnits) : totalUnits;
+
       embed.addFields([
         {
           name: 'Armas Seleccionadas',
           value: session.tempGroupConfig.weapons.map(w => `• ${w.quantity}x ${w.label || w.name}`).join('\n'),
           inline: false
+        },
+        {
+          name: 'Cupo del grupo',
+          value: hasMax
+            ? `**${groupCapacity}** _(máximo declarado: ${declaredMax} · suma de armas: ${totalUnits})_`
+            : `**${groupCapacity}** _(auto: suma de las armas)_`,
+          inline: false
         }
       ]);
+
+      if (hasMax && totalUnits > declaredMax) {
+        embed.addFields([{
+          name: '⚠️ Aviso',
+          value: `La suma de cupos de las armas (**${totalUnits}**) supera el máximo del grupo (**${declaredMax}**). ` +
+            `Sólo entrarán **${declaredMax}** jugadores; las armas actúan como sub-límites internos.`,
+          inline: false
+        }]);
+      }
     }
 
     embed.addFields([

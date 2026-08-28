@@ -9,34 +9,55 @@
  * slot nuevo libera automáticamente el anterior (si lo había).
  */
 
-const { getGroupItems, getItemLabel, computeGroupMaxPlayers } = require('../utils/templateShape');
+const { getGroupItems, getItemLabel } = require('../utils/templateShape');
+const {
+  normalizeOverrides,
+  isGroupDisabled,
+  isWeaponDisabled,
+  getGroupCapacity,
+  getWeaponUnits,
+} = require('../utils/raidWeaponConfig');
 
 /**
  * Construye el estado inicial (todos los slots vacíos) a partir de un template.
+ *
+ * La configuración de armas que el líder define en `/raid create` (grupos y armas
+ * deshabilitados, cupo del grupo y cupos por arma) se aplica AQUÍ y sólo aquí:
+ * a partir de este punto la fuente de verdad son los `groups[].maxPlayers` y
+ * `slots[].units` congelados en el documento del raid.
+ *
  * @param {Object} params
  * @param {Object} params.template - Template de Mongo (con .weapons)
- * @param {string[]} [params.disabledWeapons] - "group~key" / "weapon~key~i"
+ * @param {Object} [params.weaponOverrides] - Configuración del raid (ver raidWeaponConfig)
+ * @param {string[]} [params.disabledWeapons] - Formato legacy: "group~key" / "weapon~key~i".
+ *   Sólo se usa si no se pasa `weaponOverrides`.
  * @param {number} [params.lootersMax]
  * @param {string|null} [params.leaderId]
  */
-function buildInitialState({ template, disabledWeapons = [], lootersMax = 0, leaderId = null }) {
+function buildInitialState({
+  template,
+  weaponOverrides = null,
+  disabledWeapons = [],
+  lootersMax = 0,
+  leaderId = null,
+}) {
+  const overrides = normalizeOverrides(weaponOverrides ?? disabledWeapons);
   const groups = [];
   const slots = [];
   let order = 0;
 
   const entries = Object.entries(template?.weapons || {});
   for (const [groupKey, group] of entries) {
-    if (disabledWeapons.includes(`group~${groupKey}`)) continue;
+    if (isGroupDisabled(overrides, groupKey)) continue;
 
     const items = getGroupItems(group);
-    const disabledIdx = new Set();
-    for (const it of items) {
-      if (disabledWeapons.includes(`weapon~${groupKey}~${it.index}`)) disabledIdx.add(it.index);
-    }
-    const enabledItems = items.filter((it) => !disabledIdx.has(it.index));
+    const enabledItems = items.filter((it) => !isWeaponDisabled(overrides, groupKey, it.index));
     if (enabledItems.length === 0) continue;
 
-    const maxPlayers = computeGroupMaxPlayers(group, disabledIdx);
+    // El cupo del grupo manda sobre la suma de las armas habilitadas
+    const maxPlayers = getGroupCapacity(template, overrides, groupKey);
+    if (maxPlayers <= 0) continue;
+
     groups.push({
       groupKey,
       displayName: group.displayName || groupKey,
@@ -53,7 +74,9 @@ function buildInitialState({ template, disabledWeapons = [], lootersMax = 0, lea
         weaponName: it.name,
         label: getItemLabel(it),
         emoji: it.emoji,
-        units: it.units,
+        // Cupo del arma: override del líder si lo hay, si no el del template.
+        // Nunca por encima del cupo del grupo, que es el que manda.
+        units: Math.min(getWeaponUnits(template, overrides, groupKey, it.index), maxPlayers),
         url: it.url,
         disabled: false,
         users: [],

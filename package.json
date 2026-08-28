@@ -7,7 +7,9 @@
     "destroy-node-instances": "taskkill /F /IM node.exe",
     "check-commands": "node --env-file=.env check-commands.js",
     "cli": "node --env-file=.env scripts/cli.js",
-    "railway": "node index.js"
+    "railway": "node index.js",
+    "test:weapons": "node scripts/raid-weapon-config-smoke.js && node scripts/raid-config-panel-smoke.js",
+    "test:all": "node scripts/raidstate-smoke.js && node scripts/render-smoke.js && node scripts/migration-smoke.js && node scripts/raidevent-schema-smoke.js && npm run test:weapons"
   },
   "keywords": [
     "discord",

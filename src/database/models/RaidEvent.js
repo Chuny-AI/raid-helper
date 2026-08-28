@@ -116,8 +116,17 @@ const RaidEventSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: null
   },
-  // Armas deshabilitadas al crear el raid (valores tipo "group~group_1" o "weapon~group_1~0")
+  // Armas deshabilitadas al crear el raid (valores tipo "group~group_1" o "weapon~group_1~0").
+  // Vista derivada de `weaponOverrides`; se conserva para raids antiguos y para diagnóstico.
   disabledWeapons: [{ type: String }],
+  // Configuración de armas elegida por el líder en /raid create: grupos y armas
+  // deshabilitados, cupo del grupo y cupos por arma. Se aplica al construir el estado
+  // inicial (groups/slots); se guarda como referencia de lo que se pidió al publicar.
+  // Estructura: { groups: { [groupKey]: { disabled, maxPlayers, weapons: { [idx]: { disabled, units } } } } }
+  weaponOverrides: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

@@ -193,8 +193,20 @@ function renderRaidEmbed(raid, state) {
 function optionFromSlot(state, slot) {
   const { current, max } = slotOccupancy(state, slot.slotId);
   const groupName = groupDisplayName(state, slot.groupKey);
+  const label = slot.label || slot.weaponName || 'Arma';
+
+  // Un grupo puede repetir la misma arma en varios slots (cada uno con su propio
+  // cupo). Con etiquetas idénticas el usuario no sabría cuál está eligiendo, así
+  // que se numeran las repetidas por su orden dentro del grupo.
+  const sameLabel = state.slots.filter(
+    (s) => s.groupKey === slot.groupKey && (s.label || s.weaponName || 'Arma') === label
+  );
+  const suffix = sameLabel.length > 1
+    ? ` (${sameLabel.findIndex((s) => s.slotId === slot.slotId) + 1}/${sameLabel.length})`
+    : '';
+
   const opt = new StringSelectMenuOptionBuilder()
-    .setLabel((slot.label || slot.weaponName || 'Arma').slice(0, 100))
+    .setLabel(`${label}${suffix}`.slice(0, 100))
     .setValue(slot.slotId)
     .setDescription(`Grupo: ${groupName} · ${current}/${max}`.slice(0, 100));
   if (slot.emoji && /^\d+$/.test(String(slot.emoji))) opt.setEmoji(String(slot.emoji));
