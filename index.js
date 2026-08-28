@@ -143,6 +143,21 @@ async function initializeBot() {
     const { ensureCollections } = require('./src/database/bootstrap');
     await ensureCollections();
 
+    // Sembrar la colección de armas desde src/weapons/weapons.json si está
+    // vacía. Es idempotente (omite las armas cuyo emojiId ya existe), así que
+    // es seguro dejarlo correr en cada arranque. Sin esto, /show_all_weapons
+    // y /show_all_categories consultan Mongo directamente (sin fallback al
+    // JSON) y muestran "0 armas" si la colección nunca se sembró.
+    try {
+      const { migrateWeaponsFromJSON } = require('./src/services/weaponService');
+      const weaponResult = await migrateWeaponsFromJSON();
+      if (weaponResult.migratedCount > 0) {
+        console.log(`[INFO] ${weaponResult.migratedCount} arma(s) sembradas en la base de datos desde weapons.json`);
+      }
+    } catch (weaponError) {
+      console.error('[ERROR] No se pudo sembrar la colección de armas:', weaponError);
+    }
+
     getCommands();
 
     getEvents();

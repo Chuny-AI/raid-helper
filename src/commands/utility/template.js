@@ -5,6 +5,7 @@ const { getOrCreateServer } = require('../../services/serverService');
 const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require('../../utils/errorEmbeds');
 const { checkPremiumAccess } = require('../../middleware/roleCheck');
 const { safeDeferUpdate } = require('../../utils/interaction');
+const { normalizeGroupToData, computeGroupMaxPlayers, getItemLabel } = require('../../utils/templateShape');
 
 // Store temporal para manejar el estado del proceso de edición
 const templateEditSessions = new Map();
@@ -88,6 +89,7 @@ function cleanForMongoDB(data) {
             if (weapon.image) cleanWeapon.image = weapon.image;
             if (weapon.private !== undefined) cleanWeapon.private = weapon.private;
             if (weapon.sendBuildToPrivate !== undefined) cleanWeapon.sendBuildToPrivate = weapon.sendBuildToPrivate;
+            if (weapon.label) cleanWeapon.label = weapon.label;
             
             return cleanWeapon;
           });
@@ -111,6 +113,7 @@ function cleanForMongoDB(data) {
             if (weapon.image) cleanWeapon.image = weapon.image;
             if (weapon.private !== undefined) cleanWeapon.private = weapon.private;
             if (weapon.sendBuildToPrivate !== undefined) cleanWeapon.sendBuildToPrivate = weapon.sendBuildToPrivate;
+            if (weapon.label) cleanWeapon.label = weapon.label;
             
             return cleanWeapon;
           });
@@ -6256,14 +6259,21 @@ templateModule.saveTemplateChanges = async function(interaction, sessionId) {
     // Aplicar limpieza final de datos para MongoDB
     const finalData = cleanForMongoDB(cleanedData);
 
-    // Garantizar que cada grupo tenga max_players definido
-    // Si no se especificó, se calcula como suma de cupos de armas
+    // Normalizar cada grupo al formato canónico "data" (por si quedó en el
+    // formato legacy "categories") y garantizar que tenga max_players definido.
+    // Sin esto, un grupo en formato "categories" queda ilegible para el
+    // renderizador del raid y desaparece del embed en silencio.
     if (finalData.weapons && typeof finalData.weapons === 'object') {
-      for (const group of Object.values(finalData.weapons)) {
-        if (group && typeof group === 'object' && group.max_players === undefined) {
-          const weaponsArray = Array.isArray(group.data) ? group.data : [];
-          group.max_players = weaponsArray.reduce((acc, w) => acc + (parseInt(w.units) || 0), 0);
+      for (const key of Object.keys(finalData.weapons)) {
+        const group = finalData.weapons[key];
+        if (!group || typeof group !== 'object') continue;
+        const normalized = normalizeGroupToData(group);
+        if (group.max_players !== undefined && group.max_players !== null) {
+          normalized.max_players = group.max_players;
+        } else {
+          normalized.max_players = computeGroupMaxPlayers(normalized);
         }
+        finalData.weapons[key] = normalized;
       }
     }
     
@@ -6344,7 +6354,7 @@ async function showRemoveWeaponsInterface(interaction, sessionId, groupIndex, se
     if (weaponGroup.data && Array.isArray(weaponGroup.data)) {
       weaponGroup.data.forEach((weapon, weaponIndex) => {
         const option = {
-          label: `${weapon.name}`,
+          label: `${getItemLabel(weapon)}`,
           value: `data_${weaponIndex}`, // Usar prefijo 'data_' para distinguir
           description: `Arma del grupo`
         };
@@ -6988,10 +6998,19 @@ async function handleWeaponSelectForGroup(interaction) {
       .setPlaceholder('https://ejemplo.com')
       .setRequired(false);
 
+    const labelInput = new TextInputBuilder()
+      .setCustomId('label')
+      .setLabel('Etiqueta (opcional, para builds repetidas)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ej: Daga doble (Build A)')
+      .setMaxLength(80)
+      .setRequired(false);
+
     const quantityRow = new ActionRowBuilder().addComponents(quantityInput);
     const linkRow = new ActionRowBuilder().addComponents(linkInput);
+    const labelRow = new ActionRowBuilder().addComponents(labelInput);
 
-    modal.addComponents(quantityRow, linkRow);
+    modal.addComponents(quantityRow, linkRow, labelRow);
 
     await interaction.showModal(modal);
 
@@ -7039,9 +7058,14 @@ async function handleWeaponConfigModal(interaction) {
     // Obtener valores del modal
     const quantity = parseInt(interaction.fields.getTextInputValue('quantity')) || 1;
     const link = interaction.fields.getTextInputValue('link') || '';
-    
+    let label = '';
+    try {
+      label = interaction.fields.getTextInputValue('label')?.trim() || '';
+    } catch { /* modales antiguos sin este campo */ }
+
     console.log('[DEBUG] handleWeaponConfigModal - quantity:', quantity);
     console.log('[DEBUG] handleWeaponConfigModal - link:', link);
+    console.log('[DEBUG] handleWeaponConfigModal - label:', label);
     
     // Lógica automática: privado si hay enlace, no privado si no hay enlace
     const isPrivate = link.trim() !== '';
@@ -7083,20 +7107,17 @@ async function handleWeaponConfigModal(interaction) {
         weaponGroup.categories.push(targetCategory);
       }
 
-      // Verificar si el arma ya existe
-      const existingWeapon = targetCategory.weapons.find(w => w.name === tempData.weapon.name);
-      if (existingWeapon) {
-        console.log('[DEBUG] handleWeaponConfigModal - Weapon already exists:', tempData.weapon.name);
-        return await interaction.reply({
-          content: `El arma "${tempData.weapon.name}" ya existe en este grupo. Usa la función de editar para modificarla.`,
-          ephemeral: true
-        });
-      }
+      // Si el nombre ya existe en el grupo y no se dio una etiqueta explícita,
+      // autogenerar una para que el select del raid nunca muestre dos opciones
+      // idénticas (varias builds de la misma arma son válidas).
+      const existingCount = targetCategory.weapons.filter(w => w.name === tempData.weapon.name).length;
+      const finalLabel = label || (existingCount > 0 ? `${tempData.weapon.name} (${existingCount + 1})` : '');
 
       // Añadir el arma con la configuración
       const newWeapon = {
         id: Date.now() + Math.random(),
         name: tempData.weapon.name,
+        label: finalLabel,
         code: tempData.weapon.code || '',
         quantity: quantity,
         units: quantity, // Compatibilidad
@@ -7114,20 +7135,14 @@ async function handleWeaponConfigModal(interaction) {
     } else if (weaponGroup.data) {
       // Estructura antigua: { data: [...] }
       console.log('[DEBUG] handleWeaponConfigModal - Using data structure');
-      // Verificar si el arma ya existe
-      const existingWeapon = weaponGroup.data.find(w => w.name === tempData.weapon.name);
-      if (existingWeapon) {
-        console.log('[DEBUG] handleWeaponConfigModal - Weapon already exists in data:', tempData.weapon.name);
-        return await interaction.reply({
-          content: `El arma "${tempData.weapon.name}" ya existe en este grupo. Usa la función de editar para modificarla.`,
-          ephemeral: true
-        });
-      }
+      const existingCount = weaponGroup.data.filter(w => w.name === tempData.weapon.name).length;
+      const finalLabel = label || (existingCount > 0 ? `${tempData.weapon.name} (${existingCount + 1})` : '');
 
       // Añadir el arma directamente al array data
       const newWeapon = {
         id: Date.now() + Math.random(),
         name: tempData.weapon.name,
+        label: finalLabel,
         code: tempData.weapon.code || '',
         units: quantity, // En estructura antigua se usa 'units' en lugar de 'quantity'
         quantity: quantity, // Compatibilidad
@@ -7146,6 +7161,7 @@ async function handleWeaponConfigModal(interaction) {
       const newWeapon = {
         id: Date.now() + Math.random(),
         name: tempData.weapon.name,
+        label: label,
         code: tempData.weapon.code || '',
         quantity: quantity,
         units: quantity, // Compatibilidad
@@ -7155,13 +7171,13 @@ async function handleWeaponConfigModal(interaction) {
         url: link,
         sendBuildToPrivate: isPrivate
       };
-      
+
       // Usar estructura correcta con "data" en lugar de "categories"
       if (!weaponGroup.data) {
         weaponGroup.data = [];
       }
       weaponGroup.data.push(newWeapon);
-      
+
       console.log('[DEBUG] handleWeaponConfigModal - Created new structure with weapon:', JSON.stringify(newWeapon, null, 2));
     }
 
@@ -7997,6 +8013,10 @@ const handleModifyWeaponFullModalSubmit = async function (interaction) {
     // Obtener valores del modal (solo campos editables)
     const weaponQuantityStr = interaction.fields.getTextInputValue('weapon_quantity')?.trim();
     const weaponLink = interaction.fields.getTextInputValue('weapon_link')?.trim() || '';
+    let weaponLabel = '';
+    try {
+      weaponLabel = interaction.fields.getTextInputValue('weapon_label')?.trim() || '';
+    } catch { /* modales antiguos sin este campo */ }
 
     // Validaciones (solo para campos editables)
     const weaponQuantity = parseInt(weaponQuantityStr);
@@ -8022,7 +8042,8 @@ const handleModifyWeaponFullModalSubmit = async function (interaction) {
       units: weaponQuantity,
       quantity: weaponQuantity, // Compatibilidad
       url: weaponLink,
-      link: weaponLink // Compatibilidad
+      link: weaponLink, // Compatibilidad
+      label: weaponLabel
     };
 
     // Preservar ID original si existe
@@ -8130,12 +8151,23 @@ const handleModifyWeaponFull = async function(interaction, sessionId, groupIndex
       .setValue(targetWeapon.url || targetWeapon.link || '')
       .setRequired(false);
 
+    // Campo para la etiqueta (editable) — distingue builds repetidas de la misma arma
+    const labelInput = new TextInputBuilder()
+      .setCustomId('weapon_label')
+      .setLabel('🏷️ Etiqueta (opcional)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ej: Daga doble (Build A)')
+      .setValue(targetWeapon.label || '')
+      .setMaxLength(80)
+      .setRequired(false);
+
     // Crear filas para el modal (solo campos editables)
     const quantityRow = new ActionRowBuilder().addComponents(quantityInput);
     const urlRow = new ActionRowBuilder().addComponents(urlInput);
+    const labelRow = new ActionRowBuilder().addComponents(labelInput);
 
     // Añadir solo las filas necesarias al modal
-    modal.addComponents(quantityRow, urlRow);
+    modal.addComponents(quantityRow, urlRow, labelRow);
 
     // Mostrar el modal
     await interaction.showModal(modal);

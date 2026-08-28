@@ -5,6 +5,7 @@ const { createSuccessEmbed, createErrorEmbed, createInfoEmbed, safeReply } = req
 const { getTemplateCreationSessions, getSession, updateSession, findSessionByUser, findSessionByCriteria } = require("./template-sessions");
 const { extractSessionId } = require("./template-create-navigation");
 const { safeDeferUpdate } = require('../../utils/interaction');
+const { computeGroupMaxPlayers } = require('../../utils/templateShape');
 const fs = require('fs');
 const path = require('path');
 
@@ -1005,7 +1006,7 @@ async function showMultipleWeaponSelection(interaction, sessionId) {
       embed.addFields([
         {
           name: 'Armas Seleccionadas',
-          value: session.tempGroupConfig.weapons.map(w => `• ${w.quantity}x ${w.name}`).join('\n'),
+          value: session.tempGroupConfig.weapons.map(w => `• ${w.quantity}x ${w.label || w.name}`).join('\n'),
           inline: false
         }
       ]);
@@ -1671,9 +1672,20 @@ async function handleAddWeapons(interaction) {
       .setMaxLength(500)
       .setPlaceholder('https://albionfreemarket.com/builds/...');
 
+    // Etiqueta opcional para distinguir builds repetidas de la misma arma
+    // dentro del mismo grupo (ej. 3 "Daga doble" con cupos independientes).
+    const labelInput = new TextInputBuilder()
+      .setCustomId('label')
+      .setLabel('Etiqueta (opcional, builds repetidas)')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(80)
+      .setPlaceholder('Ej: Daga doble (Build A)');
+
     modal.addComponents(
       new ActionRowBuilder().addComponents(quantityInput),
-      new ActionRowBuilder().addComponents(urlInput)
+      new ActionRowBuilder().addComponents(urlInput),
+      new ActionRowBuilder().addComponents(labelInput)
     );
 
     console.log('[DEBUG] handleAddWeapons: Showing modal');
@@ -1733,10 +1745,15 @@ async function handleSingleWeaponConfigSubmit(interaction) {
     // Obtener valores del modal
     const quantityStr = interaction.fields.getTextInputValue('quantity');
     const buildUrl = interaction.fields.getTextInputValue('buildUrl') || '';
+    let label = '';
+    try {
+      label = interaction.fields.getTextInputValue('label')?.trim() || '';
+    } catch { /* modales antiguos sin este campo */ }
 
     console.log('[DEBUG] Modal values:');
     console.log('[DEBUG] - quantity string:', quantityStr);
     console.log('[DEBUG] - buildUrl:', buildUrl);
+    console.log('[DEBUG] - label:', label);
 
     const quantity = parseInt(quantityStr);
     console.log('[DEBUG] - parsed quantity:', quantity);
@@ -1753,9 +1770,20 @@ async function handleSingleWeaponConfigSubmit(interaction) {
     const sendBuildToPrivate = buildUrl.trim().length > 0;
     console.log('[DEBUG] - sendBuildToPrivate (auto):', sendBuildToPrivate);
 
-    // Agregar arma al grupo temporal
+    // Agregar a la lista de armas del grupo
+    const tempConfig = session.tempGroupConfig;
+    if (!tempConfig.weapons) {
+      tempConfig.weapons = [];
+    }
+
+    // Si esta arma ya está en el grupo (misma build repetida) y no se dio
+    // etiqueta explícita, autogenerar una para distinguirlas en el select.
+    const existingCount = tempConfig.weapons.filter(w => w.name === currentWeapon.name).length;
+    const finalLabel = label || (existingCount > 0 ? `${currentWeapon.name} (${existingCount + 1})` : '');
+
     const processedWeapon = {
       name: currentWeapon.name,
+      label: finalLabel,
       emoji: currentWeapon.emoji || currentWeapon.emojiId, // Usar emoji si existe, sino emojiId como fallback
       image: currentWeapon.image || '',
       quantity: quantity,
@@ -1763,11 +1791,6 @@ async function handleSingleWeaponConfigSubmit(interaction) {
       sendBuildToPrivate: sendBuildToPrivate
     };
 
-    // Agregar a la lista de armas del grupo
-    const tempConfig = session.tempGroupConfig;
-    if (!tempConfig.weapons) {
-      tempConfig.weapons = [];
-    }
     tempConfig.weapons.push(processedWeapon);
 
     // Limpiar arma temporal y actualizar sesión
@@ -1852,12 +1875,15 @@ async function handleFinishGroup(interaction) {
       }
     }
 
-    // Crear la configuración final del grupo en el formato correcto
-    // Calcular max_players: usar el valor definido o sumar los cupos de todas las armas
-    const totalWeaponUnits = tempConfig.weapons.reduce((acc, w) => acc + (parseInt(w.quantity) || 0), 0);
-    const groupMaxPlayers = (tempConfig.maxPlayers && tempConfig.maxPlayers > 0)
-      ? tempConfig.maxPlayers
-      : totalWeaponUnits;
+    // Crear la configuración final del grupo en el formato correcto.
+    // max_players: usa el valor definido por el líder, o si no, la suma de
+    // cupos de todas las armas (computeGroupMaxPlayers hace el mismo cálculo
+    // que usan el editor y el renderizador del raid, ver src/utils/templateShape.js).
+    const draftGroup = {
+      max_players: tempConfig.maxPlayers && tempConfig.maxPlayers > 0 ? tempConfig.maxPlayers : undefined,
+      data: tempConfig.weapons.map(w => ({ units: w.quantity })),
+    };
+    const groupMaxPlayers = computeGroupMaxPlayers(draftGroup);
 
     const weaponConfig = {
       displayName: tempConfig.displayName,
@@ -1866,6 +1892,7 @@ async function handleFinishGroup(interaction) {
       data: tempConfig.weapons.map((weapon, index) => ({
         id: Date.now() + index, // Generar ID único basado en timestamp
         name: weapon.name,
+        label: weapon.label || '',
         units: weapon.quantity,
         image: weapon.image || '',
         emoji: weapon.emoji || weapon.emojiId, // Usar emoji si existe, sino emojiId como fallback

@@ -106,23 +106,20 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
 
     let updatedParticipants = participants || [];
     try {
-      const messages = await channel.messages.fetch({ limit: 20 });
-      const eventMessage = messages.find(msg =>
-        msg.embeds.length > 0 &&
-        msg.embeds[0].title &&
-        msg.embeds[0].title.includes(activityTitle)
-      );
-
-      if (eventMessage && eventMessage.embeds.length > 0) {
-        const { extractParticipantsFromEmbed } = require('./events');
-        const extractedParticipants = extractParticipantsFromEmbed(eventMessage.embeds[0]);
+      // interactionId es el raidId (ver src/commands/utility/raid.js): se lee el
+      // estado estructurado actual en vez de reconstruirlo desde el texto del embed.
+      const RaidEvent = require('../database/models/RaidEvent');
+      const { participantMentions } = require('../services/raidState');
+      const raidDoc = await RaidEvent.findOne({ eventId: interactionId });
+      if (raidDoc && raidDoc.stateVersion >= 2) {
+        const extractedParticipants = participantMentions(raidDoc);
         if (extractedParticipants.length > 0) {
           updatedParticipants = extractedParticipants;
-          console.log(`[INFO] Participantes actualizados desde el mensaje: ${updatedParticipants.length} usuarios`);
+          console.log(`[INFO] Participantes actualizados desde el estado del raid: ${updatedParticipants.length} usuarios`);
         }
       }
     } catch (fetchError) {
-      console.error('[ERROR] Error obteniendo participantes del mensaje:', fetchError);
+      console.error('[ERROR] Error obteniendo participantes del raid:', fetchError);
     }
 
     const reminderEmbed = createReminderEmbed(activityTitle, templateName, reminderTimeFormatted, updatedParticipants, channelId);
