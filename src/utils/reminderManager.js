@@ -176,6 +176,9 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
         console.error(`[ERROR] No se pudo enviar DM a ${userId}:`, dmError.message);
         failedDMs++;
       }
+      // Mismo respiro que en /notify y en el aviso masivo de /raid create:
+      // abrir muchos DM seguidos choca con el rate limit de Discord.
+      await new Promise((r) => setTimeout(r, 250));
     }
 
     console.log(`[INFO] Recordatorio enviado para ${templateName}: ${successfulDMs} DMs exitosos, ${failedDMs} DMs fallidos, ${updatedParticipants.length} participantes`);

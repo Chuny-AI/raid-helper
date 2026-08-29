@@ -1,5 +1,6 @@
 const { PermissionFlagsBits } = require('discord.js');
 const EconomyRole = require('../../database/models/economy/EconomyRole');
+const { UserError } = require('../../utils/userError');
 
 const listEconomyRoles = async (guildId) => {
   return await EconomyRole.find({ guildId }).sort({ addedAt: -1 });
@@ -18,7 +19,7 @@ const hasConfiguredEconomyRole = async (member, guildId) => {
 const addEconomyRole = async ({ guildId, roleId, roleName, addedBy }) => {
   const existing = await EconomyRole.findOne({ guildId, roleId });
   if (existing) {
-    throw new Error('Ese rol ya está autorizado para economía en este servidor.');
+    throw new UserError('Ese rol ya está autorizado para economía en este servidor.');
   }
 
   return await EconomyRole.create({
@@ -32,7 +33,7 @@ const addEconomyRole = async ({ guildId, roleId, roleName, addedBy }) => {
 const removeEconomyRole = async ({ guildId, roleId }) => {
   const removed = await EconomyRole.findOneAndDelete({ guildId, roleId });
   if (!removed) {
-    throw new Error('El rol indicado no estaba autorizado para economía.');
+    throw new UserError('El rol indicado no estaba autorizado para economía.');
   }
   return removed;
 };

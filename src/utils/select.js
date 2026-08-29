@@ -6,6 +6,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 const { getItemLabel } = require('./templateShape');
+const { applyEmoji } = require('./emoji');
 
 /**
  * Crea el menú de selección de armas a deshabilitar al crear un raid.
@@ -28,10 +29,7 @@ const createDisableWeaponsConfig = (template, interactionId) => {
         .setValue(`group~${groupKey}`)
         .setDescription('Deshabilitar todo este grupo'.slice(0, 100));
 
-      const groupEmoji = groupData.defaultEmoji;
-      if (groupEmoji && /^\d+$/.test(groupEmoji)) {
-        groupOptBuilder.setEmoji(groupEmoji);
-      }
+      applyEmoji(groupOptBuilder, groupData.defaultEmoji);
       options.push(groupOptBuilder);
       if (options.length >= 25) break;
     }
@@ -48,9 +46,7 @@ const createDisableWeaponsConfig = (template, interactionId) => {
         .setValue(`weapon~${groupKey}~${i}`)
         .setDescription(`Grupo: ${groupData.displayName}`.slice(0, 100));
 
-      if (emojiId && /^\d+$/.test(String(emojiId))) {
-        optBuilder.setEmoji(String(emojiId));
-      }
+      applyEmoji(optBuilder, emojiId);
       options.push(optBuilder);
     }
   }

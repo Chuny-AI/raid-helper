@@ -1,11 +1,13 @@
-const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
-const { getTemplatesByServer, getTemplateByName, updateTemplate, createTemplate, deleteTemplate, getTemplateNames } = require('../../services/templateService');
+const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, InteractionContextType } = require('discord.js');
+const { getTemplatesByServer, getTemplateByName, getTemplateById, updateTemplate, createTemplate, deleteTemplate, getTemplateNames } = require('../../services/templateService');
 const { AttachmentBuilder } = require('discord.js');
 const { getOrCreateServer } = require('../../services/serverService');
 const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require('../../utils/errorEmbeds');
-const { checkPremiumAccess } = require('../../middleware/roleCheck');
+const { checkAuthorizedAccess } = require('../../middleware/roleCheck');
 const { safeDeferUpdate } = require('../../utils/interaction');
 const { normalizeGroupToData, computeGroupMaxPlayers, getItemLabel } = require('../../utils/templateShape');
+const { formatEmoji: formatSharedEmoji, applyEmoji } = require('../../utils/emoji');
+const { getWeaponsPath } = require('../../weapons/weaponsSource');
 
 // Store temporal para manejar el estado del proceso de edición
 const templateEditSessions = new Map();
@@ -396,6 +398,8 @@ const { showWeaponCategorySelection } = require('../../lib/template/template-cre
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('template')
+    // Comando de servidor: sin guild no hay miembros, roles ni templates que consultar.
+    .setContexts(InteractionContextType.Guild)
     .setDescription('Gestión completa de templates del servidor')
     .addSubcommand(subcommand =>
       subcommand
@@ -809,31 +813,7 @@ module.exports = {
       }
 
       // Función auxiliar para formatear emojis
-      const formatEmoji = (emojiId, fallback = '⚔️') => {
-        if (!emojiId) return fallback;
-        
-        // Si ya es un emoji Unicode estándar, devolverlo tal como está
-        if (emojiId.length <= 4 || /^[\u{1F000}-\u{1F9FF}]|^[\u{2600}-\u{26FF}]|^[\u{2700}-\u{27BF}]/u.test(emojiId)) {
-          return emojiId;
-        }
-        
-        // Si es un ID numérico, formatearlo como emoji personalizado
-        if (/^\d+$/.test(emojiId)) {
-          return `<:emoji:${emojiId}>`;
-        }
-        
-        // Si ya está formateado como emoji personalizado, devolverlo tal como está
-        if (emojiId.startsWith('<:') && emojiId.endsWith('>')) {
-          return emojiId;
-        }
-        
-        // Si es un emoji animado
-        if (emojiId.startsWith('<a:') && emojiId.endsWith('>')) {
-          return emojiId;
-        }
-        
-        return fallback;
-      };
+      const formatEmoji = (emojiId, fallback = '⚔️') => formatSharedEmoji(emojiId, fallback);
 
       // En lugar de mostrar el modal, mostrar un embed con botones de acción
       const embed = new EmbedBuilder()
@@ -1012,7 +992,7 @@ module.exports = {
     try {
 
       // VALIDACION: Verificar permisos de usuario
-      const hasAccess = await checkPremiumAccess(interaction);
+      const hasAccess = await checkAuthorizedAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -1067,7 +1047,7 @@ module.exports = {
   async executeCreate(interaction) {
 
     // VALIDACION: Verificar permisos de usuario
-      const hasAccess = await checkPremiumAccess(interaction);
+      const hasAccess = await checkAuthorizedAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -1123,7 +1103,7 @@ module.exports = {
     try {
 
       // VALIDACION: Verificar permisos de usuario
-      const hasAccess = await checkPremiumAccess(interaction);
+      const hasAccess = await checkAuthorizedAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -1207,7 +1187,7 @@ module.exports = {
           if (guildEmoji) return guildEmoji.toString();
         } catch { }
         // Fallback: usar la mención directa para que Discord lo renderice si existe en el guild
-        return `<:e:${id}>`;
+        return formatSharedEmoji(id);
       };
 
       const embed = new EmbedBuilder()
@@ -1469,7 +1449,7 @@ module.exports = {
     try {
 
       // VALIDACION: Verificar permisos de usuario
-      const hasAccess = await checkPremiumAccess(interaction);
+      const hasAccess = await checkAuthorizedAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -1543,7 +1523,7 @@ module.exports = {
     try {
 
       // VALIDACION: Verificar permisos de usuario
-      const hasAccess = await checkPremiumAccess(interaction);
+      const hasAccess = await checkAuthorizedAccess(interaction);
       if (!hasAccess) {
         const errorEmbed = createErrorEmbed(
           "🔒 Sin Permisos",
@@ -2210,7 +2190,28 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
 
       await safeDeferUpdate(interaction);
 
-      const deletedTemplate = await deleteTemplate(templateId);
+      // El permiso se revalida aquí, no solo al abrir la confirmación: el botón
+      // vive en un mensaje efímero que sigue siendo clicable mucho después, y
+      // el id del template llega desde el customId. Sin esto, quien perdió el
+      // rol autorizado podría seguir borrando con un botón antiguo, y un id de
+      // otro servidor se borraría sin comprobar a quién pertenece.
+      const hasAccess = await checkAuthorizedAccess(interaction);
+      if (!hasAccess) {
+        return await interaction.editReply({
+          embeds: [createErrorEmbed('🔒 Sin Permisos', 'Ya no tienes permisos para eliminar templates en este servidor.')],
+          components: [],
+        });
+      }
+
+      const target = await getTemplateById(templateId, interaction.guild.id);
+      if (!target) {
+        return await interaction.editReply({
+          embeds: [createErrorEmbed('Template No Encontrado', 'Ese template ya no existe o no pertenece a este servidor.')],
+          components: [],
+        });
+      }
+
+      const deletedTemplate = await deleteTemplate(templateId, interaction.guild.id);
 
       if (deletedTemplate) {
         const successEmbed = createSuccessEmbed(
@@ -2863,7 +2864,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
             quantity: w.units,
             image: w.image || '',
             emojiId: w.emojiId, // Preservar emojiId original
-            emoji: w.emoji || `<:weapon:${w.emojiId}>`, // Formato de emoji para mostrar
+            emoji: w.emoji || formatSharedEmoji(w.emojiId), // Formato de emoji para mostrar
             url: w.url || '',
             sendBuildToPrivate: !!w.sendBuildToPrivate
           }));
@@ -3092,7 +3093,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
           if (guildEmoji) return guildEmoji.toString();
         } catch { }
         // Fallback mejorado: usar formato correcto para emoji personalizado
-        return `<:weapon:${id}>`;
+        return formatSharedEmoji(id);
       };
 
       const embed = new EmbedBuilder()
@@ -3368,7 +3369,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
           if (emoji) return emoji.toString();
         }
         // Fallback: formato directo de Discord
-        return `<:weapon:${id}>`;
+        return formatSharedEmoji(id);
       };
 
       const totalWeapons = (weaponGroup && Array.isArray(weaponGroup.data))
@@ -3929,7 +3930,7 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
           if (emoji) return emoji.toString();
         }
         // Fallback: formato directo de Discord
-        return `<:weapon:${id}>`;
+        return formatSharedEmoji(id);
       };
 
       const totalWeapons = (weaponGroup && Array.isArray(weaponGroup.data))
@@ -5605,7 +5606,7 @@ async function showWeaponSelectionForGroupEmoji(interaction, sessionId) {
       try {
         const fs = require('fs');
         const path = require('path');
-        const weaponsPath = path.join(__dirname, '../../weapons/weapons.json');
+        const weaponsPath = getWeaponsPath();
 
         if (fs.existsSync(weaponsPath)) {
           const weaponsData = JSON.parse(fs.readFileSync(weaponsPath, 'utf8'));
@@ -5814,7 +5815,7 @@ async function handleGroupEmojiSelect(interaction) {
       try {
         const fs = require('fs');
         const path = require('path');
-        const weaponsPath = path.join(__dirname, '../../weapons/weapons.json');
+        const weaponsPath = getWeaponsPath();
 
         if (fs.existsSync(weaponsPath)) {
           const weaponsData = JSON.parse(fs.readFileSync(weaponsPath, 'utf8'));
@@ -6492,7 +6493,7 @@ async function showDirectWeaponSelectionForEdit(interaction, sessionId, groupInd
         try {
           const fs = require('fs');
           const path = require('path');
-          const weaponsPath = path.join(__dirname, '../../weapons/weapons.json');
+          const weaponsPath = getWeaponsPath();
 
           if (fs.existsSync(weaponsPath)) {
             const weaponsData = JSON.parse(fs.readFileSync(weaponsPath, 'utf8'));
@@ -6630,7 +6631,7 @@ async function showWeaponCategorySelectionForEdit(interaction, sessionId) {
 
         // Si no hay categorías en la base de datos, leer desde el archivo JSON
         console.log(`[DEBUG] getWeaponCategoriesWithFallback: No categories in database, trying JSON file`);
-        const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
+        const weaponsFilePath = getWeaponsPath();
 
         if (!fs.existsSync(weaponsFilePath)) {
           console.log(`[ERROR] getWeaponCategoriesWithFallback: JSON file not found at ${weaponsFilePath}`);
@@ -6746,7 +6747,7 @@ async function handleCategorySelectForGroup(interaction) {
 
         // Si no hay armas en la base de datos, leer desde el archivo JSON
         console.log(`[DEBUG] getWeaponsWithFallback: No weapons in database, trying JSON file`);
-        const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
+        const weaponsFilePath = getWeaponsPath();
 
         if (!fs.existsSync(weaponsFilePath)) {
           console.log(`[ERROR] getWeaponsWithFallback: JSON file not found at ${weaponsFilePath}`);
@@ -6877,7 +6878,7 @@ async function handleWeaponSelectForGroup(interaction) {
 
         // Si no hay armas en la base de datos, leer desde el archivo JSON
         console.log(`[DEBUG] getWeaponsWithFallback: No weapons in database, trying JSON file`);
-        const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
+        const weaponsFilePath = getWeaponsPath();
 
         if (!fs.existsSync(weaponsFilePath)) {
           console.log(`[ERROR] getWeaponsWithFallback: JSON file not found at ${weaponsFilePath}`);
@@ -7464,7 +7465,7 @@ async function handleDirectWeaponSelect(interaction) {
       try {
         const fs = require('fs');
         const path = require('path');
-        const weaponsPath = path.join(__dirname, '../../weapons/weapons.json');
+        const weaponsPath = getWeaponsPath();
 
         if (fs.existsSync(weaponsPath)) {
           const weaponsData = JSON.parse(fs.readFileSync(weaponsPath, 'utf8'));

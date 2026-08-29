@@ -42,6 +42,18 @@ const RaidEventSchema = new mongoose.Schema({
     required: false
   },
 
+  // Hilo privado de coordinación pedido en `/raid create` (opción `thread`).
+  // `threadId` es la fuente de verdad de si el hilo existe ahora mismo: se pone
+  // a null al finalizar el raid, cuando el hilo se borra.
+  threadEnabled: {
+    type: Boolean,
+    default: false
+  },
+  threadId: {
+    type: String,
+    default: null
+  },
+
   // --- Estado estructurado (stateVersion 2) ---
   // Versión del formato de estado. 1 = legacy (solo embedSnapshot de texto).
   // 2 = estado estructurado por slot (groups/slots/waitlist/cannotGo/looters).

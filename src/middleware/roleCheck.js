@@ -1,7 +1,7 @@
 const { getAuthorizedRoles } = require('../services/authorizedRoleService');
 
 /**
- * Middleware para verificar si un usuario tiene roles autorizados para comandos premium.
+ * Middleware para verificar si un usuario tiene alguno de los roles autorizados del servidor.
  * @param {Object} interaction - La interacción de Discord.
  * @returns {Promise<boolean>} - true si el usuario tiene roles autorizados, false si no.
  */
@@ -31,12 +31,12 @@ const checkAuthorizedRole = async (interaction) => {
 };
 
 /**
- * Middleware para verificar si un usuario puede usar comandos premium.
- * Verifica si es propietario del bot, administrador, o tiene roles autorizados.
+ * Middleware para verificar si un usuario puede usar los comandos restringidos.
+ * Concede acceso a administradores del servidor y a quien tenga un rol autorizado.
  * @param {Object} interaction - La interacción de Discord.
- * @returns {Promise<boolean>} - true si el usuario puede usar comandos premium, false si no.
+ * @returns {Promise<boolean>} - true si el usuario tiene acceso, false si no.
  */
-const checkPremiumAccess = async (interaction) => {
+const checkAuthorizedAccess = async (interaction) => {
   try {
     if (!interaction.guild || !interaction.member) {
       return false;
@@ -53,23 +53,12 @@ const checkPremiumAccess = async (interaction) => {
 
     return false;
   } catch (error) {
-    console.error('[ERROR] Error en checkPremiumAccess:', error);
+    console.error('[ERROR] Error en checkAuthorizedAccess:', error);
     return false;
   }
 };
 
-/**
- * Middleware que verifica acceso: administrador o rol autorizado.
- * El nombre se mantiene por compatibilidad con imports existentes.
- * @param {Object} interaction
- * @returns {Promise<boolean>}
- */
-const checkPremiumAccessWithOwnerBypass = async (interaction) => {
-  return await checkPremiumAccess(interaction);
-};
-
 module.exports = {
   checkAuthorizedRole,
-  checkPremiumAccess,
-  checkPremiumAccessWithOwnerBypass,
+  checkAuthorizedAccess,
 };

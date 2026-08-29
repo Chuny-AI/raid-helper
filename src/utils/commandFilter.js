@@ -17,12 +17,13 @@ const permissionsConfig = {
 const selfManagedCommands = new Set(['eco']);
 
 const filterCommand = async (interaction) => {
+  let commandName = null;
   try {
     if (!interaction.isChatInputCommand()) {
       return true;
     }
 
-    const commandName = interaction.commandName;
+    commandName = interaction.commandName;
 
     // Evaluación dinámica basada en configuración
     let policy = permissionsConfig[commandName];
@@ -54,7 +55,22 @@ const filterCommand = async (interaction) => {
     return true;
   } catch (error) {
     console.error('[FILTER] Error en filterCommand:', error);
-    return true; // Permitir por defecto para evitar bloquear todo por un error
+    // Fail-closed en los comandos con política: si no se ha podido comprobar el
+    // permiso, no se ejecuta. Antes se devolvía `true` siempre, con lo que
+    // cualquier fallo (BD caída, error leyendo roles) se convertía en un bypass
+    // de la política. Los comandos sin política siguen permitidos: son públicos
+    // y bloquearlos aquí solo rompería el bot sin ganar nada.
+    if (commandName && permissionsConfig[commandName]) {
+      try {
+        const embed = createErrorEmbed(
+          'Acceso Denegado',
+          'No se pudieron verificar tus permisos para este comando. Inténtalo de nuevo en unos segundos.'
+        );
+        await safeReply(interaction, { embeds: [embed], ephemeral: true });
+      } catch (_) { /* la interacción puede haber expirado */ }
+      return false;
+    }
+    return true;
   }
 };
 

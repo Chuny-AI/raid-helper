@@ -97,16 +97,53 @@ async function renderAndEdit(raidId) {
   }
 }
 
-/** Persiste el documento del raid en BD, sin bloquear al llamador. */
-function persistRaid(raidId) {
+/**
+ * Guarda el documento del raid en BD coalescando escrituras. Mongoose lanza
+ * `ParallelSaveError` si se llama a `save()` sobre el mismo documento mientras
+ * otro `save()` sigue en vuelo, y un solo click puede encadenar varias
+ * mutaciones (join -> promoción desde la lista de espera -> aviso de raid
+ * lleno), cada una pidiendo persistir. Mismo patrón que `renderAndEdit`: si ya
+ * hay un guardado en vuelo se marca "dirty" y el guardado en curso vuelve a
+ * grabar al terminar, así el último estado siempre acaba en BD sin dos `save()`
+ * simultáneos.
+ * @param {string} raidId
+ * @returns {Promise<void>} resuelve cuando el estado actual ya está persistido
+ */
+async function saveRaid(raidId) {
   const entry = byRaidId.get(raidId);
   if (!entry) return;
-  setImmediate(async () => {
+
+  if (entry._saving) {
+    entry._saveDirty = true;
+    return entry._saving;
+  }
+
+  const run = (async () => {
     try {
-      await entry.raid.save();
-    } catch (e) {
-      console.error(`[WARN] raidRegistry.persistRaid: error guardando raid #${raidId}:`, e);
+      do {
+        entry._saveDirty = false;
+        try {
+          await entry.raid.save();
+        } catch (e) {
+          console.error(`[WARN] raidRegistry.saveRaid: error guardando raid #${raidId}:`, e);
+        }
+      } while (entry._saveDirty);
+    } finally {
+      entry._saving = null;
     }
+  })();
+
+  entry._saving = run;
+  return run;
+}
+
+/** Persiste el documento del raid en BD, sin bloquear al llamador. */
+function persistRaid(raidId) {
+  if (!byRaidId.has(raidId)) return;
+  setImmediate(() => {
+    saveRaid(raidId).catch((e) => {
+      console.error(`[WARN] raidRegistry.persistRaid: error guardando raid #${raidId}:`, e);
+    });
   });
 }
 
@@ -118,5 +155,6 @@ module.exports = {
   setMessage,
   withRaidLock,
   renderAndEdit,
+  saveRaid,
   persistRaid,
 };

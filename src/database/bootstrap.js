@@ -3,6 +3,7 @@ const Template = require('../database/models/Template');
 const AuthorizedRole = require('../database/models/AuthorizedRole');
 const RaidEvent = require('../database/models/RaidEvent');
 const Weapon = require('../database/models/Weapon');
+const NotifyEvent = require('../database/models/NotifyEvent');
 const EconomyBalance = require('../database/models/economy/EconomyBalance');
 const EconomyTransaction = require('../database/models/economy/EconomyTransaction');
 const EconomyRole = require('../database/models/economy/EconomyRole');
@@ -19,6 +20,7 @@ const ensureCollections = async () => {
     AuthorizedRole,
     RaidEvent,
     Weapon,
+    NotifyEvent,
     EconomyBalance,
     EconomyTransaction,
     EconomyRole,

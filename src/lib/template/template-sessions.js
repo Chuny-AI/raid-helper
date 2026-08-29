@@ -163,7 +163,11 @@ function findSessionByCriteria(userId, guildId, step = null) {
 }
 
 /**
- * Limpia sesiones expiradas
+ * Limpia sesiones expiradas.
+ *
+ * Debe llamarse periódicamente (lo hace src/utils/events.js al arrancar): sin
+ * eso las sesiones solo caducaban al volver a tocarlas, y una creación de
+ * template abandonada se quedaba en memoria para siempre.
  */
 function cleanupExpiredSessions() {
   const now = Date.now();
@@ -173,6 +177,14 @@ function cleanupExpiredSessions() {
     if (now - session.lastAccessed > SESSION_TIMEOUT) {
       templateCreationSessions.delete(sessionId);
       cleaned++;
+    }
+  }
+
+  // El mapeo corto->largo también hay que purgarlo: apunta a sesiones que ya
+  // no existen y, al no caducar nunca por su cuenta, crecía sin límite.
+  for (const [shortId, originalId] of shortToOriginalSessionIdMap.entries()) {
+    if (!templateCreationSessions.has(originalId)) {
+      shortToOriginalSessionIdMap.delete(shortId);
     }
   }
 

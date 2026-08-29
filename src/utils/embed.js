@@ -1,4 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { parseCustomEmoji } = require("./emoji");
 
 /**
  * Helpers de embeds que NO forman parte del ciclo de vida de un raid
@@ -28,8 +29,11 @@ const createBuildEmbed = (weaponCategory, weaponUrl, emojiId, templateName) => {
       url: "https://github.com/M8-Babbage/avalon-raid-helper",
     });
 
-  if (emojiId) {
-    embed.setThumbnail(`https://cdn.discordapp.com/emojis/${emojiId}.png`);
+  // Solo los emojis personalizados existen en el CDN; un emoji Unicode
+  // produciria una URL inexistente y un thumbnail roto.
+  const customEmoji = parseCustomEmoji(emojiId);
+  if (customEmoji) {
+    embed.setThumbnail(`https://cdn.discordapp.com/emojis/${customEmoji.id}.${customEmoji.animated ? "gif" : "png"}`);
   }
 
   embed.addFields({

@@ -1,12 +1,9 @@
 #!/usr/bin/env node
-const fs = require('node:fs');
-const path = require('node:path');
 const readline = require('readline');
 const mongoose = require('mongoose');
 const { connectDB } = require('../src/database/connection');
-const { getPremiumServers, updateServerPremium, getOrCreateServer } = require('../src/services/serverService');
+const { environmentName } = require('../src/config/environment');
 const AuthorizedUserService = require('../src/services/authorizedUserService');
-const Weapon = require('../src/database/models/Weapon');
 const { REST, Routes } = require('discord.js');
 
 // Utilities for TUI
@@ -89,137 +86,6 @@ async function dropAllCollections(conn) {
   }
 }
 
-// Premium servers handlers
-async function handlePremiumServers() {
-  while (true) {
-    const choice = await selectMenu('Servidores Premium', [
-      'Listar servidores premium',
-      'Agregar servidor premium',
-      'Eliminar servidor premium',
-      'Volver'
-    ]);
-    if (!choice || choice === 'Volver') return;
-    if (choice === 'Listar servidores premium') {
-      const servers = await getPremiumServers();
-      clear();
-      console.log('Servidores premium:');
-      servers.forEach(s => console.log(`• ${s.guildName} (${s.guildId})`));
-      await question('\nEnter para continuar...');
-    } else if (choice === 'Agregar servidor premium') {
-      const guildId = await question('Guild ID: ');
-      const guildName = await question('Nombre del servidor: ');
-      await getOrCreateServer(guildId, guildName);
-      await updateServerPremium(guildId, true);
-      console.log('Servidor marcado como premium.');
-      await question('Enter para continuar...');
-    } else if (choice === 'Eliminar servidor premium') {
-      const guildId = await question('Guild ID: ');
-      await updateServerPremium(guildId, false);
-      console.log('Servidor desmarcado como premium.');
-      await question('Enter para continuar...');
-    }
-  }
-}
-
-// Upload weapons handler - Migrated from Discord command
-async function handleUploadWeapons() {
-  clear();
-  console.log('🔄 Iniciando carga de armas desde weapons.json...\n');
-  
-  const weaponsPath = path.join(__dirname, '../src/weapons/weapons.json');
-  
-  if (!fs.existsSync(weaponsPath)) {
-    console.error('❌ Archivo de armas no encontrado:', weaponsPath);
-    console.log('\n💡 Solución: Asegúrate de que el archivo weapons.json existe en la carpeta correcta.');
-    await question('\nEnter para continuar...');
-    return;
-  }
-
-  try {
-    console.log('📖 Leyendo archivo weapons.json...');
-    const jsonContent = fs.readFileSync(weaponsPath, 'utf8');
-    const weaponsData = JSON.parse(jsonContent);
-
-    if (!weaponsData.weapons || typeof weaponsData.weapons !== 'object') {
-      throw new Error("La estructura del JSON debe contener una propiedad 'weapons' como objeto.");
-    }
-
-    let createdCount = 0;
-    let deletedCount = 0;
-    let failedCount = 0;
-
-    console.log('🗑️  Eliminando armas existentes...');
-    const deleteResult = await Weapon.deleteMany({});
-    deletedCount = deleteResult.deletedCount;
-    console.log(`   Eliminadas: ${deletedCount} armas`);
-
-    console.log('\n📥 Procesando categorías de armas...');
-    
-    for (const categoryKey in weaponsData.weapons) {
-      const categoryData = weaponsData.weapons[categoryKey];
-      const categoryDisplayName = categoryData.displayName;
-      const categoryDefaultEmoji = categoryData.defaultEmoji;
-
-      console.log(`   Procesando categoría: ${categoryDisplayName} (${categoryKey})`);
-
-      for (const weaponItem of categoryData.data) {
-        const { emoji, name, image = "", url = "" } = weaponItem;
-        const emojiId = emoji;
-
-        if (!emojiId || !name) {
-          console.warn(`   ⚠️  Arma inválida (sin emojiId o nombre):`, weaponItem);
-          failedCount++;
-          continue;
-        }
-
-        try {
-          await Weapon.create({
-            emojiId,
-            name,
-            category: categoryKey,
-            categoryDisplayName,
-            categoryDefaultEmoji,
-            image,
-            url,
-            isActive: true
-          });
-          createdCount++;
-        } catch (dbError) {
-          console.error(`   ❌ Error al procesar arma ${name} (${emojiId}):`, dbError.message);
-          failedCount++;
-        }
-      }
-    }
-
-    console.log('\n✅ Carga de armas completada:');
-    console.log(`   • Armas creadas: ${createdCount}`);
-    console.log(`   • Armas eliminadas: ${deletedCount}`);
-    console.log(`   • Armas fallidas: ${failedCount}`);
-    
-    if (failedCount > 0) {
-      console.log('\n⚠️  Algunas armas no pudieron ser procesadas. Revisa los logs anteriores.');
-    }
-
-  } catch (error) {
-    console.error('\n❌ Error durante la carga de armas:', error.message);
-    console.log('\n💡 Solución: Verifica que el archivo weapons.json tenga la estructura correcta.');
-    console.log('   Estructura esperada:');
-    console.log('   {');
-    console.log('     "weapons": {');
-    console.log('       "categoria": {');
-    console.log('         "displayName": "Nombre",');
-    console.log('         "defaultEmoji": "emojiId",');
-    console.log('         "data": [');
-    console.log('           { "name": "Arma", "emoji": "emojiId", "image": "", "url": "" }');
-    console.log('         ]');
-    console.log('       }');
-    console.log('     }');
-    console.log('   }');
-  }
-  
-  await question('\nEnter para continuar...');
-}
-
 // Authorized users handlers
 async function handleAuthorizedUsers() {
   while (true) {
@@ -266,21 +132,19 @@ async function handleAuthorizedUsers() {
 
 // DB Wipe handler
 async function handleDbWipe() {
-  // Determinar qué URI usar basado en IS_PROD
-  const isProd = process.env.IS_PROD === 'TRUE' || process.env.IS_PROD === 'true';
-  const mongoURI = isProd ? process.env.MONGODB_URI_PROD : process.env.MONGODB_URI;
-  
+  // Una sola URI: cada entorno apunta a su propia base desde su propio .env.
+  const mongoURI = process.env.MONGODB_URI;
+
   if (!mongoURI) {
     clear();
-    const envVar = isProd ? 'MONGODB_URI_PROD' : 'MONGODB_URI';
-    console.error(`❌ ${envVar} no está definido en el entorno. Configure .env y ejecute el CLI con --env-file=.env`);
-    console.error(`ℹ️  Modo actual: ${isProd ? 'PRODUCCIÓN' : 'DESARROLLO'}`);
+    console.error('❌ MONGODB_URI no está definido en el entorno. Configure .env y ejecute el CLI con --env-file=.env');
+    console.error(`ℹ️  Modo actual: ${environmentName()}`);
     await question('Enter para continuar...');
     return;
   }
   
   const dbName = parseDbName(mongoURI);
-  console.log(`⚠️  ATENCIÓN: Operando en modo ${isProd ? 'PRODUCCIÓN' : 'DESARROLLO'}`);
+  console.log(`⚠️  ATENCIÓN: Operando en modo ${environmentName()}`);
   console.log(`📊 Base de datos objetivo: ${dbName}`);
   
   const ok = await confirmDestructiveAction(dbName);
@@ -326,24 +190,17 @@ async function main() {
   try {
     await connectDB();
     
-    // Determinar el ambiente actual
-    const isProd = process.env.IS_PROD === 'TRUE' || process.env.IS_PROD === 'true';
-    const environment = isProd ? 'PRODUCCIÓN' : 'DESARROLLO';
-    const title = `Chuny CLI - Gestión del BOT [${environment}]`;
+    const title = `Chuny CLI - Gestión del BOT [${environmentName()}]`;
     
     while (true) {
       const choice = await selectMenu(title, [
-        'Servidores Premium',
-        'Subir armas a la base de datos',
         'Usuarios autorizados (scanner)',
         'Eliminar TODA la base de datos (DROP)',
         'Eliminar comandos globales',
         'Salir'
       ]);
       if (!choice || choice === 'Salir') break;
-      if (choice === 'Servidores Premium') await handlePremiumServers();
-      else if (choice === 'Subir armas a la base de datos') await handleUploadWeapons();
-      else if (choice === 'Usuarios autorizados (scanner)') await handleAuthorizedUsers();
+      if (choice === 'Usuarios autorizados (scanner)') await handleAuthorizedUsers();
       else if (choice === 'Eliminar TODA la base de datos (DROP)') await handleDbWipe();
       else if (choice === 'Eliminar comandos globales') await handleDeleteGlobalCommands();
     }

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags, InteractionContextType } = require("discord.js");
 const { getTemplateNames, getTemplatesByServer } = require("../../services/templateService");
 const { getServer } = require("../../services/serverService");
 const { createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
@@ -9,6 +9,8 @@ const { createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/er
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("status")
+    // Comando de servidor: sin guild no hay miembros, roles ni templates que consultar.
+    .setContexts(InteractionContextType.Guild)
     .setDescription("Información de estado del servidor y templates"),
 
   async execute(interaction) {

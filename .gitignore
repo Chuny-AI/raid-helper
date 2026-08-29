@@ -1,2 +1,4 @@
 node_modules
 .env
+# Copias de seguridad de templates (scripts/remap-template-emojis.js)
+.template-backup-*.json

@@ -1,4 +1,4 @@
-﻿const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require('discord.js');
+﻿const { SlashCommandBuilder, MessageFlags, EmbedBuilder, InteractionContextType } = require('discord.js');
 const {
   addMoney,
   removeMoney,
@@ -17,6 +17,7 @@ const {
   canManageEconomyRoles,
 } = require('../../services/economy/economyRoleService');
 const { createErrorEmbed, createSuccessEmbed, safeReply } = require('../../utils/errorEmbeds');
+const { isUserError } = require('../../utils/userError');
 
 const formatMoney = (value) => Number(value || 0).toLocaleString('es-ES');
 
@@ -144,6 +145,8 @@ const ackEphemeral = async (interaction, logChannelId) => {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('eco')
+    // Comando de servidor: sin guild no hay miembros, roles ni templates que consultar.
+    .setContexts(InteractionContextType.Guild)
     .setDescription('Comandos de economia del servidor')
 
     .addSubcommand((sub) =>
@@ -321,8 +324,12 @@ module.exports = {
         const targetUser = interaction.options.getUser('usuario') || interaction.user;
 
         if (targetUser.id !== interaction.user.id) {
-          const hasRole = await hasConfiguredEconomyRole(interaction.member, guildId);
-          if (!hasRole) {
+          // Admin O rol configurado, igual que el resto de subcomandos: antes
+          // solo se aceptaba el rol, así que un administrador sin rol de
+          // economia no podía consultar el balance de otro.
+          const puede = canManageEconomyRoles(interaction.member)
+            || await hasConfiguredEconomyRole(interaction.member, guildId);
+          if (!puede) {
             await safeReply(interaction, {
               embeds: [createErrorEmbed('Acceso denegado', '❌ No tienes permisos para ver el balance de otros usuarios.')],
               flags: MessageFlags.Ephemeral,
@@ -557,8 +564,16 @@ module.exports = {
         return;
       }
     } catch (error) {
+      // Solo se muestra el mensaje de los errores de validación (UserError).
+      // Este catch envuelve todo el comando, así que aquí caen tambien errores
+      // de Mongo y de la API de Discord, cuyo mensaje puede incluir rutas,
+      // nombres de coleccion o fragmentos de la consulta: esos van al log.
+      if (!isUserError(error)) console.error('[ERROR] /eco:', error);
+      const detalle = isUserError(error)
+        ? error.message
+        : 'Ocurrio un error inesperado. Intentalo de nuevo en unos segundos.';
       await safeReply(interaction, {
-        embeds: [createErrorEmbed('Error en economia', error.message || 'Ocurrio un error inesperado.')],
+        embeds: [createErrorEmbed('Error en economia', detalle)],
         flags: MessageFlags.Ephemeral,
       });
     }

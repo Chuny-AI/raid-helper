@@ -2,919 +2,919 @@
   "weapons": {
     "sword": {
       "displayName": "Espadas",
-      "defaultEmoji": "1543135169119133736",
+      "defaultEmoji": "1543135148214591528",
       "data": [
         {
           "name": "Crea reyes",
           "units": 1,
           "image": "",
-          "emoji": "1543135147979833505"
+          "emoji": "1543135130678333521"
         },
         {
           "name": "Hoja infinita",
           "units": 1,
           "image": "",
-          "emoji": "1543135170830405783"
+          "emoji": "1543135149120815157"
         },
         {
           "name": "Espada tallada",
           "units": 1,
           "image": "",
-          "emoji": "1543135148847927306"
+          "emoji": "1543135132049743912"
         },
         {
           "name": "Espada ancha",
           "units": 1,
           "image": "",
-          "emoji": "1543135169119133736"
+          "emoji": "1543135148214591528"
         },
         {
           "name": "Claymore",
           "units": 1,
           "image": "",
-          "emoji": "1543135145563914240"
+          "emoji": "1543135129768165376"
         },
         {
           "name": "Dos espadas",
           "units": 1,
           "image": "",
-          "emoji": "1543135154065637378"
+          "emoji": "1543135136420339732"
         },
         {
           "name": "Hoja clarent",
           "units": 1,
           "image": "",
-          "emoji": "1543135144087658526"
+          "emoji": "1543135128770056242"
         },
         {
           "name": "Dos galatinas",
           "units": 1,
           "image": "",
-          "emoji": "1543135142078586941"
+          "emoji": "1543135126345490432"
         }
       ]
     },
     "spear": {
       "displayName": "Lanzas",
-      "defaultEmoji": "1543135165948370995",
+      "defaultEmoji": "1543135145551208501",
       "data": [
         {
           "name": "Portador del alba",
           "units": 1,
           "image": "",
-          "emoji": "1543135168078815232"
+          "emoji": "1543135147145044028"
         },
         {
           "name": "Guja del iniciado",
           "units": 1,
           "image": "",
-          "emoji": "1543135172117921883"
+          "emoji": "1543135149972135976"
         },
         {
           "name": "Cazaespíritus",
           "units": 1,
           "image": "",
-          "emoji": "1543135156104069180"
+          "emoji": "1543135136919584819"
         },
         {
           "name": "Lanza",
           "units": 1,
           "image": "",
-          "emoji": "1543135165948370995"
+          "emoji": "1543135145551208501"
         },
         {
           "name": "Guja fisurante",
           "units": 1,
           "image": "",
-          "emoji": "1543135173527474246"
+          "emoji": "1543135150471254107"
         },
         {
           "name": "Pica",
           "units": 1,
           "image": "",
-          "emoji": "1543135162622021672"
+          "emoji": "1543135142405607424"
         },
         {
           "name": "Lanza de garza",
           "units": 1,
           "image": "",
-          "emoji": "1543135167009521714"
+          "emoji": "1543135146327146516"
         },
         {
           "name": "Lanza de trinidad",
           "units": 1,
           "image": "",
-          "emoji": "1543135163528126524"
+          "emoji": "1543135143772950538"
         }
       ]
     },
     "quartestaff": {
       "displayName": "Cambia formas",
-      "defaultEmoji": "1543135183291555930",
+      "defaultEmoji": "1543135161451814982",
       "data": [
         {
           "name": "Invocador de luz",
           "units": 1,
           "image": "",
-          "emoji": "1543135178443071518"
+          "emoji": "1543135155458277417"
         },
         {
           "name": "Bastón terrúnico",
           "units": 1,
           "image": "",
-          "emoji": "1543135181358108752"
+          "emoji": "1543135159417577533"
         },
         {
           "name": "Bastón de merodeador",
           "units": 1,
           "image": "",
-          "emoji": "1543135183291555930"
+          "emoji": "1543135161451814982"
         },
         {
           "name": "Bastón primitivo",
           "units": 1,
           "image": "",
-          "emoji": "1543135185896210552"
+          "emoji": "1543135164849201242"
         },
         {
           "name": "Bastón de criatura infernal",
           "units": 1,
           "image": "",
-          "emoji": "1543135180351610880"
+          "emoji": "1543135158113280061"
         },
         {
           "name": "Bastón de luna sangrienta",
           "units": 1,
           "image": "",
-          "emoji": "1543135182272467055"
+          "emoji": "1543135160604823632"
         },
         {
           "name": "Bastón enraizado",
           "units": 1,
           "image": "",
-          "emoji": "1543135184851959809"
+          "emoji": "1543135162571821116"
         },
         {
           "name": "Bastón de mirada firme",
           "units": 1,
           "image": "",
-          "emoji": "1543135179433054278"
+          "emoji": "1543135156615905350"
         }
       ]
     },
     "stave": {
       "displayName": "Varas",
-      "defaultEmoji": "1543135158859730965",
+      "defaultEmoji": "1543135139129720872",
       "data": [
         {
           "name": "Buscador de grial",
           "units": 1,
           "image": "",
-          "emoji": "1543135160407429120"
+          "emoji": "1543135140211990558"
         },
         {
           "name": "Bastón de doble filo",
           "units": 1,
           "image": "",
-          "emoji": "1543135151398195230"
+          "emoji": "1543135134226849842"
         },
         {
           "name": "Bastón metálico",
           "units": 1,
           "image": "",
-          "emoji": "1543135157731725352"
+          "emoji": "1543135138211303494"
         },
         {
           "name": "Bastón de monje negro",
           "units": 1,
           "image": "",
-          "emoji": "1543135149896503356"
+          "emoji": "1543135133371076618"
         },
         {
           "name": "Hoja de doble fantasma",
           "units": 1,
           "image": "",
-          "emoji": "1543135152434057266"
+          "emoji": "1543135135048798289"
         },
         {
           "name": "Guadaña de almas",
           "units": 1,
           "image": "",
-          "emoji": "1543135164815900734"
+          "emoji": "1543135144746160148"
         },
         {
           "name": "Bastón de equilibrio",
           "units": 1,
           "image": "",
-          "emoji": "1543135161678303353"
+          "emoji": "1543135141071818773"
         },
         {
           "name": "Vara",
           "units": 1,
           "image": "",
-          "emoji": "1543135158859730965"
+          "emoji": "1543135139129720872"
         }
       ]
     },
     "nature": {
       "displayName": "Natural",
-      "defaultEmoji": "1543135187976585216",
+      "defaultEmoji": "1543135168246845471",
       "data": [
         {
           "name": "Bastón de raíz férrea",
           "units": 1,
           "image": "",
-          "emoji": "1543135189603983420"
+          "emoji": "1543135169395818566"
         },
         {
           "name": "Bastón de forjacorteza",
           "units": 1,
           "image": "",
-          "emoji": "1543135190438912031"
+          "emoji": "1543135170390007848"
         },
         {
           "name": "Bastón de infortunio",
           "units": 1,
           "image": "",
-          "emoji": "1543135176010502256"
+          "emoji": "1543135153810051082"
         },
         {
           "name": "Bastón desenfrenado",
           "units": 1,
           "image": "",
-          "emoji": "1543135177411137546"
+          "emoji": "1543135154757968022"
         },
         {
           "name": "Bastón salvaje",
           "units": 1,
           "image": "",
-          "emoji": "1543135186860904457"
+          "emoji": "1543135166032121996"
         },
         {
           "name": "Gran bastón natural",
           "units": 1,
           "image": "",
-          "emoji": "1543135175532089435"
+          "emoji": "1543135152870400001"
         },
         {
           "name": "Bastón de druida",
           "units": 1,
           "image": "",
-          "emoji": "1543135192049254410"
+          "emoji": "1543135171509756004"
         },
         {
           "name": "Bastón natural",
           "units": 1,
           "image": "",
-          "emoji": "1543135187976585216"
+          "emoji": "1543135168246845471"
         }
       ]
     },
     "mace": {
       "displayName": "Mazas",
-      "defaultEmoji": "1543135216464560188",
+      "defaultEmoji": "1543135192552702053",
       "data": [
         {
           "name": "Juradores",
           "units": 1,
           "image": "",
-          "emoji": "1543135194062651442"
+          "emoji": "1543135173602836520"
         },
         {
           "name": "Mangual",
           "units": 1,
           "image": "",
-          "emoji": "1543135195161428068"
+          "emoji": "1543135174592569425"
         },
         {
           "name": "Maza íncubo",
           "units": 1,
           "image": "",
-          "emoji": "1543135218427363379"
+          "emoji": "1543135194494533682"
         },
         {
           "name": "Maza",
           "units": 1,
           "image": "",
-          "emoji": "1543135216464560188"
+          "emoji": "1543135192552702053"
         },
         {
           "name": "Maza pesada",
           "units": 1,
           "image": "",
-          "emoji": "1543135174529777694"
+          "emoji": "1543135151901646938"
         },
         {
           "name": "Maza de lecho",
           "units": 1,
           "image": "",
-          "emoji": "1543135219488526346"
+          "emoji": "1543135195706818590"
         },
         {
           "name": "Maza de camlann",
           "units": 1,
           "image": "",
-          "emoji": "1543135207811448923"
+          "emoji": "1543135185439297577"
         },
         {
           "name": "Dreadstorm Monarch",
           "units": 1,
           "image": "",
-          "emoji": "1543135217102094348"
+          "emoji": "1543135193521717308"
         }
       ]
     },
     "glove": {
       "displayName": "Guantes",
-      "defaultEmoji": "1543135241810481172",
+      "defaultEmoji": "1543135219584999464",
       "data": [
         {
           "name": "Puños de avalon",
           "units": 1,
           "image": "",
-          "emoji": "1543135236341108756"
+          "emoji": "1543135214602035251"
         },
         {
           "name": "Zarpas osunas",
           "units": 1,
           "image": "",
-          "emoji": "1543135240007065690"
+          "emoji": "1543135217592696912"
         },
         {
           "name": "Guantes de peleador",
           "units": 1,
           "image": "",
-          "emoji": "1543135241810481172"
+          "emoji": "1543135219584999464"
         },
         {
           "name": "Guanteletes de púas",
           "units": 1,
           "image": "",
-          "emoji": "1543135206133858325"
+          "emoji": "1543135184507895828"
         },
         {
           "name": "Manos infernales",
           "units": 1,
           "image": "",
-          "emoji": "1543135239004622958"
+          "emoji": "1543135216497852459"
         },
         {
           "name": "Cestus córvidos",
           "units": 1,
           "image": "",
-          "emoji": "1543135240732680313"
+          "emoji": "1543135218641141780"
         },
         {
           "name": "Brazales de batalla",
           "units": 1,
           "image": "",
-          "emoji": "1543135242859053136"
+          "emoji": "1543135220549558312"
         },
         {
           "name": "Forcepulse Bracers",
           "units": 1,
           "image": "",
-          "emoji": "1543135237473701920"
+          "emoji": "1543135215592144946"
         }
       ]
     },
     "holy": {
       "displayName": "Sagrados",
-      "defaultEmoji": "1543135212777640006",
+      "defaultEmoji": "1543135189390336012",
       "data": [
         {
           "name": "Santificador",
           "units": 1,
           "image": "",
-          "emoji": "1543135213691994192"
+          "emoji": "1543135190337982494"
         },
         {
           "name": "Bastón divino",
           "units": 1,
           "image": "",
-          "emoji": "1543135193265741915"
+          "emoji": "1543135172562657380"
         },
         {
           "name": "Bastón caído",
           "units": 1,
           "image": "",
-          "emoji": "1543135201754878042"
+          "emoji": "1543135181693657148"
         },
         {
           "name": "Bastón de toque de vida",
           "units": 1,
           "image": "",
-          "emoji": "1543135215269052478"
+          "emoji": "1543135191357333604"
         },
         {
           "name": "Bastón sagrado",
           "units": 1,
           "image": "",
-          "emoji": "1543135212777640006"
+          "emoji": "1543135189390336012"
         },
         {
           "name": "Gran bastón sagrado",
           "units": 1,
           "image": "",
-          "emoji": "1543135199934685194"
+          "emoji": "1543135179642511360"
         },
         {
           "name": "Bastón de redención",
           "units": 1,
           "image": "",
-          "emoji": "1543135202803580968"
+          "emoji": "1543135182742102106"
         },
         {
           "name": "Bastón exaltado",
           "units": 1,
           "image": "",
-          "emoji": "1543135200811425873"
+          "emoji": "1543135180594618378"
         }
       ]
     },
     "hammer": {
       "displayName": "Martillos",
-      "defaultEmoji": "1543135211548581989",
+      "defaultEmoji": "1543135188224053379",
       "data": [
         {
           "name": "Mano de justicia",
           "units": 1,
           "image": "",
-          "emoji": "1543135197330022471"
+          "emoji": "1543135176786321538"
         },
         {
           "name": "Martillo",
           "units": 1,
           "image": "",
-          "emoji": "1543135211548581989"
+          "emoji": "1543135188224053379"
         },
         {
           "name": "Guardabosques",
           "units": 1,
           "image": "",
-          "emoji": "1543135210261184542"
+          "emoji": "1543135187381133392"
         },
         {
           "name": "Martillo de la tumba",
           "units": 1,
           "image": "",
-          "emoji": "1543135199053881354"
+          "emoji": "1543135178656849950"
         },
         {
           "name": "Gran martillo",
           "units": 1,
           "image": "",
-          "emoji": "1543135196277252106"
+          "emoji": "1543135175616233564"
         },
         {
           "name": "Martillos de forja",
           "units": 1,
           "image": "",
-          "emoji": "1543135224161108029"
+          "emoji": "1543135200932929536"
         },
         {
           "name": "Martillo largo",
           "units": 1,
           "image": "",
-          "emoji": "1543135208822542336"
+          "emoji": "1543135186122973225"
         },
         {
           "name": "Martillo Relámpago",
           "units": 1,
           "image": "",
-          "emoji": "1543135198126932058"
+          "emoji": "1543135177683898409"
         }
       ]
     },
     "frost": {
       "displayName": "Hielos",
-      "defaultEmoji": "1543135249754755102",
+      "defaultEmoji": "1543135227965341777",
       "data": [
         {
           "name": "Grito gélido",
           "units": 1,
           "image": "",
-          "emoji": "1543135250446549023"
+          "emoji": "1543135229034893322"
         },
         {
           "name": "Bastón de hielo",
           "units": 1,
           "image": "",
-          "emoji": "1543135249754755102"
+          "emoji": "1543135227965341777"
         },
         {
           "name": "Gran bastón de hielo",
           "units": 1,
           "image": "",
-          "emoji": "1543135229370179636"
+          "emoji": "1543135205995585546"
         },
         {
           "name": "Bastón de escarcha",
           "units": 1,
           "image": "",
-          "emoji": "1543135251906428998"
+          "emoji": "1543135229923954798"
         },
         {
           "name": "Bastón ártico",
           "units": 1,
           "image": "",
-          "emoji": "1543135230615887913"
+          "emoji": "1543135207069057104"
         },
         {
           "name": "Bastón glacial",
           "units": 1,
           "image": "",
-          "emoji": "1543135231609937960"
+          "emoji": "1543135208050655232"
         },
         {
           "name": "Bastón de carámbanos",
           "units": 1,
           "image": "",
-          "emoji": "1543135203902619698"
+          "emoji": "1543135183581220974"
         },
         {
           "name": "Prisma de hielos",
           "units": 1,
           "image": "",
-          "emoji": "1543135232658776144"
+          "emoji": "1543135209116012624"
         }
       ]
     },
     "fire": {
       "displayName": "Fuegos",
-      "defaultEmoji": "1543135246256709652",
+      "defaultEmoji": "1543135224177889290",
       "data": [
         {
           "name": "Canción de despertar",
           "units": 1,
           "image": "",
-          "emoji": "1543135226459332608"
+          "emoji": "1543135203361431552"
         },
         {
           "name": "Gran bastón",
           "units": 1,
           "image": "",
-          "emoji": "1543135143110381578"
+          "emoji": "1543135127641530398"
         },
         {
           "name": "Bastón infernal",
           "units": 1,
           "image": "",
-          "emoji": "1543135234390884362"
+          "emoji": "1543135211347378196"
         },
         {
           "name": "Bastón flamígero",
           "units": 1,
           "image": "",
-          "emoji": "1543135235338797106"
+          "emoji": "1543135213264175154"
         },
         {
           "name": "Bastón ígneo",
           "units": 1,
           "image": "",
-          "emoji": "1543135246256709652"
+          "emoji": "1543135224177889290"
         },
         {
           "name": "Bastón de azufre",
           "units": 1,
           "image": "",
-          "emoji": "1543135227961020496"
+          "emoji": "1543135204636491847"
         },
         {
           "name": "Bastón de fuego incontrolable",
           "units": 1,
           "image": "",
-          "emoji": "1543135248341012571"
+          "emoji": "1543135227319422976"
         },
         {
           "name": "Blazing Staff",
           "units": 1,
           "image": "",
-          "emoji": "1543135247338709052"
+          "emoji": "1543135225205366794"
         }
       ]
     },
     "dagger": {
       "displayName": "Dagas",
-      "defaultEmoji": "1543135243941183569",
+      "defaultEmoji": "1543135221761704036",
       "data": [
         {
           "name": "Furia contenida",
           "units": 1,
           "image": "",
-          "emoji": "1543135221342277682"
+          "emoji": "1543135197766357103"
         },
         {
           "name": "Colmillo demoníaco",
           "units": 1,
           "image": "",
-          "emoji": "1543135245115850883"
+          "emoji": "1543135223015931935"
         },
         {
           "name": "Daga doble",
           "units": 1,
           "image": "",
-          "emoji": "1543135222206562334"
+          "emoji": "1543135199016128613"
         },
         {
           "name": "Garras",
           "units": 1,
           "image": "",
-          "emoji": "1543135220407079002"
+          "emoji": "1543135196541489264"
         },
         {
           "name": "Daga",
           "units": 1,
           "image": "",
-          "emoji": "1543135243941183569"
+          "emoji": "1543135221761704036"
         },
         {
           "name": "Sangradora",
           "units": 1,
           "image": "",
-          "emoji": "1543135253294485544"
+          "emoji": "1543135230641307789"
         },
         {
           "name": "Concedemuertes",
           "units": 1,
           "image": "",
-          "emoji": "1543135225159221318"
+          "emoji": "1543135201935491082"
         },
         {
           "name": "Twin Slayers",
           "units": 1,
           "image": "",
-          "emoji": "1543135223108214814"
+          "emoji": "1543135199896797234"
         }
       ]
     },
     "cursed": {
       "displayName": "Maldiciones",
-      "defaultEmoji": "1543135272403738645",
+      "defaultEmoji": "1543135251646255114",
       "data": [
         {
           "name": "Invocador oscuro",
           "units": 1,
           "image": "",
-          "emoji": "1543135285066473543"
+          "emoji": "1543135252258496543"
         },
         {
           "name": "Bastón demoniaco",
           "units": 1,
           "image": "",
-          "emoji": "1543135262098587698"
+          "emoji": "1543135240707383356"
         },
         {
           "name": "Calavera maldita",
           "units": 1,
           "image": "",
-          "emoji": "1543135268826124378"
+          "emoji": "1543135246994645113"
         },
         {
           "name": "Bastón de maldición de vida",
           "units": 1,
           "image": "",
-          "emoji": "1543135287981506630"
+          "emoji": "1543135254548713494"
         },
         {
           "name": "Bastón maldito",
           "units": 1,
           "image": "",
-          "emoji": "1543135272403738645"
+          "emoji": "1543135251646255114"
         },
         {
           "name": "Gran bastón maldito",
           "units": 1,
           "image": "",
-          "emoji": "1543135260127002644"
+          "emoji": "1543135238279012372"
         },
         {
           "name": "Bastón de maldiciones",
           "units": 1,
           "image": "",
-          "emoji": "1543135261083308032"
+          "emoji": "1543135239453417502"
         },
         {
           "name": "Bastón putrefacto",
           "units": 1,
           "image": "",
-          "emoji": "1543135286307848302"
+          "emoji": "1543135253579964416"
         }
       ]
     },
     "crossbow": {
       "displayName": "Ballestas",
-      "defaultEmoji": "1543135256411115520",
+      "defaultEmoji": "1543135233929379900",
       "data": [
         {
           "name": "Modelador de energía",
           "units": 1,
           "image": "",
-          "emoji": "1543135257384067142"
+          "emoji": "1543135235464499221"
         },
         {
           "name": "Lanzasaetas",
           "units": 1,
           "image": "",
-          "emoji": "1543135265650901062"
+          "emoji": "1543135242838081568"
         },
         {
           "name": "Arco de asedio",
           "units": 1,
           "image": "",
-          "emoji": "1543135259296530453"
+          "emoji": "1543135237469511821"
         },
         {
           "name": "Repetidora de desconsuelo",
           "units": 1,
           "image": "",
-          "emoji": "1543135267727085579"
+          "emoji": "1543135245589680180"
         },
         {
           "name": "Ballesta",
           "units": 1,
           "image": "",
-          "emoji": "1543135256411115520"
+          "emoji": "1543135233929379900"
         },
         {
           "name": "Ballesta pesada",
           "units": 1,
           "image": "",
-          "emoji": "1543135258390696006"
+          "emoji": "1543135236500492371"
         },
         {
           "name": "Ballesta ligera",
           "units": 1,
           "image": "",
-          "emoji": "1543135270998769705"
+          "emoji": "1543135250497151007"
         },
         {
           "name": "Arclight Blasters",
           "units": 1,
           "image": "",
-          "emoji": "1543135263956668477"
+          "emoji": "1543135241986641930"
         }
       ]
     },
     "bow": {
       "displayName": "Arcos",
-      "defaultEmoji": "1543135293551673414",
+      "defaultEmoji": "1543135258726371378",
       "data": [
         {
           "name": "Perforador de niebla",
           "units": 1,
           "image": "",
-          "emoji": "1543135294453190656"
+          "emoji": "1543135259518959727"
         },
         {
           "name": "Arco de lamentaciones",
           "units": 1,
           "image": "",
-          "emoji": "1543135296462266489"
+          "emoji": "1543135262094393414"
         },
         {
           "name": "Arco largo",
           "units": 1,
           "image": "",
-          "emoji": "1543135302623830066"
+          "emoji": "1543135269551607808"
         },
         {
           "name": "Arco de guerra",
           "units": 1,
           "image": "",
-          "emoji": "1543135269887148103"
+          "emoji": "1543135248873955338"
         },
         {
           "name": "Arco",
           "units": 1,
           "image": "",
-          "emoji": "1543135293551673414"
+          "emoji": "1543135258726371378"
         },
         {
           "name": "Arco de badón",
           "units": 1,
           "image": "",
-          "emoji": "1543135297481744497"
+          "emoji": "1543135263729918063"
         },
         {
           "name": "Arco susurrante",
           "units": 1,
           "image": "",
-          "emoji": "1543135266812862545"
+          "emoji": "1543135244226662450"
         },
         {
           "name": "Skystrider Bow",
           "units": 1,
           "image": "",
-          "emoji": "1543135295397175347"
+          "emoji": "1543135260420743180"
         }
       ]
     },
     "arcane": {
       "displayName": "Arcanos",
-      "defaultEmoji": "1543135306503684117",
+      "defaultEmoji": "1543135272269643776",
       "data": [
         {
           "name": "Bastón arcano",
           "units": 1,
           "image": "",
-          "emoji": "1543135306503684117"
+          "emoji": "1543135272269643776"
         },
         {
           "name": "Bastón astral",
           "units": 1,
           "image": "",
-          "emoji": "1543135254276210728"
+          "emoji": "1543135232079695942"
         },
         {
           "name": "Gran bastón arcano",
           "units": 1,
           "image": "",
-          "emoji": "1543135289994641469"
+          "emoji": "1543135256310448149"
         },
         {
           "name": "Locus malévolo",
           "units": 1,
           "image": "",
-          "emoji": "1543135140782415893"
+          "emoji": "1543135125284458576"
         },
         {
           "name": "Sonido equilibrado",
           "units": 1,
           "image": "",
-          "emoji": "1543135288925360168"
+          "emoji": "1543135255345496074"
         },
         {
           "name": "Bastón enigmático",
           "units": 1,
           "image": "",
-          "emoji": "1543135299687809094"
+          "emoji": "1543135265877663834"
         },
         {
           "name": "Bastón oculto",
           "units": 1,
           "image": "",
-          "emoji": "1543135290913198100"
+          "emoji": "1543135257124012053"
         },
         {
           "name": "Bastón de brujería",
           "units": 1,
           "image": "",
-          "emoji": "1543135307531030548"
+          "emoji": "1543135273192259736"
         }
       ]
     },
     "axe": {
       "displayName": "Hachas",
-      "defaultEmoji": "1543135308978065488",
+      "defaultEmoji": "1543135274270466148",
       "data": [
         {
           "name": "Romperreinos",
           "units": 1,
           "image": "",
-          "emoji": "1543135291907248212"
+          "emoji": "1543135257908355192"
         },
         {
           "name": "Falce de cristal",
           "units": 1,
           "image": "",
-          "emoji": "1543135303609483264"
+          "emoji": "1543135270474620968"
         },
         {
           "name": "Alabarda",
           "units": 1,
           "image": "",
-          "emoji": "1543135300631404564"
+          "emoji": "1543135267563773952"
         },
         {
           "name": "Patas de oso",
           "units": 1,
           "image": "",
-          "emoji": "1543135298551025724"
+          "emoji": "1543135264988467231"
         },
         {
           "name": "Hacha de guerra",
           "units": 1,
           "image": "",
-          "emoji": "1543135308978065488"
+          "emoji": "1543135274270466148"
         },
         {
           "name": "Gran hacha",
           "units": 1,
           "image": "",
-          "emoji": "1543135255123337238"
+          "emoji": "1543135232935596173"
         },
         {
           "name": "Guadaña infernal",
           "units": 1,
           "image": "",
-          "emoji": "1543135304842616842"
+          "emoji": "1543135271426588773"
         },
         {
           "name": "Llamacarroña",
           "units": 1,
           "image": "",
-          "emoji": "1543135301482840094"
+          "emoji": "1543135268582719498"
         }
       ]
     }

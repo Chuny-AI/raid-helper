@@ -1,10 +1,12 @@
 ﻿const EconomyBalance = require('../../database/models/economy/EconomyBalance');
 const EconomyTransaction = require('../../database/models/economy/EconomyTransaction');
 const EconomyLogChannel = require('../../database/models/economy/EconomyLogChannel');
+const { UserError } = require('../../utils/userError');
 
 const ensurePositiveAmount = (amount) => {
   if (!Number.isInteger(amount) || amount <= 0) {
-    throw new Error('La cantidad debe ser un numero entero positivo.');
+    // UserError: este mensaje sí está escrito para quien ejecuta el comando.
+    throw new UserError('La cantidad debe ser un numero entero positivo.');
   }
 };
 

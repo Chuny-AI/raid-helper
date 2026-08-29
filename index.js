@@ -1,4 +1,5 @@
 const { client } = require("./src/utils/client");
+const { installProcessGuards } = require("./src/utils/processGuards");
 const { getCommands } = require("./src/utils/commands");
 const { getEvents } = require("./src/utils/events");
 const { connectDB } = require("./src/database/connection");
@@ -31,6 +32,10 @@ app.get("/health", (req, res) => {
 app.listen(PORT, () => {
   console.log(`[INFO] Servidor HTTP corriendo en puerto ${PORT}`);
 });
+
+// Red de seguridad: un fallo dentro de un manejador no puede tumbar el bot.
+// Se instala antes que nada para cubrir también el arranque.
+installProcessGuards(client);
 
 global.discordClient = client;
 
@@ -143,19 +148,25 @@ async function initializeBot() {
     const { ensureCollections } = require('./src/database/bootstrap');
     await ensureCollections();
 
-    // Sembrar la colección de armas desde src/weapons/weapons.json si está
-    // vacía. Es idempotente (omite las armas cuyo emojiId ya existe), así que
-    // es seguro dejarlo correr en cada arranque. Sin esto, /show_all_weapons
-    // y /show_all_categories consultan Mongo directamente (sin fallback al
-    // JSON) y muestran "0 armas" si la colección nunca se sembró.
+    // Cargar las armas del catálogo del entorno actual (weapons.json en
+    // producción, weapons_dev.json en desarrollo) que aún no estén en la BD.
+    //
+    // Solo inserta lo que falta: las armas ya existentes no se tocan. Sin esto,
+    // /show_all_weapons y /show_all_categories consultan Mongo directamente
+    // (sin fallback al JSON) y muestran "0 armas". Además desactiva las que ya
+    // no figuran en ningún catálogo (la propia función lo registra en el log).
     try {
-      const { migrateWeaponsFromJSON } = require('./src/services/weaponService');
-      const weaponResult = await migrateWeaponsFromJSON();
-      if (weaponResult.migratedCount > 0) {
-        console.log(`[INFO] ${weaponResult.migratedCount} arma(s) sembradas en la base de datos desde weapons.json`);
+      const { seedWeaponsFromCatalog } = require('./src/services/weaponService');
+      const { getWeaponsPath } = require('./src/weapons/weaponsSource');
+      const armas = await seedWeaponsFromCatalog();
+      const catalogo = path.basename(getWeaponsPath());
+      if (armas.insertadas > 0) {
+        console.log(`[INFO] ${armas.insertadas} arma(s) cargadas desde ${catalogo} (${armas.total} en el catálogo)`);
+      } else {
+        console.log(`[INFO] Armas ya cargadas desde ${catalogo}: ${armas.total} en la base de datos`);
       }
     } catch (weaponError) {
-      console.error('[ERROR] No se pudo sembrar la colección de armas:', weaponError);
+      console.error('[ERROR] No se pudieron cargar las armas:', weaponError);
     }
 
     getCommands();

@@ -1,7 +1,11 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags, InteractionContextType } = require("discord.js");
 const { getAuthorizedRoles, addAuthorizedRole, removeAuthorizedRole, clearAuthorizedRoles } = require("../../services/authorizedRoleService");
 const { getOrCreateServer } = require("../../services/serverService");
-const { checkOwner } = require("../../middleware/ownerCheck");
+// Variante silenciosa: aquí ser propietario es solo una de las dos vías de
+// acceso (la otra es ser administrador del servidor), así que la comprobación
+// no debe responder por su cuenta. `checkOwner` sí responde, y a un
+// administrador le soltaba un "Acceso Denegado" antes de ejecutar el comando.
+const { isOwner: checkIsOwner } = require("../../middleware/ownerCheck");
 const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 
 /**
@@ -10,6 +14,8 @@ const { createErrorEmbed, createSuccessEmbed, createInfoEmbed, safeReply } = req
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("roles")
+    // Comando de servidor: sin guild no hay miembros, roles ni templates que consultar.
+    .setContexts(InteractionContextType.Guild)
     .setDescription("Gestiona los roles autorizados para enviar notificaciones a todos los usuarios")
     .addSubcommand(subcommand =>
       subcommand
@@ -48,7 +54,7 @@ module.exports = {
     try {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      const isOwner = await checkOwner(interaction);
+      const isOwner = await checkIsOwner(interaction);
       const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
       
       if (!isOwner && !isAdmin) {

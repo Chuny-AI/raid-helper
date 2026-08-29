@@ -3,6 +3,7 @@ const { createTemplate } = require("../../services/templateService");
 const { createSuccessEmbed, createErrorEmbed, createInfoEmbed, safeReply } = require("../../utils/errorEmbeds");
 const { getTemplateCreationSessions, getSession, updateSession, deleteSession } = require("./template-sessions");
 const { safeDeferUpdate } = require('../../utils/interaction');
+const { formatEmoji } = require('../../utils/emoji');
 
 /**
  * Maneja la navegación hacia atrás en el proceso
@@ -173,9 +174,7 @@ async function showFinalSummary(interaction, sessionId) {
     const weaponInfo = Object.entries(data.weapons)
       .map(([key, weapon]) => {
         // Formatear el emoji del grupo
-        const groupEmoji = weapon.defaultEmoji ?
-          (weapon.defaultEmoji.match(/^\d+$/) ? `<:emoji:${weapon.defaultEmoji}>` : weapon.defaultEmoji) :
-          '⚔️';
+        const groupEmoji = formatEmoji(weapon.defaultEmoji, '⚔️');
         return `${groupEmoji} **${weapon.displayName}** (${weapon.data.length} armas, ${weapon.data[0].units} slots)`;
       })
       .join('\n');

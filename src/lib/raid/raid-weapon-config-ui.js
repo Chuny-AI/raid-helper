@@ -22,6 +22,7 @@ const {
   isWeaponDisabled,
   getTotalCapacity,
 } = require('../../utils/raidWeaponConfig');
+const { formatEmoji, toComponentEmoji, applyEmoji } = require('../../utils/emoji');
 
 /**
  * Panel de configuración de armas de `/raid create`.
@@ -62,18 +63,90 @@ const parseId = (customId) => {
 /** Recorta un texto al límite admitido por Discord. */
 const clamp = (text, max) => String(text ?? '').slice(0, max);
 
-/** Devuelve el emoji si es un ID de emoji personalizado válido, si no undefined. */
-const customEmoji = (value) => {
-  const id = value === null || value === undefined ? '' : String(value);
-  return /^\d+$/.test(id) ? id : undefined;
+/** Límites de caracteres de Discord en un embed. */
+const FIELD_VALUE_LIMIT = 1024;
+const DESCRIPTION_LIMIT = 4096;
+
+/** Texto de relleno cuando la lista no cabe entera. */
+const omittedNote = (omitidas) =>
+  `_…y ${omitidas} más. Se configuran igual desde el selector de abajo._`;
+
+/**
+ * Reparte líneas en bloques que no pasen de `limite`, cortando solo entre
+ * líneas completas.
+ *
+ * Cortar a mitad de línea dejaba los últimos grupos fuera sin avisar y podía
+ * partir una etiqueta `<:nombre:id>` por la mitad, que entonces se ve como
+ * texto crudo.
+ *
+ * @param {string[]} lines
+ * @param {number} limite
+ * @returns {string[][]}
+ */
+const splitIntoBlocks = (lines, limite) => {
+  const bloques = [[]];
+  let largo = 0;
+  for (const linea of lines) {
+    const texto = clamp(linea, limite);
+    const coste = largo === 0 ? texto.length : texto.length + 1;
+    if (largo + coste > limite) {
+      bloques.push([texto]);
+      largo = texto.length;
+    } else {
+      bloques[bloques.length - 1].push(texto);
+      largo += coste;
+    }
+  }
+  return bloques;
 };
 
-/** Formatea un emoji para mostrarlo dentro de un texto de embed. */
-const renderEmoji = (value) => {
-  const id = value === null || value === undefined ? '' : String(value);
-  if (/^\d+$/.test(id)) return `<:w:${id}>`;
-  return id || '•';
+/**
+ * Junta cuantas líneas quepan en `limite`, en un solo bloque.
+ * @returns {{ texto: string, omitidas: number }}
+ */
+const packLines = (lines, limite) => {
+  const [primero] = splitIntoBlocks(lines, limite);
+  return { texto: primero.join('\n'), omitidas: lines.length - primero.length };
 };
+
+/**
+ * Añade una lista de líneas al embed, repartida en tantos campos como haga falta.
+ *
+ * Discord dibuja una separación entre campos, así que esto solo se usa donde la
+ * lista puede pasar de 1024 caracteres de verdad; para la lista de grupos es
+ * preferible la descripción, que admite 4096 y se ve seguida.
+ *
+ * @param {EmbedBuilder} embed
+ * @param {string} name Título del primer campo; los siguientes van sin título.
+ * @param {string[]} lines
+ * @param {string} vacio Texto a mostrar si no hay ninguna línea.
+ * @param {number} [maxBloques] Tope de campos, para no rebasar los 6000 del embed.
+ */
+const addLineFields = (embed, name, lines, vacio, maxBloques = 4) => {
+  if (lines.length === 0) {
+    embed.addFields({ name, value: vacio, inline: false });
+    return;
+  }
+
+  const bloques = splitIntoBlocks(lines, FIELD_VALUE_LIMIT);
+
+  bloques.slice(0, maxBloques).forEach((bloque, i) => {
+    // Discord exige un nombre no vacío: en los campos de continuación va un
+    // espacio de ancho cero para que se lean como una sola lista.
+    embed.addFields({ name: i === 0 ? name : '​', value: bloque.join('\n'), inline: false });
+  });
+
+  const omitidas = bloques.slice(maxBloques).reduce((suma, bloque) => suma + bloque.length, 0);
+  if (omitidas > 0) {
+    embed.addFields({ name: '​', value: omittedNote(omitidas), inline: false });
+  }
+};
+
+/** Devuelve el emoji si es un ID de emoji personalizado válido, si no undefined. */
+const customEmoji = (value) => toComponentEmoji(value);
+
+/** Formatea un emoji para mostrarlo dentro de un texto de embed. */
+const renderEmoji = (value) => formatEmoji(value, '•');
 
 /**
  * Estado textual del grupo, para las descripciones del panel.
@@ -110,24 +183,37 @@ const buildOverviewPanel = (template, overrides, pendingId) => {
       : enabledItems
         .map((entry) => `${renderEmoji(entry.item.emoji)} ${entry.name} ×${entry.units}`)
         .join(', ');
-    lines.push(`${icon} **${group.displayName}** — cupo **${capacity}**\n└ ${clamp(detail, 180)}`);
+    // El emoji del grupo va junto al nombre: el icono de estado solo indica
+    // si esta habilitado, no de que grupo se trata.
+    const groupEmoji = formatEmoji(group.defaultEmoji);
+    const heading = groupEmoji
+      ? `${icon} ${groupEmoji} **${group.displayName}**`
+      : `${icon} **${group.displayName}**`;
+    lines.push(`${heading} — cupo **${capacity}**\n└ ${clamp(detail, 180)}`);
   }
 
   const totalCapacity = getTotalCapacity(template, overrides);
 
+  // La lista va en la descripción, no en un campo: Discord separa visualmente
+  // los campos entre sí, y partir los grupos en dos campos metía un hueco en
+  // mitad de la lista. La descripción admite 4096 caracteres y se ve seguida.
+  const intro =
+    'Selecciona un grupo para ajustarlo antes de publicar. Puedes cambiar el cupo del grupo, ' +
+    'deshabilitarlo por completo, o ajustar/deshabilitar cada arma por separado.\n\n' +
+    '*El cupo del grupo siempre manda sobre el de las armas.*';
+  const cabecera = `**Grupos (capacidad total: ${totalCapacity})**`;
+
+  let listado = '_El template no tiene grupos de armas._';
+  if (lines.length > 0) {
+    // Se reserva sitio para el intro, la cabecera, los saltos y el posible aviso.
+    const { texto, omitidas } = packLines(lines, DESCRIPTION_LIMIT - intro.length - cabecera.length - 120);
+    listado = omitidas > 0 ? `${texto}\n${omittedNote(omitidas)}` : texto;
+  }
+
   const embed = new EmbedBuilder()
     .setTitle('⚙️ Configuración de armas del raid')
     .setColor(totalCapacity > 0 ? 0x00ffff : 0xff5555)
-    .setDescription(
-      'Selecciona un grupo para ajustarlo antes de publicar. Puedes cambiar el cupo del grupo, ' +
-      'deshabilitarlo por completo, o ajustar/deshabilitar cada arma por separado.\n\n' +
-      '*El cupo del grupo siempre manda sobre el de las armas.*'
-    )
-    .addFields({
-      name: `Grupos (capacidad total: ${totalCapacity})`,
-      value: clamp(lines.join('\n') || '_El template no tiene grupos de armas._', 1024),
-      inline: false,
-    });
+    .setDescription(`${intro}\n\n${cabecera}\n${listado}`);
 
   if (totalCapacity <= 0) {
     embed.addFields({
@@ -145,8 +231,7 @@ const buildOverviewPanel = (template, overrides, pendingId) => {
       .setLabel(clamp(group.displayName || groupKey, 100))
       .setValue(groupKey)
       .setDescription(clamp(describeGroupStatus(template, overrides, groupKey), 100));
-    const emoji = customEmoji(group.defaultEmoji);
-    if (emoji) option.setEmoji(emoji);
+    applyEmoji(option, group.defaultEmoji);
     return option;
   });
 
@@ -232,13 +317,10 @@ const buildGroupPanel = (template, overrides, pendingId, groupKey) => {
         name: 'Suma de armas habilitadas',
         value: `**${enabledSum}**`,
         inline: true,
-      },
-      {
-        name: `Armas (${items.length})`,
-        value: clamp(weaponLines.join('\n') || '_Sin armas configuradas._', 1024),
-        inline: false,
       }
     );
+
+  addLineFields(embed, `Armas (${items.length})`, weaponLines, '_Sin armas configuradas._');
 
   if (notes.length > 0) {
     embed.addFields({ name: 'Avisos', value: clamp(notes.join('\n'), 1024), inline: false });
@@ -257,8 +339,7 @@ const buildGroupPanel = (template, overrides, pendingId, groupKey) => {
       .setLabel(clamp(`${off ? '🚫 ' : ''}${name}`, 100))
       .setValue(String(index))
       .setDescription(clamp(`#${index} · cupo ${units}${off ? ' · deshabilitada' : ''}`, 100));
-    const emoji = customEmoji(item.emoji);
-    if (emoji) option.setEmoji(emoji);
+    applyEmoji(option, item.emoji);
     return option;
   });
 

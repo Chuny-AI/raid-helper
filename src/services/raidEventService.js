@@ -17,12 +17,15 @@ async function getActiveRaids() {
  * cargado en memoria. Usado por las rutinas de expiración automática
  * (src/utils/events.js), que solo conocen el eventId. Para cerrar un raid
  * desde una interacción, usa raidInteractions.finishRaid en su lugar.
+ *
+ * Suelta también `threadId`: un raid cerrado ya no tiene hilo privado (quien
+ * cierra debe borrarlo antes; ver `closeRaidAndThread` en src/utils/events.js).
  */
 async function closeRaidEvent(eventId) {
   try {
     return await RaidEvent.findOneAndUpdate(
       { eventId },
-      { status: 'closed', updatedAt: new Date() },
+      { status: 'closed', threadId: null, updatedAt: new Date() },
       { new: true }
     );
   } catch (error) {

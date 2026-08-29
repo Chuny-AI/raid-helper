@@ -29,6 +29,24 @@ const getTemplateByName = async (templateName, serverId) => {
 };
 
 /**
+ * Obtiene un template por su _id, acotado al servidor indicado.
+ *
+ * Los handlers de botones reciben el _id dentro del customId, así que antes de
+ * modificar o borrar hay que confirmar que ese template es de este servidor:
+ * un `findById` a secas no distingue entre gremios.
+ * @returns {Promise<Object|null>} null si no existe o es de otro servidor
+ */
+const getTemplateById = async (templateId, serverId) => {
+  try {
+    return await Template.findOne({ _id: templateId, serverId });
+  } catch (error) {
+    // Un _id con formato inválido (viene de un customId) lanza CastError
+    console.error('[ERROR] Error en getTemplateById:', error.message);
+    return null;
+  }
+};
+
+/**
  * Crea un nuevo template
  */
 const createTemplate = async (templateData, serverId) => {
@@ -150,13 +168,33 @@ const deleteTemplate = async (templateId, serverId = null) => {
   }
 };
 
+/** Escapa los metacaracteres de expresión regular de un texto. */
+const escapeRegex = (texto) => String(texto).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
- * Obtiene los nombres de todos los templates de un servidor
+ * Obtiene los nombres de los templates de un servidor, opcionalmente filtrados.
+ *
+ * El filtro se aplica en la consulta, no después: con `limit(25)` a secas Mongo
+ * devolvía siempre los 25 primeros por orden natural y el filtrado en memoria
+ * solo podía descartar de esos 25, así que en un servidor con más templates los
+ * que quedaban fuera no aparecían nunca por mucho que el usuario escribiera su
+ * nombre completo. Se ordena por título para que el corte sea estable.
+ *
+ * @param {string} serverId
+ * @param {string} [query] Texto escrito por el usuario en el autocompletado.
+ * @returns {Promise<Array<{name: string, value: string}>>} máximo 25 (límite de Discord)
  */
-const getTemplateNames = async (serverId) => {
+const getTemplateNames = async (serverId, query = '') => {
   try {
+    const filtro = { serverId };
+    const texto = String(query || '').trim();
+    // Se escapa: el texto viene tal cual del autocompletado y sin escapar un
+    // `(a+)+` o un `.` cambiarían (o colgarían) la consulta.
+    if (texto) filtro.title = { $regex: escapeRegex(texto), $options: 'i' };
+
     // Usar lean() para consulta más rápida y limitar a 25 resultados
-    const templates = await Template.find({ serverId }, 'title')
+    const templates = await Template.find(filtro, 'title')
+      .sort({ title: 1 })
       .limit(25)
       .lean()
       .maxTimeMS(2000); // Timeout de 2 segundos
@@ -231,6 +269,7 @@ const migrateTemplatesFromFiles = async (serverId) => {
 module.exports = {
   getTemplatesByServer,
   getTemplateByName,
+  getTemplateById,
   createTemplate,
   updateTemplate,
   deleteTemplate,

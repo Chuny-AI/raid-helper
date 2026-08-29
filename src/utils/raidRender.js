@@ -14,6 +14,7 @@ const {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } = require('discord.js');
+const { formatEmoji, applyEmoji } = require('./emoji');
 const {
   availableSlots,
   slotOccupancy,
@@ -51,12 +52,6 @@ function groupDisplayName(state, groupKey) {
   return g ? g.displayName : groupKey;
 }
 
-function formatEmoji(emoji) {
-  if (!emoji) return '';
-  if (/^\d+$/.test(String(emoji))) return `<:weapon:${emoji}>`;
-  return String(emoji);
-}
-
 /**
  * Construye los fields de grupo, uno por grupo, en el orden congelado en `state.groups`.
  */
@@ -71,7 +66,8 @@ function buildGroupFields(state) {
     if (slots.length === 0) continue;
 
     const { current } = groupOccupancy(state, group.groupKey);
-    const emojiTag = group.emoji ? `<:${group.emoji}:${group.emoji}> ` : '';
+    const groupEmoji = formatEmoji(group.emoji);
+    const emojiTag = groupEmoji ? `${groupEmoji} ` : '';
     const name = `${emojiTag}${group.displayName} (${current}/${group.maxPlayers}):`;
 
     const lines = [];
@@ -89,6 +85,66 @@ function buildGroupFields(state) {
   }
 
   return fields;
+}
+
+/** Límites de un embed en Discord. */
+const MAX_EMBED_FIELDS = 25;
+const MAX_EMBED_CHARS = 6000;
+
+/** Caracteres que Discord cuenta para el límite de 6000 de un embed. */
+function embedSize(embed, fields) {
+  const json = embed.toJSON();
+  return (
+    (json.title || '').length +
+    (json.description || '').length +
+    (json.author?.name || '').length +
+    (json.footer?.text || '').length +
+    fields.reduce((suma, f) => suma + f.name.length + f.value.length, 0)
+  );
+}
+
+/**
+ * Deja el embed dentro de los 25 campos y 6000 caracteres que admite Discord.
+ *
+ * Cada grupo del template ocupa un campo, así que a partir de 17 grupos se
+ * pasaba de 25 y discord.js rechazaba el embed entero con "Invalid number
+ * value": el raid no se podía publicar y, peor, tampoco volver a renderizar,
+ * con lo que un raid ya publicado se quedaba congelado.
+ *
+ * Se recortan grupos por el final y se deja constancia. Los campos de cabecera
+ * (líder, hora, hilo) y las listas de espera nunca se tocan.
+ *
+ * @param {EmbedBuilder} embed
+ * @param {Array} fields Todos los campos, en orden.
+ * @param {number} inicioGrupos Índice del primer campo de grupo.
+ * @param {number} numGrupos Cuántos campos de grupo hay.
+ * @returns {Array} Los campos que sí caben.
+ */
+function fitFields(embed, fields, inicioGrupos, numGrupos) {
+  const armar = (visibles) => {
+    const ocultos = numGrupos - visibles;
+    if (ocultos <= 0) return fields.slice();
+    const copia = fields.slice();
+    copia.splice(inicioGrupos + visibles, ocultos, {
+      name: '⚠️ Grupos no mostrados',
+      value:
+        `No caben **${ocultos}** grupo(s) más en el mensaje (Discord admite ${MAX_EMBED_FIELDS} bloques). ` +
+        'Usa menos grupos en el template para que se vean todos.',
+      inline: false,
+    });
+    return copia;
+  };
+
+  let visibles = numGrupos;
+  let resultado = armar(visibles);
+  while (
+    visibles > 0 &&
+    (resultado.length > MAX_EMBED_FIELDS || embedSize(embed, resultado) > MAX_EMBED_CHARS)
+  ) {
+    visibles--;
+    resultado = armar(visibles);
+  }
+  return resultado;
 }
 
 function buildSocialFields() {
@@ -151,7 +207,18 @@ function renderRaidEmbed(raid, state) {
     });
   }
 
-  fields.push(...buildGroupFields(state));
+  // El hilo se borra al finalizar el raid, así que en un raid cerrado el enlace
+  // apuntaría a un canal inexistente.
+  if (raid.threadId && !isClosed) {
+    fields.push({
+      name: '💬 Hilo privado:',
+      value: `<#${raid.threadId}> — solo pueden escribir quienes estén anotados.`,
+    });
+  }
+
+  const groupFields = buildGroupFields(state);
+  const inicioGrupos = fields.length;
+  fields.push(...groupFields);
 
   if (state.looters && state.looters.max > 0) {
     const lines = (state.looters.users || []).map((u) => `<@${u.userId}>`);
@@ -186,7 +253,7 @@ function renderRaidEmbed(raid, state) {
 
   fields.push(...buildSocialFields());
 
-  embed.addFields(fields);
+  embed.addFields(fitFields(embed, fields, inicioGrupos, groupFields.length));
   return embed;
 }
 
@@ -209,7 +276,7 @@ function optionFromSlot(state, slot) {
     .setLabel(`${label}${suffix}`.slice(0, 100))
     .setValue(slot.slotId)
     .setDescription(`Grupo: ${groupName} · ${current}/${max}`.slice(0, 100));
-  if (slot.emoji && /^\d+$/.test(String(slot.emoji))) opt.setEmoji(String(slot.emoji));
+  applyEmoji(opt, slot.emoji);
   return opt;
 }
 

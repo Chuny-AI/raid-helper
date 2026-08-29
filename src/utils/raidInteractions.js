@@ -15,6 +15,7 @@ const raidRegistry = require('../services/raidRegistry');
 const { renderGroupPickSelect, renderWaitlistSelect } = require('./raidRender');
 const { safeDeferUpdate } = require('./interaction');
 const { createBuildEmbed } = require('./embed');
+const { syncRaidThread, deleteRaidThread } = require('./raidThread');
 
 /** Responde SIEMPRE de forma efímera, sin importar si la interacción ya fue deferida como update. */
 async function ephemeralReply(interaction, payload) {
@@ -390,15 +391,55 @@ async function finishRaid(raidId, actorId, guild) {
     runtime.raid.status = 'closed';
     runtime.raid.closedBy = actorId;
     runtime.raid.closedAt = new Date();
-    await runtime.raid.save();
+
+    // El id se suelta antes de guardar: aunque el borrado falle, el raid ya no
+    // referencia un hilo que nadie va a volver a usar.
+    const threadId = runtime.raid.threadId;
+    runtime.raid.threadId = null;
+
+    // Vía el serializador del registro: un `persistRaid` de la última
+    // interacción puede seguir en vuelo sobre este mismo documento.
+    await raidRegistry.saveRaid(raidId);
     try {
       require('./reminderManager').cancelReminder(raidId);
     } catch (e) {
       console.error('[WARN] finishRaid: error cancelando recordatorio:', e?.message);
     }
     await raidRegistry.renderAndEdit(raidId);
+
+    if (threadId) {
+      await deleteRaidThread(guild, threadId, raidId);
+    }
+
     raidRegistry.unregister(raidId);
     return { ok: true };
+  });
+}
+
+/**
+ * Alinea la membresía del hilo privado con el embed después de una interacción.
+ *
+ * Se hace aquí, en el enrutador, y no en cada handler: apuntarse, salir, entrar
+ * como looter o ser promovido desde la lista de espera pasan todos por aquí.
+ * Va fuera del flujo de respuesta porque añadir/quitar miembros son llamadas
+ * REST y la interacción no debe esperarlas.
+ * @param {string|null} raidId
+ * @param {import('discord.js').Interaction} interaction
+ */
+function scheduleThreadSync(raidId, interaction) {
+  const runtime = raidId
+    ? raidRegistry.getByRaidId(raidId)
+    : raidRegistry.getByMessageId(interaction.message?.id);
+
+  // Un raid finalizado ya no tiene hilo: se borró al cerrarlo.
+  if (!runtime?.raid?.threadId || runtime.raid.status !== 'active') return;
+
+  setImmediate(async () => {
+    try {
+      await syncRaidThread(interaction.guild, runtime.raid);
+    } catch (e) {
+      console.error(`[WARN] scheduleThreadSync: raid #${runtime.raidId}:`, e?.message);
+    }
   });
 }
 
@@ -452,6 +493,8 @@ async function routeRaidInteraction(interaction) {
   } catch (e) {
     console.error(`[ERROR] routeRaidInteraction (${action}):`, e);
   }
+
+  scheduleThreadSync(raidId, interaction);
   return true;
 }
 

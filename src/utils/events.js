@@ -8,9 +8,12 @@ const NotifyEvent = require('../database/models/NotifyEvent');
 const { safeReply } = require('./errorEmbeds');
 const { logDiscordError, logDatabaseError, logInteractionError } = require('./logging');
 const { safeDeferUpdate, wrapInteractionMethods } = require('./interaction');
+const { logUncontrolledError } = require('./processGuards');
 const raidRegistry = require('../services/raidRegistry');
 const raidInteractions = require('./raidInteractions');
 const { migrateFromSnapshot } = require('../services/raidStateMigration');
+const { deleteRaidThread } = require('./raidThread');
+const { renderRaidEmbed } = require('./raidRender');
 
 // Import template command
 const templateCommand = require("../commands/utility/template");
@@ -20,6 +23,106 @@ const raidCommand = require("../commands/utility/raid");
 
 // Prefijo de los customId del panel de configuración de armas de /raid create
 const RAID_CONFIG_PREFIX = 'raidcfg-';
+
+/**
+ * Deja el mensaje de un raid cerrado en solo lectura.
+ *
+ * `closeRaidEvent` solo cambia el estado en BD, así que el mensaje se quedaba
+ * con sus selectores y su botón "Finalizar evento" sobre un raid ya cerrado:
+ * quien los pulsara recibía un error en vez de ver que el evento terminó.
+ * `finishRaid` (cierre manual) sí lo hacía; esto lo iguala para los cierres
+ * automáticos.
+ * @param {Object} raid documento RaidEvent
+ * @param {import('discord.js').Client} clientRef
+ * @param {string} motivo para el log
+ */
+async function sealRaidMessage(raid, clientRef, motivo) {
+  try {
+    // Si el raid está en el registro, su documento es otra instancia distinta
+    // de la que llega aquí: hay que cerrar esa para que el render la vea.
+    const runtime = raidRegistry.getByRaidId(raid.eventId);
+    if (runtime) {
+      runtime.raid.status = 'closed';
+      runtime.raid.threadId = null;
+      await raidRegistry.renderAndEdit(raid.eventId);
+      raidRegistry.unregister(raid.eventId);
+      return;
+    }
+
+    if (!raid.channelId || !raid.messageId) return;
+    const channel = await clientRef.channels.fetch(raid.channelId);
+    const message = channel ? await channel.messages.fetch(raid.messageId) : null;
+    if (!message) return;
+
+    raid.status = 'closed';
+    raid.threadId = null;
+    // Un raid legacy (stateVersion 1) no tiene el estado estructurado que
+    // necesita el render, así que ahí solo se le quitan los componentes.
+    const payload = raid.stateVersion >= 2
+      ? { embeds: [renderRaidEmbed(raid, raid)], components: [] }
+      : { components: [] };
+    await message.edit(payload);
+  } catch (e) {
+    // 10003 canal desconocido, 10008 mensaje desconocido: el mensaje ya no
+    // existe, que es justo uno de los motivos por los que se cierra el raid.
+    if (e?.code === 10003 || e?.code === 10008) return;
+    console.error(`[WARN] ${motivo}: no se pudieron desactivar los botones del raid #${raid.eventId}:`, e?.message);
+  }
+}
+
+/**
+ * Cierra un raid desde las rutinas automáticas borrando antes su hilo privado.
+ * `closeRaidEvent` solo toca la BD: sin esto, un raid que expira (o cuyo mensaje
+ * ya no existe) dejaría su hilo privado colgando en el canal para siempre.
+ * @param {Object} raid documento RaidEvent
+ * @param {import('discord.js').Client} clientRef
+ * @param {string} motivo para el log
+ */
+async function closeRaidAndThread(raid, clientRef, motivo) {
+  if (raid.threadId) {
+    try {
+      const guild = clientRef.guilds.cache.get(raid.guildId)
+        || await clientRef.guilds.fetch(raid.guildId);
+      await deleteRaidThread(guild, raid.threadId, raid.eventId);
+    } catch (e) {
+      console.error(`[WARN] ${motivo}: no se pudo borrar el hilo del raid #${raid.eventId}:`, e?.message);
+    }
+  }
+  const cerrado = await closeRaidEvent(raid.eventId);
+  await sealRaidMessage(raid, clientRef, motivo);
+  return cerrado;
+}
+
+/**
+ * Reprograma el recordatorio de un raid tras un reinicio.
+ *
+ * Los recordatorios viven en un `setTimeout` en memoria (reminderManager), así
+ * que un reinicio los perdía en silencio: el raid recuperaba sus botones pero
+ * nunca avisaba. Se reprograma con la misma clave (el eventId), y
+ * `createReminder` ya devuelve null si la hora de disparo ya pasó.
+ * @param {Object} raid documento RaidEvent ya reconectado
+ * @returns {boolean} true si quedó un recordatorio programado
+ */
+function restoreReminder(raid) {
+  if (!raid.reminder || !raid.eventTimestamp) return false;
+  try {
+    const { createReminder } = require('./reminderManager');
+    const timeoutId = createReminder(
+      raid.eventId,
+      raid.reminder,
+      raid.eventTimestamp * 1000,
+      raid.templateName,
+      raid.channelId,
+      raid.guildId,
+      raid.title,
+      [],
+    );
+    return timeoutId !== null;
+  } catch (e) {
+    console.error(`[WARN] Raid #${raid.eventId}: no se pudo reprogramar el recordatorio:`, e?.message);
+    return false;
+  }
+}
 
 const getEvents = () => {
   client.once(Events.ClientReady, async (readyClient) => {
@@ -43,12 +146,13 @@ const getEvents = () => {
       const activeRaids = await getActiveRaids();
       let migrated = 0;
       let reattached = 0;
+      let restoredReminders = 0;
       const now = Date.now();
 
       for (const raid of activeRaids) {
         // Expirar raids cuya hora ya pasó hace más de 2 horas
         if (raid.eventTimestamp && raid.eventTimestamp * 1000 + 2 * 60 * 60 * 1000 < now) {
-          await closeRaidEvent(raid.eventId);
+          await closeRaidAndThread(raid, readyClient, 'expiración al arrancar');
           console.log(`[INFO] Raid #${raid.eventId} expirado y cerrado automáticamente.`);
           continue;
         }
@@ -57,7 +161,7 @@ const getEvents = () => {
           const result = await migrateFromSnapshot(raid);
           if (!result.ok) {
             console.error(`[MIGRATE] Raid #${raid.eventId}: no se pudo migrar (${result.reason}). Se cierra para evitar dejarlo en un estado inconsistente.`);
-            await closeRaidEvent(raid.eventId);
+            await closeRaidAndThread(raid, readyClient, 'migración fallida');
             continue;
           }
           try {
@@ -78,13 +182,14 @@ const getEvents = () => {
           const message = channel ? await channel.messages.fetch(raid.messageId) : null;
           if (!message) {
             console.error(`[WARN] Raid #${raid.eventId}: no se encontró su mensaje (${raid.messageId}), se cierra.`);
-            await closeRaidEvent(raid.eventId);
+            await closeRaidAndThread(raid, readyClient, 'mensaje inexistente');
             continue;
           }
           raidRegistry.register({ raidId: raid.eventId, raid, message, templateName: raid.templateName });
           // Re-renderiza con los componentes actuales (customId estables por raidId,
           // opciones desaparecen/reaparecen según ocupación, botón "Finalizar evento").
           await raidRegistry.renderAndEdit(raid.eventId);
+          if (restoreReminder(raid)) restoredReminders++;
           reattached++;
         } catch (e) {
           console.error(`[WARN] Raid #${raid.eventId}: no se pudo reconectar su mensaje:`, e?.message);
@@ -93,6 +198,7 @@ const getEvents = () => {
 
       if (migrated > 0) console.log(`[INFO] ${migrated} raid(s) migrados a estado estructurado (stateVersion 2).`);
       if (reattached > 0) console.log(`[INFO] ${reattached} raid(s) activos reconectados.`);
+      if (restoredReminders > 0) console.log(`[INFO] ${restoredReminders} recordatorio(s) reprogramados.`);
     } catch (error) {
       console.error('[ERROR] Error reconstruyendo el registro de raids:', error);
     }
@@ -118,7 +224,7 @@ const getEvents = () => {
         for (const raid of activeRaids) {
           if (!raid.eventTimestamp) continue;
           if (raid.eventTimestamp * 1000 + 2 * 60 * 60 * 1000 < now) {
-            await closeRaidEvent(raid.eventId);
+            await closeRaidAndThread(raid, readyClient, 'limpieza periódica');
             raidRegistry.unregister(raid.eventId);
             console.log(`[INFO] Raid #${raid.eventId} expirado, cerrado por limpieza periódica.`);
           }
@@ -127,6 +233,17 @@ const getEvents = () => {
         console.error('[WARN] Error en limpieza periódica de raids:', e);
       }
     }, 30 * 60 * 1000);
+
+    // Purga de sesiones de creación de templates abandonadas (cada 10 min).
+    // El módulo exportaba la limpieza pero nadie la llamaba: una creación que
+    // el usuario dejaba a medias se quedaba en memoria hasta reiniciar el bot.
+    setInterval(() => {
+      try {
+        require('../lib/template/template-sessions').cleanupExpiredSessions();
+      } catch (e) {
+        console.error('[WARN] Error limpiando sesiones de template:', e?.message);
+      }
+    }, 10 * 60 * 1000);
   });
 
   client.on(Events.GuildCreate, async (guild) => {
@@ -155,7 +272,8 @@ const getEvents = () => {
     }
   });
 
-  client.on(Events.InteractionCreate, async (interaction) => {
+  // Todo el enrutado vive aquí; el listener de abajo es quien lo protege.
+  const dispatchInteraction = async (interaction) => {
     wrapInteractionMethods(interaction);
 
     // Enrutar interacciones de raids (select de armas, lista de espera, no puedo
@@ -619,6 +737,26 @@ const getEvents = () => {
       }
     }
 
+  };
+
+  // Un manejador que lanza deja una promesa rechazada que discord.js no captura:
+  // sin este try/catch, un fallo al crear un raid tumbaba el proceso entero.
+  client.on(Events.InteractionCreate, async (interaction) => {
+    try {
+      await dispatchInteraction(interaction);
+    } catch (error) {
+      logUncontrolledError(`interacción ${interaction?.commandName || interaction?.customId || interaction?.type}`, error);
+
+      // 10062: token caducado. 40060: ya respondida. En ambos casos no hay
+      // ningún mensaje que podamos actualizar, solo dejar constancia del fallo.
+      if (error?.code === 10062 || error?.code === 40060) return;
+      if (interaction?.isAutocomplete?.()) return;
+
+      await safeReply(interaction, {
+        content: 'Ocurrió un error procesando esta acción. El bot sigue activo: vuelve a intentarlo.',
+        ephemeral: true,
+      });
+    }
   });
 };
 /**
@@ -773,34 +911,33 @@ async function handleNotifyResponse(interaction) {
   );
   const userId = interaction.user.id;
 
-  // 1. Load record from DB
+  // 1-3. Mover al usuario a la lista elegida con operadores atómicos.
+  //
+  // No se hace leer -> modificar en memoria -> save(): dos personas pulsando a
+  // la vez leerían la misma lista y la segunda escritura borraría la respuesta
+  // de la primera. Con $pull/$addToSet cada update solo toca el id de quien
+  // pulsa, así que las respuestas simultáneas no se pisan. Son dos updates
+  // porque MongoDB no admite $pull y $addToSet sobre el mismo array en uno
+  // solo; ambos son idempotentes y afectan únicamente a este usuario.
+  const target = isAttending ? 'attending' : 'not_attending';
   let event;
   try {
-    event = await NotifyEvent.findOne({ notifyId });
-  } catch (e) {
-    logDatabaseError(`handleNotifyResponse lookup #${notifyId}`, e);
-    return interaction.reply({ content: '❌ Error interno. Inténtalo de nuevo.', ephemeral: true });
-  }
-
-  if (!event) {
-    return interaction.reply({
-      content: '❌ Esta notificación ya no está disponible.',
-      ephemeral: true,
-    });
-  }
-
-  // 2. Move user to the correct list (remove from both, then add to chosen)
-  event.attending = event.attending.filter((id) => id !== userId);
-  event.not_attending = event.not_attending.filter((id) => id !== userId);
-  if (isAttending) {
-    event.attending.push(userId);
-  } else {
-    event.not_attending.push(userId);
-  }
-
-  // 3. Persist updated lists
-  try {
-    await event.save();
+    const found = await NotifyEvent.findOneAndUpdate(
+      { notifyId },
+      { $pull: { attending: userId, not_attending: userId } },
+      { new: true },
+    );
+    if (!found) {
+      return interaction.reply({
+        content: '❌ Esta notificación ya no está disponible.',
+        ephemeral: true,
+      });
+    }
+    event = await NotifyEvent.findOneAndUpdate(
+      { notifyId },
+      { $addToSet: { [target]: userId } },
+      { new: true },
+    ) || found;
   } catch (e) {
     logDatabaseError(`handleNotifyResponse save #${notifyId}`, e);
     return interaction.reply({ content: '❌ Error al guardar tu respuesta.', ephemeral: true });

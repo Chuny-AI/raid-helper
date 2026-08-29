@@ -6,6 +6,8 @@ const { getTemplateCreationSessions, getSession, updateSession, findSessionByUse
 const { extractSessionId } = require("./template-create-navigation");
 const { safeDeferUpdate } = require('../../utils/interaction');
 const { computeGroupMaxPlayers } = require('../../utils/templateShape');
+const { formatEmoji: sharedFormatEmoji, applyEmoji } = require('../../utils/emoji');
+const { getWeaponsPath } = require('../../weapons/weaponsSource');
 const fs = require('fs');
 const path = require('path');
 
@@ -30,23 +32,7 @@ function getSessionIdFromInteraction(interaction) {
  * Función auxiliar para formatear correctamente los IDs de emoji de Discord
  */
 function formatEmoji(emojiId, fallback = '⚔️') {
-  if (!emojiId) return fallback;
-
-  // Si ya es un emoji Unicode estándar, devolverlo tal como está
-  if (emojiId.length <= 4) return emojiId;
-
-  // Si es un ID numérico, formatearlo como emoji personalizado
-  if (emojiId.match(/^\d+$/)) {
-    return emojiId; // Discord maneja automáticamente IDs numéricos en select menus
-  }
-
-  // Si ya está formateado, devolverlo tal como está
-  if (emojiId.startsWith('<:') || emojiId.startsWith('<a:')) {
-    return emojiId;
-  }
-
-  // Fallback
-  return fallback;
+  return sharedFormatEmoji(emojiId, fallback);
 }
 
 /**
@@ -90,7 +76,7 @@ async function getWeaponsWithFallback() {
 
     // Si no hay armas en la base de datos, leer desde el archivo JSON
     console.log(`[DEBUG] getWeaponsWithFallback: No weapons in database, trying JSON file`);
-    const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
+    const weaponsFilePath = getWeaponsPath();
 
     if (!fs.existsSync(weaponsFilePath)) {
       console.log(`[ERROR] getWeaponsWithFallback: JSON file not found at ${weaponsFilePath}`);
@@ -138,7 +124,7 @@ async function getWeaponCategoriesWithFallback() {
 
     // Si no hay categorías en la base de datos, leer desde el archivo JSON
     console.log(`[DEBUG] getWeaponCategoriesWithFallback: No categories in database, trying JSON file`);
-    const weaponsFilePath = path.join(__dirname, '../../weapons/weapons.json');
+    const weaponsFilePath = getWeaponsPath();
 
     if (!fs.existsSync(weaponsFilePath)) {
       console.log(`[ERROR] getWeaponCategoriesWithFallback: JSON file not found at ${weaponsFilePath}`);
@@ -469,9 +455,7 @@ async function showWeaponCategorySelection(interaction, sessionId) {
               // Manejar ambos formatos: 'data' (nuevo) y 'weapons' (anterior)
               const weaponCount = group.data ? group.data.length : (group.weapons ? group.weapons.length : 0);
               // Formatear el emoji del grupo
-              const groupEmoji = group.defaultEmoji ?
-                (group.defaultEmoji.match(/^\d+$/) ? `<:emoji:${group.defaultEmoji}>` : group.defaultEmoji) :
-                '⚔️';
+              const groupEmoji = sharedFormatEmoji(group.defaultEmoji, '⚔️');
               return `${groupEmoji} **${group.displayName}** (${weaponCount} armas)`;
             }).join('\n')
             : 'Ningún grupo configurado aún',

@@ -1,5 +1,6 @@
 const {
   SlashCommandBuilder,
+  InteractionContextType,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -109,6 +110,8 @@ function buildDmEmbed(mensaje, hora, guildName, creatorMention, messageUrl) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('notify')
+    // Comando de servidor: sin guild no hay miembros, roles ni templates que consultar.
+    .setContexts(InteractionContextType.Guild)
     .setDescription('Crea una notificación de actividad en este canal')
     .addStringOption((opt) =>
       opt.setName('mensaje').setDescription('Mensaje de la notificación').setRequired(true),

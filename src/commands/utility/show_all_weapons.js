@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags, InteractionContextType } = require("discord.js");
 const { getAllWeapons, getWeaponCategories } = require("../../services/weaponService");
 const { createInfoEmbed, createErrorEmbed, safeReply } = require("../../utils/errorEmbeds");
 
@@ -8,12 +8,14 @@ const { createInfoEmbed, createErrorEmbed, safeReply } = require("../../utils/er
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("show_all_weapons")
+    // Comando de servidor: sin guild no hay miembros, roles ni templates que consultar.
+    .setContexts(InteractionContextType.Guild)
     .setDescription("Lista todas las armas en la base de datos"),
 
   async execute(interaction) {
     try {
       // JERARQUÍA DE VALIDACIONES:
-      // 1. Verificar estado premium del servidor
+      // 1. Verificar acceso del usuario
       // 2. Proceder con la ejecución del comando
 
       const guildId = interaction.guild.id;
