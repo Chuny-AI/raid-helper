@@ -33,7 +33,7 @@ const { checkAuthorizedRole } = require('../../middleware/roleCheck');
 const { logDiscordError } = require('../../utils/logging');
 const raidState = require('../../services/raidState');
 const raidRegistry = require('../../services/raidRegistry');
-const { getOrLoadRuntime, finishRaid } = require('../../utils/raidInteractions');
+const { getOrLoadRuntime, finishRaid, attendancePanelPayload } = require('../../utils/raidInteractions');
 const {
   createRaidThread,
   syncRaidThread,
@@ -231,7 +231,16 @@ async function executeCloseSubcommand(interaction) {
     });
   }
 
-  await interaction.editReply({ content: `✅ Raid **#${raidId}** finalizado correctamente.` });
+  // Igual que el botón "Finalizar evento": se pregunta la asistencia aquí
+  // mismo, que es cuando el líder acaba de ver quién apareció.
+  const panel = attendancePanelPayload(runtime);
+  if (!panel) {
+    return interaction.editReply({ content: `✅ Raid **#${raidId}** finalizado correctamente.` });
+  }
+  await interaction.editReply({
+    content: `✅ Raid **#${raidId}** finalizado.\n\n${panel.content}`,
+    components: panel.components,
+  });
 }
 
 /**

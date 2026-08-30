@@ -292,6 +292,132 @@ function countActiveParticipants(state) {
   return state.slots.reduce((acc, s) => acc + (s.users || []).length, 0);
 }
 
+/**
+ * Quiénes formaron parte del raid: los que ocuparon plaza más los looters, sin
+ * duplicados y en el mismo orden en que salen en el embed (orden de grupo, luego
+ * índice de arma, luego orden de llegada).
+ *
+ * Es la lista sobre la que se decide la asistencia: la waitlist y `cannotGo`
+ * quedan fuera a propósito, porque esa gente nunca llegó a tener plaza.
+ *
+ * @returns {Array<{userId:string, username:string, slotId:string|null,
+ *   groupKey:string|null, label:string, emoji:string, isLooter:boolean}>}
+ */
+function raidRoster(state) {
+  const roster = [];
+  const index = new Map();
+
+  const order = new Map((state.groups || []).map((g) => [g.groupKey, g.order]));
+  const slots = [...(state.slots || [])].sort(
+    (a, b) =>
+      (order.get(a.groupKey) ?? 0) - (order.get(b.groupKey) ?? 0) || a.itemIndex - b.itemIndex
+  );
+
+  for (const slot of slots) {
+    for (const u of slot.users || []) {
+      if (index.has(u.userId)) continue;
+      const entry = {
+        userId: u.userId,
+        username: u.username || '',
+        slotId: slot.slotId,
+        groupKey: slot.groupKey,
+        label: slot.label || slot.weaponName || '',
+        emoji: slot.emoji || '',
+        isLooter: false,
+      };
+      index.set(u.userId, entry);
+      roster.push(entry);
+    }
+  }
+
+  // Un looter puede además tener plaza (joinLooter no libera el slot): en ese
+  // caso no se duplica, solo se marca.
+  for (const u of state.looters?.users || []) {
+    const existing = index.get(u.userId);
+    if (existing) {
+      existing.isLooter = true;
+      continue;
+    }
+    const entry = {
+      userId: u.userId,
+      username: u.username || '',
+      slotId: null,
+      groupKey: null,
+      label: 'Looter',
+      emoji: '',
+      isLooter: true,
+    };
+    index.set(u.userId, entry);
+    roster.push(entry);
+  }
+
+  return roster;
+}
+
+/** Ids marcados como ausentes. @returns {Set<string>} */
+function getAbsentIds(state) {
+  return new Set((state.attendance?.absent || []).map((a) => a.userId));
+}
+
+/**
+ * Informe de asistencia. Todo el que participó y no está marcado como ausente
+ * cuenta como asistente, así que un raid recién cerrado empieza con todos
+ * presentes sin que nadie tenga que tocar nada.
+ * @returns {{attended:Array, absent:Array}} entradas de `raidRoster`
+ */
+function attendanceReport(state) {
+  const roster = raidRoster(state);
+  const absentIds = getAbsentIds(state);
+  return {
+    attended: roster.filter((r) => !absentIds.has(r.userId)),
+    absent: roster.filter((r) => absentIds.has(r.userId)),
+  };
+}
+
+/**
+ * Aplica la selección de ausentes de UNA página del selector.
+ *
+ * La página es la unidad de verdad: los ausentes quedan como
+ * `(ausentes actuales - página) + (seleccionados de la página)`. Así deseleccionar
+ * a alguien lo devuelve a "asistió" y no hace falta guardar estado intermedio en
+ * memoria: la BD es el único sitio donde vive la selección, y el panel se puede
+ * reabrir o el bot reiniciarse sin perder nada.
+ *
+ * Se ignoran los ids que no participaron en el raid.
+ *
+ * @param {Object} state documento del raid
+ * @param {{pageUserIds:string[], selectedUserIds:string[], actorId?:string|null}} params
+ * @returns {{attended:number, absent:number}}
+ */
+function applyAbsenceSelection(state, { pageUserIds = [], selectedUserIds = [], actorId = null }) {
+  const roster = raidRoster(state);
+  const byId = new Map(roster.map((r) => [r.userId, r]));
+  const position = new Map(roster.map((r, i) => [r.userId, i]));
+
+  const page = new Set(pageUserIds.filter((id) => byId.has(id)));
+  const chosen = new Set(selectedUserIds.filter((id) => page.has(id)));
+
+  // Se conserva la marca previa (con su fecha) de quien ya estaba ausente.
+  const previous = new Map((state.attendance?.absent || []).map((a) => [a.userId, a]));
+  const untouched = [...previous.values()].filter((a) => !page.has(a.userId) && byId.has(a.userId));
+  const fromPage = [...chosen].map(
+    (id) => previous.get(id) || { userId: id, username: byId.get(id).username, at: new Date() }
+  );
+
+  const absent = [...untouched, ...fromPage].sort(
+    (a, b) => (position.get(a.userId) ?? 0) - (position.get(b.userId) ?? 0)
+  );
+
+  if (!state.attendance) state.attendance = { absent: [] };
+  state.attendance.absent = absent;
+  state.attendance.updatedBy = actorId;
+  state.attendance.updatedAt = new Date();
+  // `attendance` es un objeto anidado: sin esto mongoose puede no ver el cambio.
+  if (typeof state.markModified === 'function') state.markModified('attendance');
+
+  return { attended: roster.length - absent.length, absent: absent.length };
+}
+
 function participantMentions(state) {
   const ids = new Set();
   for (const slot of state.slots) for (const u of slot.users || []) ids.add(u.userId);
@@ -327,4 +453,8 @@ module.exports = {
   countActiveParticipants,
   participantMentions,
   canManageRaid,
+  raidRoster,
+  getAbsentIds,
+  attendanceReport,
+  applyAbsenceSelection,
 };

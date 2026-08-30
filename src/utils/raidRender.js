@@ -20,6 +20,8 @@ const {
   slotOccupancy,
   groupOccupancy,
   countActiveParticipants,
+  raidRoster,
+  attendanceReport,
 } = require('../services/raidState');
 
 const BRAND_ICON =
@@ -29,6 +31,13 @@ const WAITLIST_FIELD_NAME = '🕒 Lista de espera';
 const CANNOTGO_FIELD_NAME = '🚫 No puedo ir';
 const MAX_OPTIONS_PER_SELECT = 25;
 const MAX_ROWS = 5;
+
+/** Jugadores por página del selector de asistencia (límite de Discord). */
+const ATTENDANCE_PAGE_SIZE = MAX_OPTIONS_PER_SELECT;
+/** 4 selectores + la fila del botón "Listo". */
+const ATTENDANCE_MAX_PAGES = MAX_ROWS - 1;
+/** Tope de jugadores que caben en el selector de asistencia. */
+const ATTENDANCE_CAPACITY = ATTENDANCE_PAGE_SIZE * ATTENDANCE_MAX_PAGES;
 
 /**
  * Trunca el valor de un campo embed para no superar el límite de 1024 chars de Discord.
@@ -87,6 +96,62 @@ function buildGroupFields(state) {
   return fields;
 }
 
+/**
+ * Reparte una lista de líneas en tantos campos como haga falta para no pasar de
+ * los 1024 caracteres por campo. Los campos de continuación llevan un nombre
+ * invisible (ZWSP), que es lo único que Discord acepta como "sin nombre".
+ * @param {Array} target array de campos al que añadir
+ * @param {string} name nombre del primer campo
+ * @param {string[]} lines
+ * @param {string} emptyText valor cuando no hay líneas
+ */
+function pushLineFields(target, name, lines, emptyText) {
+  if (lines.length === 0) {
+    target.push({ name, value: emptyText, inline: false });
+    return;
+  }
+
+  const blocks = [[]];
+  let length = 0;
+  for (const line of lines) {
+    const text = line.length > 1024 ? line.slice(0, 1024) : line;
+    const cost = length === 0 ? text.length : text.length + 1;
+    if (length + cost > 1024) {
+      blocks.push([text]);
+      length = text.length;
+    } else {
+      blocks[blocks.length - 1].push(text);
+      length += cost;
+    }
+  }
+
+  blocks.forEach((block, i) => {
+    target.push({ name: i === 0 ? name : '​', value: block.join('\n'), inline: false });
+  });
+}
+
+/** Línea de un jugador en el informe de asistencia: arma que llevaba + mención. */
+function rosterLine(entry) {
+  const emoji = formatEmoji(entry.emoji);
+  const crown = entry.isLooter ? '👑 ' : '';
+  const label = entry.slotId ? entry.label : 'Looter';
+  return `${emoji ? `${emoji} ` : ''}${crown}${label} <@${entry.userId}>`.trim();
+}
+
+/**
+ * Informe de asistencia de un raid finalizado: sustituye a los bloques de grupo.
+ *
+ * Quien participó y no está marcado como ausente cuenta como asistente, así que
+ * nada más cerrar el raid el informe ya sale completo con todos presentes.
+ */
+function buildAttendanceFields(state) {
+  const { attended, absent } = attendanceReport(state);
+  const fields = [];
+  pushLineFields(fields, `✅ Asistieron (${attended.length})`, attended.map(rosterLine), '_Nadie._');
+  pushLineFields(fields, `❌ No asistieron (${absent.length})`, absent.map(rosterLine), '_Nadie._');
+  return fields;
+}
+
 /** Límites de un embed en Discord. */
 const MAX_EMBED_FIELDS = 25;
 const MAX_EMBED_CHARS = 6000;
@@ -103,6 +168,20 @@ function embedSize(embed, fields) {
   );
 }
 
+const avisoGrupos = (ocultos) => ({
+  name: '⚠️ Grupos no mostrados',
+  value:
+    `No caben **${ocultos}** grupo(s) más en el mensaje (Discord admite ${MAX_EMBED_FIELDS} bloques). ` +
+    'Usa menos grupos en el template para que se vean todos.',
+});
+
+const avisoAsistencia = (ocultos) => ({
+  name: '⚠️ Asistencia no mostrada al completo',
+  value:
+    `No caben **${ocultos}** bloque(s) más en el mensaje (Discord admite ${MAX_EMBED_FIELDS} campos). ` +
+    'La asistencia sí quedó registrada; solo falta espacio para listarla entera.',
+});
+
 /**
  * Deja el embed dentro de los 25 campos y 6000 caracteres que admite Discord.
  *
@@ -116,22 +195,17 @@ function embedSize(embed, fields) {
  *
  * @param {EmbedBuilder} embed
  * @param {Array} fields Todos los campos, en orden.
- * @param {number} inicioGrupos Índice del primer campo de grupo.
- * @param {number} numGrupos Cuántos campos de grupo hay.
+ * @param {number} inicioGrupos Índice del primer campo del bloque recortable.
+ * @param {number} numGrupos Cuántos campos tiene ese bloque.
+ * @param {(ocultos:number) => {name:string, value:string}} [aviso] Campo que sustituye a lo recortado.
  * @returns {Array} Los campos que sí caben.
  */
-function fitFields(embed, fields, inicioGrupos, numGrupos) {
+function fitFields(embed, fields, inicioGrupos, numGrupos, aviso = avisoGrupos) {
   const armar = (visibles) => {
     const ocultos = numGrupos - visibles;
     if (ocultos <= 0) return fields.slice();
     const copia = fields.slice();
-    copia.splice(inicioGrupos + visibles, ocultos, {
-      name: '⚠️ Grupos no mostrados',
-      value:
-        `No caben **${ocultos}** grupo(s) más en el mensaje (Discord admite ${MAX_EMBED_FIELDS} bloques). ` +
-        'Usa menos grupos en el template para que se vean todos.',
-      inline: false,
-    });
+    copia.splice(inicioGrupos + visibles, ocultos, { ...aviso(ocultos), inline: false });
     return copia;
   };
 
@@ -216,9 +290,15 @@ function renderRaidEmbed(raid, state) {
     });
   }
 
-  const groupFields = buildGroupFields(state);
+  // Mientras el raid está vivo interesa quién ocupa cada arma; una vez
+  // finalizado, ese mismo bloque pasa a ser el informe de asistencia
+  // (asistieron / no asistieron), que es lo que queda por saber. Se muestra
+  // aunque no fuera nadie: un "Asistieron (0)" explica el raid vacío mejor que
+  // una lista de grupos en blanco.
+  const useAttendance = isClosed;
+  const blockFields = useAttendance ? buildAttendanceFields(state) : buildGroupFields(state);
   const inicioGrupos = fields.length;
-  fields.push(...groupFields);
+  fields.push(...blockFields);
 
   if (state.looters && state.looters.max > 0) {
     const lines = (state.looters.users || []).map((u) => `<@${u.userId}>`);
@@ -253,7 +333,15 @@ function renderRaidEmbed(raid, state) {
 
   fields.push(...buildSocialFields());
 
-  embed.addFields(fitFields(embed, fields, inicioGrupos, groupFields.length));
+  embed.addFields(
+    fitFields(
+      embed,
+      fields,
+      inicioGrupos,
+      blockFields.length,
+      useAttendance ? avisoAsistencia : avisoGrupos
+    )
+  );
   return embed;
 }
 
@@ -369,11 +457,30 @@ function buildButtonRow(raid, state) {
 }
 
 /**
+ * Única acción que queda en un raid finalizado: registrar quién no apareció.
+ * @returns {ActionRowBuilder}
+ */
+function buildAttendanceButtonRow(raid) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`raid:att:${raid.eventId}`)
+      .setLabel('Registrar asistencia')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('📋')
+  );
+}
+
+/**
  * Construye los componentes (selects + botones) del mensaje del raid.
- * Un raid cerrado no lleva componentes (mensaje en solo lectura).
+ *
+ * Un raid cerrado ya no admite inscripciones, pero conserva un único botón para
+ * que el líder registre la asistencia: es justo después de finalizar cuando se
+ * sabe quién apareció de verdad.
  */
 function renderRaidComponents(raid, state) {
-  if (raid.status !== 'active') return [];
+  if (raid.status !== 'active') {
+    return raidRoster(state).length > 0 ? [buildAttendanceButtonRow(raid)] : [];
+  }
 
   const rows = [];
   const avail = availableSlots(state);
@@ -438,10 +545,72 @@ function renderWaitlistSelect(raid, state) {
   });
 }
 
+/**
+ * Panel efímero de asistencia: el líder marca a quienes NO aparecieron.
+ *
+ * Los ya marcados vienen preseleccionados (`setDefault`), así que el selector
+ * funciona como un interruptor: deseleccionar a alguien lo devuelve a
+ * "asistió". Cada página se guarda por su cuenta contra la BD, sin estado
+ * intermedio en memoria, así que el panel se puede reabrir cuando sea.
+ *
+ * @param {Object} raid
+ * @param {Array} roster salida de raidState.raidRoster
+ * @param {Set<string>} absentIds
+ * @returns {ActionRowBuilder[]} selectores + la fila del botón "Listo"
+ */
+function renderAttendanceRows(raid, roster, absentIds) {
+  const pages = [];
+  for (let i = 0; i < roster.length; i += ATTENDANCE_PAGE_SIZE) {
+    pages.push(roster.slice(i, i + ATTENDANCE_PAGE_SIZE));
+  }
+
+  const rows = pages.slice(0, ATTENDANCE_MAX_PAGES).map((chunk, page) => {
+    const options = chunk.map((entry) => {
+      const absent = absentIds.has(entry.userId);
+      const weapon = entry.slotId ? entry.label || 'Sin arma' : 'Looter';
+      const opt = new StringSelectMenuOptionBuilder()
+        .setLabel((entry.username || entry.userId).slice(0, 100))
+        .setValue(entry.userId)
+        .setDescription(`${absent ? '❌ No asistió' : '✅ Asistió'} · ${weapon}`.slice(0, 100))
+        .setDefault(absent);
+      applyEmoji(opt, entry.emoji);
+      return opt;
+    });
+
+    const total = Math.min(pages.length, ATTENDANCE_MAX_PAGES);
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`raid:attpick:${raid.eventId}:${page}`)
+      .setPlaceholder(
+        (total > 1
+          ? `Marca quienes NO asistieron (${page + 1}/${total})`
+          : 'Marca quienes NO asistieron').slice(0, 150)
+      )
+      // 0 permite dejar la página entera como "todos asistieron".
+      .setMinValues(0)
+      .setMaxValues(options.length)
+      .addOptions(options);
+    return new ActionRowBuilder().addComponents(select);
+  });
+
+  rows.push(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`raid:attdone:${raid.eventId}`)
+        .setLabel('Listo')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('✅')
+    )
+  );
+  return rows;
+}
+
 module.exports = {
   safeFieldValue,
   renderRaidEmbed,
   renderRaidComponents,
   renderGroupPickSelect,
   renderWaitlistSelect,
+  renderAttendanceRows,
+  ATTENDANCE_PAGE_SIZE,
+  ATTENDANCE_CAPACITY,
 };

@@ -112,6 +112,22 @@ const RaidEventSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+
+  // Asistencia real, registrada por el líder DESPUÉS de finalizar el raid.
+  // Se guardan SOLO los ausentes: quien participó y no está en esta lista se
+  // considera que asistió. Así el informe existe desde el instante del cierre
+  // (todos presentes) y el líder solo tiene que marcar las excepciones.
+  // No confundir con `cannotGo`, que es quien avisó ANTES y liberó su plaza:
+  // ese ni siquiera entra en el reparto de asistencia.
+  attendance: {
+    absent: [{
+      userId: String,
+      username: String,
+      at: { type: Date, default: Date.now }
+    }],
+    updatedBy: String,
+    updatedAt: Date
+  },
   closedBy: String,
   closedAt: Date,
 

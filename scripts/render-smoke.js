@@ -43,7 +43,7 @@ for (const row of components) {
   console.log(JSON.stringify(row.toJSON()));
 }
 
-// Raid cerrado: sin componentes
+// Raid cerrado: solo el botón de registrar asistencia
 const closedRaid = { ...raid, status: 'closed', closedBy: 'L1', closedAt: new Date() };
 const closedEmbed = renderRaidEmbed(closedRaid, state);
 console.log('closed title:', closedEmbed.data.title);

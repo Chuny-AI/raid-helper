@@ -9,7 +9,7 @@
     "cli": "node --env-file=.env scripts/cli.js",
     "railway": "node index.js",
     "test:weapons": "node scripts/raid-weapon-config-smoke.js && node scripts/raid-config-panel-smoke.js && node scripts/raid-weapon-panel-smoke.js",
-    "test:all": "node scripts/raidstate-smoke.js && node scripts/render-smoke.js && node scripts/migration-smoke.js && node scripts/raidevent-schema-smoke.js && npm run test:weapons && npm run test:roles && npm run test:emoji && npm run test:weapons-source && npm run test:weapons-seed && npm run test:resilience && npm run test:thread && npm run test:persist && npm run test:decoder && npm run test:embed-limits",
+    "test:all": "node scripts/raidstate-smoke.js && node scripts/render-smoke.js && node scripts/migration-smoke.js && node scripts/raidevent-schema-smoke.js && npm run test:weapons && npm run test:roles && npm run test:emoji && npm run test:weapons-source && npm run test:weapons-seed && npm run test:resilience && npm run test:thread && npm run test:persist && npm run test:decoder && npm run test:embed-limits && npm run test:attendance",
     "test:roles": "node scripts/roles-to-notify-smoke.js",
     "test:emoji": "node scripts/emoji-smoke.js",
     "test:weapons-source": "node scripts/weapons-source-smoke.js",
@@ -18,7 +18,8 @@
     "test:thread": "node scripts/raid-thread-smoke.js",
     "test:persist": "node scripts/raid-persist-smoke.js",
     "test:decoder": "node scripts/dungeon-decoder-smoke.js",
-    "test:embed-limits": "node scripts/raid-embed-limits-smoke.js"
+    "test:embed-limits": "node scripts/raid-embed-limits-smoke.js",
+    "test:attendance": "node scripts/raid-attendance-smoke.js"
   },
   "keywords": [
     "discord",

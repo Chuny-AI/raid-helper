@@ -12,7 +12,13 @@
 const { MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const raidState = require('../services/raidState');
 const raidRegistry = require('../services/raidRegistry');
-const { renderGroupPickSelect, renderWaitlistSelect } = require('./raidRender');
+const {
+  renderGroupPickSelect,
+  renderWaitlistSelect,
+  renderAttendanceRows,
+  ATTENDANCE_PAGE_SIZE,
+  ATTENDANCE_CAPACITY,
+} = require('./raidRender');
 const { safeDeferUpdate } = require('./interaction');
 const { createBuildEmbed } = require('./embed');
 const { syncRaidThread, deleteRaidThread } = require('./raidThread');
@@ -367,7 +373,17 @@ async function handleFinishConfirm(interaction, raidId) {
     const msg = result.reason === 'already_closed' ? '🔒 Este evento ya estaba finalizado.' : 'No se pudo finalizar el raid.';
     return interaction.update({ content: msg, components: [] });
   }
-  await interaction.update({ content: `🔒 Raid **#${raidId}** finalizado correctamente.`, components: [] });
+
+  // Es justo ahora cuando el líder sabe quién apareció, así que se le pregunta
+  // aquí mismo en vez de dejarle buscar el botón del mensaje.
+  const panel = attendancePanelPayload(runtime);
+  if (!panel) {
+    return interaction.update({ content: `🔒 Raid **#${raidId}** finalizado correctamente.`, components: [] });
+  }
+  await interaction.update({
+    content: `🔒 Raid **#${raidId}** finalizado.\n\n${panel.content}`,
+    components: panel.components,
+  });
 }
 
 async function handleFinishCancel(interaction) {
@@ -416,6 +432,123 @@ async function finishRaid(raidId, actorId, guild) {
   });
 }
 
+// ─────────────────────────────── Asistencia ───────────────────────────────
+// Solo tras finalizar el raid. El líder marca a quienes NO aparecieron; todo el
+// que participó y no queda marcado cuenta como asistente, así que el informe
+// del embed ya es correcto desde el cierre y esto solo registra las excepciones.
+
+/**
+ * Contenido + selectores del panel efímero, siempre reconstruidos desde el
+ * estado guardado: no hay selección a medias viviendo en memoria.
+ *
+ * El panel se muestra nada más finalizar el raid y también desde el botón del
+ * mensaje, que es la vía para volver cuando el efímero ya caducó (Discord
+ * invalida sus componentes a los 15 minutos).
+ *
+ * @returns {{content:string, components:Array}|null} null si nadie participó
+ */
+function attendancePanelPayload(runtime) {
+  const roster = raidState.raidRoster(runtime.raid);
+  if (roster.length === 0) return null;
+  const absentIds = raidState.getAbsentIds(runtime.raid);
+  const ausentes = roster.filter((r) => absentIds.has(r.userId)).length;
+
+  const lineas = [
+    `Marca a quienes **NO** asistieron al raid **#${runtime.raidId}**. ` +
+      'Los que dejes sin marcar cuentan como que sí participaron.',
+    `Ahora mismo: **${roster.length - ausentes}** asistieron · **${ausentes}** no asistieron.`,
+  ];
+  if (roster.length > ATTENDANCE_CAPACITY) {
+    lineas.push(
+      `⚠️ Discord solo deja marcar ${ATTENDANCE_CAPACITY} jugadores por panel: ` +
+        `los ${roster.length - ATTENDANCE_CAPACITY} últimos quedan como asistentes.`
+    );
+  }
+
+  return {
+    content: lineas.join('\n'),
+    components: renderAttendanceRows(runtime.raid, roster, absentIds),
+  };
+}
+
+/** Botón "Registrar asistencia" del mensaje de un raid ya finalizado. */
+async function handleAttendanceOpen(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
+  if (!runtime) return replyGone(interaction);
+  if (runtime.raid.status === 'active') {
+    return ephemeralReply(interaction, 'La asistencia solo se registra cuando el evento ha finalizado.');
+  }
+  if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
+    return ephemeralReply(interaction, 'Solo el líder del raid o un administrador puede registrar la asistencia.');
+  }
+
+  const panel = attendancePanelPayload(runtime);
+  if (!panel) {
+    return ephemeralReply(interaction, 'Este raid no tuvo participantes, no hay asistencia que registrar.');
+  }
+  await ephemeralReply(interaction, panel);
+}
+
+/**
+ * Selector de una página del panel. La página es la unidad de guardado: los
+ * ausentes de esa página pasan a ser exactamente los seleccionados, así que
+ * deseleccionar a alguien lo devuelve a "asistió".
+ */
+async function handleAttendancePick(interaction, raidId, extra) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
+  if (!runtime) {
+    return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  }
+  if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
+    return interaction.update({
+      content: 'Solo el líder del raid o un administrador puede registrar la asistencia.',
+      components: [],
+    });
+  }
+
+  const page = Number.parseInt(extra, 10) || 0;
+
+  await raidRegistry.withRaidLock(runtime.raidId, async () => {
+    const roster = raidState.raidRoster(runtime.raid);
+    if (roster.length === 0) return;
+    const pageUserIds = roster
+      .slice(page * ATTENDANCE_PAGE_SIZE, (page + 1) * ATTENDANCE_PAGE_SIZE)
+      .map((r) => r.userId);
+
+    raidState.applyAbsenceSelection(runtime.raid, {
+      pageUserIds,
+      selectedUserIds: interaction.values,
+      actorId: interaction.user.id,
+    });
+
+    // Se espera al guardado: el panel se repinta desde este mismo documento y
+    // un fallo de BD no debe quedar reflejado como si se hubiera guardado.
+    await raidRegistry.saveRaid(runtime.raidId);
+    await raidRegistry.renderAndEdit(runtime.raidId);
+  });
+
+  const panel = attendancePanelPayload(runtime);
+  await interaction.update(
+    panel || { content: 'Este raid no tuvo participantes, no hay asistencia que registrar.', components: [] }
+  );
+}
+
+/** Botón "Listo": cierra el panel efímero. Lo registrado ya está guardado. */
+async function handleAttendanceDone(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
+  if (!runtime) {
+    return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  }
+  const { attended, absent } = raidState.attendanceReport(runtime.raid);
+  await interaction.update({
+    content:
+      `📋 Asistencia del raid **#${runtime.raidId}** registrada: ` +
+      `**${attended.length}** asistieron · **${absent.length}** no asistieron. ` +
+      'Ya se ve en el mensaje del raid.',
+    components: [],
+  });
+}
+
 /**
  * Alinea la membresía del hilo privado con el embed después de una interacción.
  *
@@ -452,7 +585,7 @@ async function routeRaidInteraction(interaction) {
   const parsed = parseCustomId(interaction.customId);
   if (!parsed) return false;
 
-  const { action, raidId } = parsed;
+  const { action, raidId, extra } = parsed;
   try {
     switch (action) {
       case 'join':
@@ -485,6 +618,15 @@ async function routeRaidInteraction(interaction) {
       case 'finishno':
         await handleFinishCancel(interaction);
         break;
+      case 'att':
+        await handleAttendanceOpen(interaction, raidId);
+        break;
+      case 'attpick':
+        await handleAttendancePick(interaction, raidId, extra);
+        break;
+      case 'attdone':
+        await handleAttendanceDone(interaction, raidId);
+        break;
       case 'full':
         break; // select decorativo/deshabilitado, no debería dispararse
       default:
@@ -502,4 +644,5 @@ module.exports = {
   routeRaidInteraction,
   getOrLoadRuntime,
   finishRaid,
+  attendancePanelPayload,
 };

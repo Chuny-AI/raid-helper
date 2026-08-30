@@ -13,7 +13,7 @@ const raidRegistry = require('../services/raidRegistry');
 const raidInteractions = require('./raidInteractions');
 const { migrateFromSnapshot } = require('../services/raidStateMigration');
 const { deleteRaidThread } = require('./raidThread');
-const { renderRaidEmbed } = require('./raidRender');
+const { renderRaidEmbed, renderRaidComponents } = require('./raidRender');
 
 // Import template command
 const templateCommand = require("../commands/utility/template");
@@ -58,8 +58,10 @@ async function sealRaidMessage(raid, clientRef, motivo) {
     raid.threadId = null;
     // Un raid legacy (stateVersion 1) no tiene el estado estructurado que
     // necesita el render, así que ahí solo se le quitan los componentes.
+    // En stateVersion 2 el render deja el botón de registrar asistencia: un
+    // raid que se cierra solo (expiración) también necesita ese informe.
     const payload = raid.stateVersion >= 2
-      ? { embeds: [renderRaidEmbed(raid, raid)], components: [] }
+      ? { embeds: [renderRaidEmbed(raid, raid)], components: renderRaidComponents(raid, raid) }
       : { components: [] };
     await message.edit(payload);
   } catch (e) {
