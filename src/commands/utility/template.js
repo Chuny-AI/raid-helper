@@ -2084,100 +2084,6 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
     }
   },
 
-  async handleButton(interaction) {
-    try {
-      console.log('🔄 [DEBUG] Botón detectado:', interaction.customId);
-      console.log('🔄 [DEBUG] handleButton llamado con customId:', interaction.customId);
-      console.log('🔄 [DEBUG] Button type check - includes template_confirm_:', interaction.customId.includes('template_confirm_'));
-      // Manejar botones de edición del template editor
-      if (interaction.customId.startsWith('template_edit_')) {
-        console.log('[DEBUG] Procesando botón del editor:', interaction.customId);
-        await this.handleEditButton(interaction);
-        return;
-      } else if (interaction.customId.includes('delete_confirm') || interaction.customId.includes('delete_cancel')) {
-        // Manejar botones de confirmación de eliminación
-        if (interaction.customId.includes('delete_confirm')) {
-          await this.handleDeleteConfirm(interaction);
-        } else {
-          await this.handleDeleteCancel(interaction);
-        }
-      } else if (interaction.customId.startsWith('template_')) {
-        // Mapear botones específicos a sus handlers
-        const createHandlers = require('../../lib/template/template-create-handlers');
-
-        if (interaction.customId.includes('_roles_')) {
-          await createHandlers.handleRoleSelection(interaction);
-        } else if (interaction.customId.includes('add_weapon_group')) {
-          await createHandlers.handleAddWeaponGroup(interaction);
-        } else if (interaction.customId.includes('finish_weapons')) {
-          // Verificar si es una sesión de edición o creación
-          const { extractSessionId } = require('../../lib/template/template-create-navigation');
-          const { getTemplateCreationSessions } = require('../../lib/template/template-sessions');
-          const sessionId = extractSessionId(interaction.customId);
-          const creationSessions = getTemplateCreationSessions();
-          const session = creationSessions.get(sessionId);
-
-          await safeDeferUpdate(interaction);
-
-          if (session && session.isEdit) {
-            // Es una sesión de edición, sincronizar datos y volver al editor
-            await this.syncFromCreationToEdit(sessionId, {
-              weapons: session.data.weapons
-            });
-
-            // Limpiar sesión temporal de creación
-            creationSessions.delete(sessionId);
-
-            // Volver al editor principal
-            await this.showEditOverview(interaction, sessionId);
-          } else {
-            // Es una sesión de creación normal, mostrar resumen final
-            const { showFinalSummary } = require('../../lib/template/template-create-navigation');
-            await showFinalSummary(interaction, sessionId);
-          }
-        } else if (interaction.customId.includes('template_finish_group_')) {
-          await createHandlers.handleFinishGroup(interaction);
-        } else if (interaction.customId.includes('continue_') || interaction.customId.includes('skip_')) {
-          // Delegar a navigation handlers
-          const { handleContinue } = require('../../lib/template/template-create-navigation');
-          await handleContinue(interaction);
-        } else if (interaction.customId.includes('_back_')) {
-          // Delegar a navigation handlers
-          const { handleBack } = require('../../lib/template/template-create-navigation');
-          await handleBack(interaction);
-        } else if (interaction.customId.includes('add_weapons')) {
-          await createHandlers.handleAddWeapons(interaction);
-        } else if (interaction.customId.includes('back_to_categories')) {
-          // Delegar a navigation handlers para botón de volver
-          const { handleBack } = require('../../lib/template/template-create-navigation');
-          await handleBack(interaction);
-        } else if (interaction.customId.includes('modify_add_link_')) {
-          // Manejar añadir enlace de arma
-          await handleModifyAddLink(interaction);
-        } else if (interaction.customId.includes('modify_update_quantities_')) {
-          // Manejar actualizar cantidades
-          await handleModifyUpdateQuantities(interaction);
-        } else if (interaction.customId.includes('template_confirm_')) {
-          // Manejar confirmación final del template
-          console.log('[DEBUG] Detected template_confirm_ button, calling handleConfirm');
-          const { handleConfirm } = require('../../lib/template/template-create-navigation');
-          await handleConfirm(interaction);
-        } else if (interaction.customId.includes('template_cancel_')) {
-          // Manejar cancelación del template
-          const { handleCancel } = require('../../lib/template/template-create-navigation');
-          await handleCancel(interaction);
-        } else {
-          // Handler genérico para otros botones
-          console.warn('[WARN] Botón de template no reconocido:', interaction.customId);
-        }
-      }
-    } catch (error) {
-      console.error('[ERROR] Error en handleButtonInteraction:', error);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'Error al procesar la interacción.', ephemeral: true });
-      }
-    }
-  },
 
 
 
@@ -2369,7 +2275,19 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
       if (interaction.customId.startsWith('template_')) {
         const createHandlers = require('../../lib/template/template-create-handlers');
 
-        if (interaction.customId.includes('_roles_')) {
+        const navigation = require('../../lib/template/template-create-navigation');
+
+        // Los "volver" de los menús dinámicos se resuelven antes que nada:
+        // varios de ellos (template_back_roles_, template_back_summary_...)
+        // encajan también en las ramas de abajo y acababan en el handler
+        // equivocado o en ninguno.
+        if (interaction.customId.includes('back_to_categories') || interaction.customId.includes('_back_')) {
+          await navigation.handleBack(interaction);
+        } else if (interaction.customId.includes('_page_')) {
+          await navigation.handlePagination(interaction);
+        } else if (interaction.customId.includes('continue_') || interaction.customId.includes('skip_')) {
+          await navigation.handleContinue(interaction);
+        } else if (interaction.customId.includes('_roles_')) {
           await createHandlers.handleRoleSelection(interaction);
         } else if (interaction.customId.includes('add_weapon_group')) {
           await createHandlers.handleAddWeaponGroup(interaction);
@@ -2401,6 +2319,14 @@ else if (interaction.customId.startsWith('modify_weapon_full_modal_')) {
           }
         } else if (interaction.customId.includes('template_finish_group_')) {
           await createHandlers.handleFinishGroup(interaction);
+        } else if (interaction.customId.includes('add_weapons')) {
+          await createHandlers.handleAddWeapons(interaction);
+        } else if (interaction.customId.includes('add_weapon_')) {
+          await createHandlers.handleAddWeaponGroup(interaction);
+        } else if (interaction.customId.includes('modify_add_link_')) {
+          await handleModifyAddLink(interaction);
+        } else if (interaction.customId.includes('modify_update_quantities_')) {
+          await handleModifyUpdateQuantities(interaction);
         } else if (interaction.customId.includes('template_confirm_')) {
           // Manejar confirmación final del template
           console.log('[DEBUG] Detected template_confirm_ button, calling handleConfirm');

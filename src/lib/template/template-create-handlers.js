@@ -368,7 +368,7 @@ async function showRoleSelection(interaction, sessionId) {
  */
 async function handleRoleSelection(interaction) {
   console.log(`[DEBUG] handleRoleSelection: customId=${interaction.customId}`);
-  const sessionId = getSessionIdFromInteraction(interaction);
+  let sessionId = getSessionIdFromInteraction(interaction);
   console.log(`[DEBUG] handleRoleSelection: extracted sessionId=${sessionId}`);
 
   let session = getSession(sessionId);
@@ -494,7 +494,7 @@ async function showWeaponCategorySelection(interaction, sessionId) {
 
     // Si ya hay grupos configurados, mostrar botón para continuar
     if (Object.keys(session.data.weapons).length > 0) {
-      const continueButtonCustomId = `template_finish_weapons_${sessionId}`;
+      const continueButtonCustomId = generateShortCustomId('template_finish_weapons', sessionId);
       console.log('[DEBUG] showWeaponCategorySelection: Adding continue button with customId:', continueButtonCustomId);
 
       try {
@@ -1088,7 +1088,7 @@ async function showMultipleWeaponSelection(interaction, sessionId) {
  */
 async function handleWeaponCategorySelection(interaction) {
   console.log(`[DEBUG] handleWeaponCategorySelection: customId=${interaction.customId}`);
-  const sessionId = getSessionIdFromInteraction(interaction);
+  let sessionId = getSessionIdFromInteraction(interaction);
   console.log(`[DEBUG] handleWeaponCategorySelection: extracted sessionId=${sessionId}`);
 
   let session = getSession(sessionId);
@@ -1194,7 +1194,7 @@ async function showWeaponSelection(interaction, sessionId, category) {
     }
 
     const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`template_weapons_${sessionId}`)
+      .setCustomId(generateShortCustomId('template_weapons', sessionId))
       .setPlaceholder('Selecciona las armas para este grupo')
       .setMinValues(1)
       .setMaxValues(Math.min(options.length, 25))
@@ -1207,7 +1207,7 @@ async function showWeaponSelection(interaction, sessionId, category) {
       if (currentPage > 0) {
         buttons.push(
           new ButtonBuilder()
-            .setCustomId(`template_prev_weapon_page_${sessionId}`)
+            .setCustomId(generateShortCustomId('template_prev_weapon_page', sessionId))
             .setLabel('Anterior')
             .setStyle(ButtonStyle.Secondary)
             .setEmoji('⬅️')
@@ -1217,7 +1217,7 @@ async function showWeaponSelection(interaction, sessionId, category) {
       if (currentPage < totalPages - 1) {
         buttons.push(
           new ButtonBuilder()
-            .setCustomId(`template_next_weapon_page_${sessionId}`)
+            .setCustomId(generateShortCustomId('template_next_weapon_page', sessionId))
             .setLabel('Siguiente')
             .setStyle(ButtonStyle.Secondary)
             .setEmoji('➡️')
@@ -1227,7 +1227,7 @@ async function showWeaponSelection(interaction, sessionId, category) {
 
     buttons.push(
       new ButtonBuilder()
-        .setCustomId(`template_back_category_${sessionId}`)
+        .setCustomId(generateShortCustomId('template_back_category', sessionId))
         .setLabel('Volver a Categorías')
         .setStyle(ButtonStyle.Secondary)
         .setEmoji('🔙')
@@ -1586,7 +1586,7 @@ async function showCategoryWeapons(interaction, sessionId, category) {
       .setFooter({ text: `📍 Editor Principal > Grupos de Armas > Configurar Grupo > ${categoryWeapons[0].categoryDisplayName}` });
 
     const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`template_add_weapons_${sessionId}`)
+      .setCustomId(generateShortCustomId('template_add_weapons', sessionId))
       .setPlaceholder('Selecciona UNA arma para agregar al grupo')
       .setMinValues(1)
       .setMaxValues(1) // Solo permitir seleccionar una arma a la vez
@@ -1603,7 +1603,7 @@ async function showCategoryWeapons(interaction, sessionId, category) {
       new ActionRowBuilder().addComponents(selectMenu),
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`template_back_to_categories_${sessionId}`)
+          .setCustomId(generateShortCustomId('template_back_to_categories', sessionId))
           .setLabel('⬅️ Volver a Categorías')
           .setStyle(ButtonStyle.Secondary)
       )
@@ -2021,5 +2021,8 @@ module.exports = {
   handleSingleWeaponConfigSubmit,
   handleFinishGroup,
   showWeaponCategorySelection,
+  showMultipleWeaponSelection,
+  showCategoryWeapons,
+  showWeaponSelection,
   showRoleSelection
 };

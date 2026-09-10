@@ -661,6 +661,15 @@ const getEvents = () => {
         return;
       }
 
+      // Resto de botones del sistema de templates (volver, paginación, etc.).
+      // Los selects y los modales ya tenían este catch-all; los botones no, así
+      // que cualquier customId nuevo con prefijo template_ se quedaba sin
+      // respuesta y Discord mostraba "La interacción falló".
+      if (interaction.customId.startsWith("template_")) {
+        await templateCommand.handleButton(interaction);
+        return;
+      }
+
     }
 
     if (interaction.isModalSubmit()) {

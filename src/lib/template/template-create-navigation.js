@@ -21,7 +21,11 @@ async function handleBack(interaction) {
   await safeDeferUpdate(interaction);
 
   // Determinar a qué paso volver basado en el customId
-  if (customId.includes('_roles_')) {
+  if (customId.includes('back_to_categories')) {
+    // Volver al listado de categorías del grupo que se está armando
+    const { showMultipleWeaponSelection } = require('./template-create-handlers');
+    return await showMultipleWeaponSelection(interaction, sessionId);
+  } else if (customId.includes('_roles_')) {
     // Volver al modal de configuración adicional
     session.step = 'additional_config';
     await showAdditionalConfigModal(interaction, sessionId);
@@ -40,6 +44,12 @@ async function handleBack(interaction) {
     // Volver a la configuración de armas
     const { showWeaponCategorySelection } = require('./template-create-handlers');
     await showWeaponCategorySelection(interaction, sessionId);
+  } else {
+    console.warn('[WARN] handleBack: botón de volver sin destino:', customId);
+    await interaction.followUp({
+      content: 'No se pudo volver al paso anterior. Continúa desde aquí o cancela el proceso.',
+      flags: MessageFlags.Ephemeral
+    });
   }
 }
 
@@ -419,6 +429,14 @@ function extractSessionId(customId) {
     'template_finish_weapons_',
     'template_finish_group_',
     'template_add_weapons_',
+    'template_add_weapon_',
+    'template_back_to_categories_',
+    'template_back_category_',
+    'template_back_summary_',
+    'template_back_roles_',
+    'template_skip_roles_',
+    'template_prev_weapon_page_',
+    'template_next_weapon_page_',
     'template_continue_',
     'template_roles_',
     'template_weapons_',
