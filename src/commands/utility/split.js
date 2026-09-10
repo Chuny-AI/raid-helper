@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags, InteractionContextType } = require('discord.js');
 const { createErrorEmbed } = require('../../utils/errorEmbeds');
 
 /**
@@ -8,6 +8,10 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('split')
     .setDescription('Calcula la división de botín entre jugadores')
+    // Solo en servidor, como el resto de comandos: la política de permisos
+    // necesita el miembro y sus roles, así que en un DM el comando aparecía
+    // pero siempre respondía "Acceso Denegado".
+    .setContexts(InteractionContextType.Guild)
     .addStringOption(option =>
       option
         .setName('motivo')
