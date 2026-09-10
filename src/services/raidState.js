@@ -135,7 +135,11 @@ function availableSlots(state) {
   });
 }
 
-/** Quita al usuario de slots, waitlist y cannotGo. No toca looters. */
+/**
+ * Quita al usuario de TODAS sus posiciones: slot, waitlist, cannotGo y looters.
+ * Un usuario solo puede estar en un estado a la vez, así que cualquier acción
+ * que le dé uno nuevo pasa antes por aquí.
+ */
 function clearMembership(state, userId) {
   const freedSlotIds = [];
   for (const slot of state.slots) {
@@ -147,7 +151,8 @@ function clearMembership(state, userId) {
   }
   state.waitlist = state.waitlist.filter((w) => w.userId !== userId);
   state.cannotGo = state.cannotGo.filter((c) => c.userId !== userId);
-  return { freedSlotIds };
+  const { ok: wasLooter } = leaveLooter(state, userId);
+  return { freedSlotIds, wasLooter };
 }
 
 /**
@@ -228,28 +233,35 @@ function isRaidFull(state) {
   return availableSlots(state).length === 0;
 }
 
+/**
+ * Apunta al usuario como looter. El cupo se comprueba ANTES de soltar su
+ * posición anterior: la condición es que el raid esté completo en el momento de
+ * pulsar, y si el que se pasa a looter venía de un slot, ese slot queda libre
+ * (el llamador debe promover desde la lista de espera con `freedSlotIds`).
+ */
 function joinLooter(state, user) {
   if (!state.looters || !state.looters.max) return { ok: false, reason: 'no_looters' };
   if (!isRaidFull(state)) return { ok: false, reason: 'raid_not_full' };
   const already = state.looters.users.some((u) => u.userId === user.userId);
   if (already) return { ok: false, reason: 'already' };
   if (state.looters.users.length >= state.looters.max) return { ok: false, reason: 'looters_full' };
+  const { freedSlotIds } = clearMembership(state, user.userId);
   state.looters.users.push({ userId: user.userId, username: user.username, at: new Date() });
-  return { ok: true };
+  return { ok: true, freedSlotIds };
 }
 
 function leaveLooter(state, userId) {
-  const idx = state.looters.users.findIndex((u) => u.userId === userId);
+  const users = state.looters?.users;
+  if (!users) return { ok: false };
+  const idx = users.findIndex((u) => u.userId === userId);
   if (idx === -1) return { ok: false };
-  state.looters.users.splice(idx, 1);
+  users.splice(idx, 1);
   return { ok: true };
 }
 
 /** Saca al usuario de todo (slot, waitlist, cannotGo, looter). Para /raid kick. */
 function kickUser(state, userId) {
-  const { freedSlotIds } = clearMembership(state, userId);
-  const wasLooter = !!state.looters?.users?.some((u) => u.userId === userId);
-  if (wasLooter) leaveLooter(state, userId);
+  const { freedSlotIds, wasLooter } = clearMembership(state, userId);
   return { wasInSlot: freedSlotIds.length > 0, freedSlotIds, wasLooter };
 }
 
@@ -330,8 +342,9 @@ function raidRoster(state) {
     }
   }
 
-  // Un looter puede además tener plaza (joinLooter no libera el slot): en ese
-  // caso no se duplica, solo se marca.
+  // Hoy los estados son excluyentes, pero en raids antiguos guardados en BD
+  // alguien puede aparecer a la vez con plaza y como looter: no se duplica,
+  // solo se marca.
   for (const u of state.looters?.users || []) {
     const existing = index.get(u.userId);
     if (existing) {

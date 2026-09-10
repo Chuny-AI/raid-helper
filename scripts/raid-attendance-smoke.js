@@ -119,9 +119,11 @@ test('un looter sin plaza entra al roster marcado como looter', () => {
   assert.strictEqual(roster[1].slotId, null);
 });
 
-test('quien tiene plaza y además es looter no se duplica', () => {
+test('un raid antiguo con plaza y looter a la vez no duplica al jugador', () => {
+  // Los estados ya son excluyentes, pero en BD quedan raids guardados antes de
+  // esa regla: el roster tiene que seguir dedupando.
   const state = stateWith(1, 1, 1, 2);
-  joinLooter(state, { userId: 'u0', username: 'Jugador 0' });
+  state.looters.users.push({ userId: 'u0', username: 'Jugador 0', at: new Date() });
   const roster = raidRoster(state);
   assert.strictEqual(roster.length, 1);
   assert.strictEqual(roster[0].isLooter, true);
