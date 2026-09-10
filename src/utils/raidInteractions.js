@@ -2,8 +2,8 @@
  * Handlers de interacción de un raid publicado (unirse, lista de espera, no
  * puedo ir, looters, finalizar). Sustituye a los bloques inline de
  * src/utils/events.js. Toda mutación de estado pasa por src/services/raidState.js
- * y termina en raidRegistry.renderAndEdit (regenera embed + componentes) y
- * raidRegistry.persistRaid (guarda en BD).
+ * y termina en raidRegistry.saveRaid (guarda en BD) antes de
+ * raidRegistry.renderAndEdit (regenera embed + componentes).
  *
  * Esquema de customId nuevo: "raid:<accion>:<raidId>[:<extra>]".
  * También resuelve los customId legacy (pre-refactor) por interaction.message.id,
@@ -182,28 +182,28 @@ function sendBuildDm(runtime, slotId, user) {
   });
 }
 
-async function maybeNotifyFull(runtime, guild) {
-  if (runtime.raid.fullNotificationSent) return;
-  if (!raidState.isRaidFull(runtime.raid)) return;
+function markFullNotification(runtime) {
+  if (runtime.raid.fullNotificationSent) return false;
+  if (!raidState.isRaidFull(runtime.raid)) return false;
   runtime.raid.fullNotificationSent = true;
-  raidRegistry.persistRaid(runtime.raidId);
-  notifyRaidLeader(runtime.raid, guild, `🎉 El raid **#${runtime.raidId}** se ha llenado por completo.`);
+  return true;
 }
 
 /** Post-procesa una unión exitosa a un slot: render, persistencia, notificaciones y promoción. */
 async function afterJoin(runtime, slotId, user, freedSlotIds, guild) {
-  await raidRegistry.renderAndEdit(runtime.raidId);
-  raidRegistry.persistRaid(runtime.raidId);
-  await maybeNotifyFull(runtime, guild);
-
+  let promoted = [];
   if (freedSlotIds && freedSlotIds.length > 0) {
-    const promoted = raidState.promoteFromWaitlist(runtime.raid, freedSlotIds);
-    if (promoted.length > 0) {
-      await raidRegistry.renderAndEdit(runtime.raidId);
-      raidRegistry.persistRaid(runtime.raidId);
-      for (const p of promoted) notifyPromotedUser(p, runtime, guild);
-    }
+    promoted = raidState.promoteFromWaitlist(runtime.raid, freedSlotIds);
   }
+  const becameFull = markFullNotification(runtime);
+
+  await raidRegistry.saveRaid(runtime.raidId);
+  await raidRegistry.renderAndEdit(runtime.raidId);
+
+  if (becameFull) {
+    notifyRaidLeader(runtime.raid, guild, `🎉 El raid **#${runtime.raidId}** se ha llenado por completo.`);
+  }
+  for (const promotion of promoted) notifyPromotedUser(promotion, runtime, guild);
 
   sendBuildDm(runtime, slotId, user);
 }
@@ -305,7 +305,7 @@ async function handleWaitlistPick(interaction, raidId) {
     }
 
     raidState.addToWaitlist(runtime.raid, user, slotIds);
-    raidRegistry.persistRaid(runtime.raidId);
+    await raidRegistry.saveRaid(runtime.raidId);
     await raidRegistry.renderAndEdit(runtime.raidId);
     await interaction.update({
       content: '🕒 Te agregamos a la lista de espera para las armas elegidas. Te avisaremos por DM si se libera un cupo.',
@@ -325,17 +325,13 @@ async function handleCannotGo(interaction, raidId) {
 
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
     const result = raidState.toggleCannotGo(runtime.raid, user);
-    await raidRegistry.renderAndEdit(runtime.raidId);
-    raidRegistry.persistRaid(runtime.raidId);
-
+    let promoted = [];
     if (result.toggled === 'added' && result.freedSlotIds && result.freedSlotIds.length > 0) {
-      const promoted = raidState.promoteFromWaitlist(runtime.raid, result.freedSlotIds);
-      if (promoted.length > 0) {
-        await raidRegistry.renderAndEdit(runtime.raidId);
-        raidRegistry.persistRaid(runtime.raidId);
-        for (const p of promoted) notifyPromotedUser(p, runtime, interaction.guild);
-      }
+      promoted = raidState.promoteFromWaitlist(runtime.raid, result.freedSlotIds);
     }
+    await raidRegistry.saveRaid(runtime.raidId);
+    await raidRegistry.renderAndEdit(runtime.raidId);
+    for (const promotion of promoted) notifyPromotedUser(promotion, runtime, interaction.guild);
   });
 }
 
@@ -361,17 +357,13 @@ async function handleLooter(interaction, raidId) {
       }
       return;
     }
-    await raidRegistry.renderAndEdit(runtime.raidId);
-    raidRegistry.persistRaid(runtime.raidId);
-
+    let promoted = [];
     if (result.freedSlotIds && result.freedSlotIds.length > 0) {
-      const promoted = raidState.promoteFromWaitlist(runtime.raid, result.freedSlotIds);
-      if (promoted.length > 0) {
-        await raidRegistry.renderAndEdit(runtime.raidId);
-        raidRegistry.persistRaid(runtime.raidId);
-        for (const p of promoted) notifyPromotedUser(p, runtime, interaction.guild);
-      }
+      promoted = raidState.promoteFromWaitlist(runtime.raid, result.freedSlotIds);
     }
+    await raidRegistry.saveRaid(runtime.raidId);
+    await raidRegistry.renderAndEdit(runtime.raidId);
+    for (const promotion of promoted) notifyPromotedUser(promotion, runtime, interaction.guild);
   });
 }
 
@@ -440,6 +432,11 @@ async function finishRaid(raidId, actorId, guild) {
   if (runtime.raid.status !== 'active') return { ok: false, reason: 'already_closed' };
 
   return raidRegistry.withRaidLock(raidId, async () => {
+    const previous = {
+      status: runtime.raid.status,
+      closedBy: runtime.raid.closedBy,
+      closedAt: runtime.raid.closedAt,
+    };
     runtime.raid.status = 'closed';
     runtime.raid.closedBy = actorId;
     runtime.raid.closedAt = new Date();
@@ -448,9 +445,17 @@ async function finishRaid(raidId, actorId, guild) {
     // quiera quitarlo usa el botón "Eliminar hilo", que sigue en el mensaje
     // mientras `threadId` apunte a algo.
 
-    // Vía el serializador del registro: un `persistRaid` de la última
-    // interacción puede seguir en vuelo sobre este mismo documento.
-    await raidRegistry.saveRaid(raidId);
+    // Vía el serializador del registro: un guardado de la última interacción
+    // puede seguir en vuelo sobre este mismo documento.
+    try {
+      await raidRegistry.saveRaid(raidId);
+    } catch (error) {
+      runtime.raid.status = previous.status;
+      runtime.raid.closedBy = previous.closedBy;
+      runtime.raid.closedAt = previous.closedAt;
+      console.error(`[ERROR] finishRaid: no se pudo persistir el cierre de #${raidId}:`, error);
+      return { ok: false, reason: 'persist_failed' };
+    }
     try {
       require('./reminderManager').cancelReminder(raidId);
     } catch (e) {
@@ -759,6 +764,15 @@ async function routeRaidInteraction(interaction) {
     }
   } catch (e) {
     console.error(`[ERROR] routeRaidInteraction (${action}):`, e);
+    const failedRuntime = raidId
+      ? raidRegistry.getByRaidId(raidId)
+      : raidRegistry.getByMessageId(interaction.message?.id);
+    if (failedRuntime) raidRegistry.unregister(failedRuntime.raidId);
+    await ephemeralReply(
+      interaction,
+      '❌ No se pudo guardar el cambio. El raid no se marcó como actualizado; inténtalo de nuevo.'
+    );
+    return true;
   }
 
   scheduleThreadSync(raidId, interaction);

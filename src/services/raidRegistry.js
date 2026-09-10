@@ -122,11 +122,7 @@ async function saveRaid(raidId) {
     try {
       do {
         entry._saveDirty = false;
-        try {
-          await entry.raid.save();
-        } catch (e) {
-          console.error(`[WARN] raidRegistry.saveRaid: error guardando raid #${raidId}:`, e);
-        }
+        await entry.raid.save();
       } while (entry._saveDirty);
     } finally {
       entry._saving = null;
@@ -135,6 +131,19 @@ async function saveRaid(raidId) {
 
   entry._saving = run;
   return run;
+}
+
+/** Espera y persiste el estado actual de todos los raids registrados. */
+async function flushAll() {
+  const raidIds = Array.from(byRaidId.keys());
+  const results = await Promise.allSettled(raidIds.map((raidId) => saveRaid(raidId)));
+  const failures = results.filter((result) => result.status === 'rejected');
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures.map((result) => result.reason),
+      `No se pudieron guardar ${failures.length} raid(s) durante el cierre`
+    );
+  }
 }
 
 /** Persiste el documento del raid en BD, sin bloquear al llamador. */
@@ -157,4 +166,5 @@ module.exports = {
   renderAndEdit,
   saveRaid,
   persistRaid,
+  flushAll,
 };

@@ -40,8 +40,8 @@ const parseUTCTime = (timeString) => {
 };
 
 /**
- * Parsea un número de minutos como string y devuelve milisegundos.
- * @param {string} minuteString - Minutos como string (ej: "30", "10", "60")
+ * Parsea minutos u horas como string y devuelve milisegundos.
+ * @param {string} minuteString - Duración (ej: "30", "10m", "1h")
  * @returns {number} - Milisegundos
  */
 const parseMinutes = (minuteString) => {
@@ -49,12 +49,13 @@ const parseMinutes = (minuteString) => {
     throw new Error('Tiempo inválido: debe ser una cadena de texto');
   }
 
-  const match = minuteString.trim().match(/^(\d+)$/);
+  const match = minuteString.trim().toLowerCase().match(/^(\d+)\s*(m|min|h|hr)?$/);
   if (!match) {
-    throw new Error(`Formato inválido: "${minuteString}". Usa un número de minutos (ej: 10, 30, 60)`);
+    throw new Error(`Formato inválido: "${minuteString}". Usa minutos u horas (ej: 10, 30m, 1h)`);
   }
 
-  const minutes = parseInt(match[1], 10);
+  const value = parseInt(match[1], 10);
+  const minutes = (match[2] === 'h' || match[2] === 'hr') ? value * 60 : value;
   if (isNaN(minutes) || minutes < 1) {
     throw new Error(`Minutos inválidos: "${minuteString}". Debe ser un número mayor a 0`);
   }

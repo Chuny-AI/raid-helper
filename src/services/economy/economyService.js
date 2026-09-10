@@ -1,12 +1,26 @@
 ﻿const EconomyBalance = require('../../database/models/economy/EconomyBalance');
 const EconomyTransaction = require('../../database/models/economy/EconomyTransaction');
+const mongoose = require('mongoose');
 const EconomyLogChannel = require('../../database/models/economy/EconomyLogChannel');
 const { UserError } = require('../../utils/userError');
 
 const ensurePositiveAmount = (amount) => {
-  if (!Number.isInteger(amount) || amount <= 0) {
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
     // UserError: este mensaje sí está escrito para quien ejecuta el comando.
     throw new UserError('La cantidad debe ser un numero entero positivo.');
+  }
+};
+
+const runInTransaction = async (work) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      result = await work(session);
+    });
+    return result;
+  } finally {
+    await session.endSession();
   }
 };
 
@@ -39,81 +53,63 @@ const getLeaderboard = async (guildId, limit = 10) => {
 const addMoney = async ({ guildId, userId, executorId, amount, description = '' }) => {
   ensurePositiveAmount(amount);
 
-  const oldDoc = await EconomyBalance.findOneAndUpdate(
-    { guildId, userId },
-    {
-      $inc: { balance: amount },
-      $set: { updatedAt: new Date() },
-      $setOnInsert: { guildId, userId },
-    },
-    { upsert: true, new: false },
-  );
-
-  const previousBalance = oldDoc?.balance || 0;
-  const newBalance = previousBalance + amount;
-
-  await EconomyTransaction.create({
-    guildId,
-    type: 'add',
-    userId,
-    affectedUserIds: [userId],
-    executorId,
-    amount,
-    description: String(description || '').trim(),
+  return runInTransaction(async (session) => {
+    const oldDoc = await EconomyBalance.findOneAndUpdate(
+      { guildId, userId },
+      {
+        $inc: { balance: amount },
+        $set: { updatedAt: new Date() },
+        $setOnInsert: { guildId, userId },
+      },
+      { upsert: true, new: false, session },
+    );
+    const previousBalance = oldDoc?.balance || 0;
+    const newBalance = previousBalance + amount;
+    await EconomyTransaction.create([{
+      guildId, type: 'add', userId, affectedUserIds: [userId], executorId, amount,
+      description: String(description || '').trim(),
+    }], { session });
+    return { previousBalance, newBalance };
   });
-
-  return { previousBalance, newBalance };
 };
 
 const removeMoney = async ({ guildId, userId, executorId, amount, description = '' }) => {
   ensurePositiveAmount(amount);
 
-  const oldDoc = await EconomyBalance.findOneAndUpdate(
-    { guildId, userId },
-    {
-      $inc: { balance: -amount },
-      $set: { updatedAt: new Date() },
-      $setOnInsert: { guildId, userId },
-    },
-    { upsert: true, new: false },
-  );
-
-  const previousBalance = oldDoc?.balance || 0;
-  const newBalance = previousBalance - amount;
-
-  await EconomyTransaction.create({
-    guildId,
-    type: 'remove',
-    userId,
-    affectedUserIds: [userId],
-    executorId,
-    amount,
-    description: String(description || '').trim(),
+  return runInTransaction(async (session) => {
+    const oldDoc = await EconomyBalance.findOneAndUpdate(
+      { guildId, userId },
+      {
+        $inc: { balance: -amount },
+        $set: { updatedAt: new Date() },
+        $setOnInsert: { guildId, userId },
+      },
+      { upsert: true, new: false, session },
+    );
+    const previousBalance = oldDoc?.balance || 0;
+    const newBalance = previousBalance - amount;
+    await EconomyTransaction.create([{
+      guildId, type: 'remove', userId, affectedUserIds: [userId], executorId, amount,
+      description: String(description || '').trim(),
+    }], { session });
+    return { previousBalance, newBalance };
   });
-
-  return { previousBalance, newBalance };
 };
 
 const resetBalance = async ({ guildId, userId, executorId }) => {
-  const oldDoc = await EconomyBalance.findOneAndUpdate(
-    { guildId, userId },
-    { $set: { balance: 0, updatedAt: new Date() } },
-    { new: false },
-  );
-
-  const previousBalance = oldDoc?.balance || 0;
-
-  await EconomyTransaction.create({
-    guildId,
-    type: 'reset',
-    userId,
-    affectedUserIds: [userId],
-    executorId,
-    amount: previousBalance,
-    description: 'Reset de balance',
+  return runInTransaction(async (session) => {
+    const oldDoc = await EconomyBalance.findOneAndUpdate(
+      { guildId, userId },
+      { $set: { balance: 0, updatedAt: new Date() } },
+      { new: false, session },
+    );
+    const previousBalance = oldDoc?.balance || 0;
+    await EconomyTransaction.create([{
+      guildId, type: 'reset', userId, affectedUserIds: [userId], executorId,
+      amount: previousBalance, description: 'Reset de balance',
+    }], { session });
+    return { previousBalance };
   });
-
-  return { previousBalance };
 };
 
 const getDebtors = async (guildId, limit = 10) => {

@@ -1,5 +1,6 @@
 const { parseMinutes, formatMinutes } = require('./time');
 const { createReminderEmbed } = require('./embed');
+const { enqueueDmBatch } = require('./notificationLimiter');
 
 /**
  * Mapa para almacenar los recordatorios activos
@@ -105,12 +106,13 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
     const reminderTimeFormatted = reminder ? formatMinutes(parseMinutes(reminder.reminderTime)) : 'pronto';
 
     let updatedParticipants = participants || [];
+    let raidDoc = null;
     try {
       // interactionId es el raidId (ver src/commands/utility/raid.js): se lee el
       // estado estructurado actual en vez de reconstruirlo desde el texto del embed.
       const RaidEvent = require('../database/models/RaidEvent');
       const { participantMentions } = require('../services/raidState');
-      const raidDoc = await RaidEvent.findOne({ eventId: interactionId });
+      raidDoc = await RaidEvent.findOne({ eventId: interactionId, guildId });
       if (raidDoc && raidDoc.stateVersion >= 2) {
         const extractedParticipants = participantMentions(raidDoc);
         if (extractedParticipants.length > 0) {
@@ -141,45 +143,32 @@ const sendReminderNotification = async (interactionId, templateName, channelId, 
       }
     });
 
-    if (interestedUsers.size === 0) {
-      try {
-        const messages = await channel.messages.fetch({ limit: 10 });
-        const eventMessage = messages.find(msg =>
-          msg.embeds.length > 0 &&
-          msg.embeds[0].title &&
-          msg.embeds[0].title.includes(activityTitle)
-        );
-
-        if (eventMessage) {
-          interestedUsers.add(eventMessage.author.id);
-        }
-      } catch (fetchError) {
-        console.error('[ERROR] Error obteniendo mensajes del canal:', fetchError);
-      }
-    }
+    // Los Sets en memoria no sobreviven a un reinicio. El líder sí está
+    // persistido en RaidEvent, por lo que siempre se recupera desde allí.
+    if (raidDoc?.leaderId) interestedUsers.add(raidDoc.leaderId);
 
     let successfulDMs = 0;
     let failedDMs = 0;
 
-    for (const userId of interestedUsers) {
-      try {
-        const user = await client.users.fetch(userId);
+    await enqueueDmBatch(guildId, async () => {
+      for (const userId of interestedUsers) {
+        try {
+          const user = await client.users.fetch(userId);
 
-        if (user && !user.bot) {
-          await user.send({
-            embeds: [reminderEmbed],
-            components: components
-          });
-          successfulDMs++;
+          if (user && !user.bot) {
+            await user.send({
+              embeds: [reminderEmbed],
+              components: components
+            });
+            successfulDMs++;
+          }
+        } catch (dmError) {
+          console.error(`[ERROR] No se pudo enviar DM a ${userId}:`, dmError.message);
+          failedDMs++;
         }
-      } catch (dmError) {
-        console.error(`[ERROR] No se pudo enviar DM a ${userId}:`, dmError.message);
-        failedDMs++;
+        await new Promise((r) => setTimeout(r, 250));
       }
-      // Mismo respiro que en /notify y en el aviso masivo de /raid create:
-      // abrir muchos DM seguidos choca con el rate limit de Discord.
-      await new Promise((r) => setTimeout(r, 250));
-    }
+    });
 
     console.log(`[INFO] Recordatorio enviado para ${templateName}: ${successfulDMs} DMs exitosos, ${failedDMs} DMs fallidos, ${updatedParticipants.length} participantes`);
 

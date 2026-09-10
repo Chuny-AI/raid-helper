@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, MessageFlags, InteractionContextType } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags, InteractionContextType, PermissionFlagsBits } = require("discord.js");
 const { createMassNotificationEmbed } = require("../../utils/embed");
 const { renderRaidEmbed, renderRaidComponents } = require("../../utils/raidRender");
 const { parseUTCTime, parseMinutes } = require("../../utils/time");
@@ -39,6 +39,11 @@ const {
   syncRaidThread,
   describeThreadFailure,
 } = require('../../utils/raidThread');
+const {
+  consumeNotificationPermit,
+  enqueueDmBatch,
+  formatRetryAfter,
+} = require('../../utils/notificationLimiter');
 
 /**
  * Almacena temporalmente los parámetros de raid pendiente de publicación.
@@ -69,23 +74,25 @@ async function executeKickSubcommand(interaction) {
     return interaction.editReply({ content: 'Solo el líder del raid puede expulsar participantes.' });
   }
 
-  const result = await raidRegistry.withRaidLock(raidId, async () => {
-    const kickResult = raidState.kickUser(runtime.raid, targetUser.id);
-    if (!kickResult.wasInSlot && !kickResult.wasLooter) return kickResult;
+  let result;
+  try {
+    result = await raidRegistry.withRaidLock(raidId, async () => {
+      const kickResult = raidState.kickUser(runtime.raid, targetUser.id);
+      if (!kickResult.wasInSlot && !kickResult.wasLooter) return kickResult;
 
-    await raidRegistry.renderAndEdit(raidId);
-    raidRegistry.persistRaid(raidId);
-
-    let promoted = [];
-    if (kickResult.freedSlotIds.length > 0) {
-      promoted = raidState.promoteFromWaitlist(runtime.raid, kickResult.freedSlotIds);
-      if (promoted.length > 0) {
-        await raidRegistry.renderAndEdit(raidId);
-        raidRegistry.persistRaid(raidId);
+      let promoted = [];
+      if (kickResult.freedSlotIds.length > 0) {
+        promoted = raidState.promoteFromWaitlist(runtime.raid, kickResult.freedSlotIds);
       }
-    }
-    return { ...kickResult, promoted };
-  });
+      await raidRegistry.saveRaid(raidId);
+      await raidRegistry.renderAndEdit(raidId);
+      return { ...kickResult, promoted };
+    });
+  } catch (error) {
+    console.error(`[ERROR] kick: no se pudo guardar el cambio del raid #${raidId}:`, error);
+    raidRegistry.unregister(raidId);
+    return interaction.editReply({ content: '❌ No se pudo guardar la expulsión. Inténtalo de nuevo.' });
+  }
 
   if (!result.wasInSlot && !result.wasLooter) {
     return interaction.editReply({ content: `**${targetUser.username}** no está en este raid.` });
@@ -179,27 +186,30 @@ async function executeEditSubcommand(interaction) {
     return interaction.editReply({ content: 'Color inválido. Usa formato hexadecimal: `#FFFFFF`' });
   }
 
-  if (newTitle) runtime.raid.title = newTitle;
-  if (newDescription) runtime.raid.description = newDescription;
-  if (newColor) runtime.raid.color = newColor;
+  let parsedTimestamp = null;
   if (newTime) {
-    let eventTimestamp;
     try {
-      eventTimestamp = parseUTCTime(newTime);
+      parsedTimestamp = parseUTCTime(newTime);
     } catch (e) {
       return interaction.editReply({ content: `Hora inválida: ${e.message}` });
     }
-    runtime.raid.time = newTime;
-    runtime.raid.eventTimestamp = eventTimestamp;
   }
 
   try {
     await raidRegistry.withRaidLock(raidId, async () => {
+      if (newTitle) runtime.raid.title = newTitle;
+      if (newDescription) runtime.raid.description = newDescription;
+      if (newColor) runtime.raid.color = newColor;
+      if (newTime) {
+        runtime.raid.time = newTime;
+        runtime.raid.eventTimestamp = parsedTimestamp;
+      }
+      await raidRegistry.saveRaid(raidId);
       await raidRegistry.renderAndEdit(raidId);
-      raidRegistry.persistRaid(raidId);
     });
   } catch (e) {
     console.error('[ERROR] edit: No se pudo actualizar el mensaje:', e);
+    raidRegistry.unregister(raidId);
     return interaction.editReply({ content: 'No se pudo actualizar el mensaje del raid.' });
   }
 
@@ -509,7 +519,7 @@ async function handleConfirmRaidCreate(interaction) {
 
   const {
     templateName, template, eventTimestamp, title, color, image, description,
-    finalReminder, finalNotificationRoles, looters, threadEnabled, guildId, user,
+    finalReminder, finalNotificationRoles, shouldSendMassDm, looters, threadEnabled, guildId, user,
   } = pending;
 
   const weaponOverrides = pending.weaponOverrides || emptyOverrides();
@@ -547,6 +557,17 @@ async function handleConfirmRaidCreate(interaction) {
     console.warn(
       `[WARN] handleConfirmRaidCreate: ${missingRoles.length} rol(es) ya no existen en el servidor, se publica sin mencionarlos: ${missingRoles.join(', ')}`
     );
+  }
+
+  if (shouldSendMassDm && mentionRoles.length > 0) {
+    const permit = consumeNotificationPermit(guildId, user.id);
+    if (!permit.ok) {
+      await safeInteractionUpdate(interaction, {
+        content: `⏳ Las notificaciones masivas están en espera para evitar abuso. Inténtalo de nuevo en ${formatRetryAfter(permit.retryAfterMs)} minuto(s).`,
+        components: [],
+      });
+      return;
+    }
   }
 
   // Marcar como procesado para evitar dobles publicaciones
@@ -654,6 +675,25 @@ async function handleConfirmRaidCreate(interaction) {
     }
   }
 
+  // Persistir antes de confirmar o lanzar efectos secundarios. Si la base de
+  // datos falla, se retira el mensaje recién creado para no dejar un raid
+  // interactivo que reaparezca con estado antiguo tras un reinicio.
+  try {
+    await raidRegistry.saveRaid(raidId);
+    console.log(`[INFO] Raid #${raidId} guardado en DB (messageId: ${raidMessage.id})`);
+  } catch (dbError) {
+    console.error('[ERROR] handleConfirmRaidCreate: Error guardando raid en DB:', dbError);
+    raidRegistry.unregister(raidId);
+    try { await raidMessage.delete(); } catch (deleteError) {
+      logDiscordError('handleConfirmRaidCreate: no se pudo retirar el mensaje tras fallar la persistencia', deleteError);
+    }
+    await safeInteractionUpdate(interaction, {
+      content: '❌ No se pudo guardar el raid. No se publicó para evitar perder inscripciones; inténtalo de nuevo.',
+      components: [],
+    });
+    return;
+  }
+
   // Confirmar al líder que el raid fue publicado (actualiza el mensaje ephemeral).
   // Si esto falla el raid ya está publicado, así que no se revierte nada.
   const avisos = [];
@@ -696,8 +736,8 @@ async function handleConfirmRaidCreate(interaction) {
   }
 
   // Enviar DMs de notificación masiva (no bloqueante)
-  if (mentionRoles.length > 0 && raidMessage) {
-    setImmediate(async () => {
+  if (shouldSendMassDm && mentionRoles.length > 0 && raidMessage) {
+    enqueueDmBatch(guildId, async () => {
       try {
         const members = await interaction.guild.members.fetch();
         const targetMembers = members.filter(member =>
@@ -725,19 +765,6 @@ async function handleConfirmRaidCreate(interaction) {
       }
     });
   }
-
-  // Guardar en BD (no bloqueante). Vía el serializador del registro: el raid ya
-  // está publicado y registrado, así que alguien puede haberse apuntado ya y
-  // tener un `persistRaid` en vuelo sobre este mismo documento; un `save()`
-  // directo aquí chocaría con él (ParallelSaveError).
-  setImmediate(async () => {
-    try {
-      await raidRegistry.saveRaid(raidId);
-      console.log(`[INFO] Raid #${raidId} guardado en DB (messageId: ${raidMessage.id})`);
-    } catch (dbError) {
-      console.error('[ERROR] handleConfirmRaidCreate: Error guardando raid en DB:', dbError);
-    }
-  });
 }
 
 
@@ -992,7 +1019,8 @@ module.exports = {
 
       // Verificar roles autorizados (authorizedroles), independiente de economy/decode
       const hasAuthorizedRole = await checkAuthorizedRole(interaction);
-      if (!hasAuthorizedRole) {
+      const isAdministrator = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+      if (!isAdministrator && !hasAuthorizedRole) {
         const errorEmbed = createErrorEmbed(
           'Acceso denegado',
           'No tienes un rol autorizado para usar el comando /raid en este servidor.\nPide a un administrador que te agregue a la lista de roles autorizados.'
@@ -1062,7 +1090,9 @@ module.exports = {
         });
       }
 
-      let finalReminder = reminder;
+      const finalColor = color || template.color || null;
+      const finalImage = image || template.image || null;
+      let finalReminder = reminder || template.reminder || null;
 
       if (finalReminder) {
         let reminderTimeMs;
@@ -1074,7 +1104,7 @@ module.exports = {
             `Error procesando el tiempo del recordatorio: ${reminderError.message}`,
             [{
               name: "Formato Correcto",
-              value: "Usa un número de minutos: `10`, `30`, `60`",
+              value: "Usa minutos u horas: `10`, `30m`, `1h`",
               inline: false
             }]
           );
@@ -1118,7 +1148,7 @@ module.exports = {
         }
       }
 
-      if (color && !isValidHex(color)) {
+      if (finalColor && !isValidHex(finalColor)) {
         const errorEmbed = createErrorEmbed(
           "Color Inválido",
           "El color proporcionado no es válido.",
@@ -1135,11 +1165,18 @@ module.exports = {
       }
 
       const {
-        roleIds: finalNotificationRoles,
+        roleIds: parsedNotificationRoles,
         unresolved: unresolvedRoles,
         exceededLimit: tooManyRoles,
         blockedEveryone,
       } = parseRolesToNotify(rolesToNotifyInput, interaction.guild);
+      const usesTemplateRoles = !String(rolesToNotifyInput || '').trim();
+      const finalNotificationRoles = usesTemplateRoles
+        ? [...new Set(Array.isArray(template.roles) ? template.roles : [])]
+          .filter((roleId) => String(roleId) !== guildId)
+          .slice(0, MAX_ROLES_TO_NOTIFY)
+        : parsedNotificationRoles;
+      const shouldSendMassDm = usesTemplateRoles ? Boolean(template.notifyAll) : true;
 
       // @everyone se descarta: en la lista de roles del raid no llega a ping'ar,
       // así que aceptarlo daba la falsa impresión de haber avisado a todos.
@@ -1202,11 +1239,12 @@ module.exports = {
         eventTimestamp,
         time,
         title,
-        color,
-        image,
+        color: finalColor,
+        image: finalImage,
         description,
         finalReminder,
         finalNotificationRoles,
+        shouldSendMassDm,
         looters,
         threadEnabled,
         guildId,

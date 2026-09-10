@@ -6,11 +6,17 @@ const {
   ButtonBuilder,
   ButtonStyle,
   MessageFlags,
+  PermissionFlagsBits,
 } = require('discord.js');
 const { checkAuthorizedRole } = require('../../middleware/roleCheck');
 const { createErrorEmbed, safeReply } = require('../../utils/errorEmbeds');
 const NotifyEvent = require('../../database/models/NotifyEvent');
 const { logDatabaseError } = require('../../utils/logging');
+const {
+  consumeNotificationPermit,
+  enqueueDmBatch,
+  formatRetryAfter,
+} = require('../../utils/notificationLimiter');
 
 /**
  * Genera un ID corto único para la notificación (8 caracteres alfanuméricos).
@@ -140,7 +146,7 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // Permission check: admin OR authorized role
-    const isAdmin = interaction.member.permissions.has('Administrator');
+    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
     const hasRole = await checkAuthorizedRole(interaction);
 
     if (!isAdmin && !hasRole) {
@@ -157,6 +163,15 @@ module.exports = {
     const rol2 = interaction.options.getRole('rol_2');
     const rol3 = interaction.options.getRole('rol_3');
     const targetRoles = [rol1, rol2, rol3].filter(Boolean);
+
+    if (targetRoles.length > 0) {
+      const permit = consumeNotificationPermit(interaction.guild.id, interaction.user.id);
+      if (!permit.ok) {
+        return interaction.editReply({
+          content: `⏳ Las notificaciones masivas están en espera para evitar abuso. Inténtalo de nuevo en ${formatRetryAfter(permit.retryAfterMs)} minuto(s).`,
+        });
+      }
+    }
 
     const notifyId = generateNotifyId();
 
@@ -198,8 +213,9 @@ module.exports = {
       }).save();
     } catch (e) {
       logDatabaseError('notify save', e);
+      try { await postedMessage.delete(); } catch { /* ya pudo ser eliminado */ }
       return interaction.editReply({
-        content: `⚠️ La notificación fue publicada pero hubo un error al guardarla (ID: \`${notifyId}\`).`,
+        content: `❌ No se pudo guardar la notificación y se retiró para evitar respuestas que se perderían (ID: \`${notifyId}\`).`,
       });
     }
 
@@ -234,7 +250,7 @@ module.exports = {
       content: `✅ Notificación publicada (ID: \`${notifyId}\`). Enviando DMs a ${roleNames} (${uniqueTargets.size} usuarios)…`,
     });
 
-    setImmediate(async () => {
+    enqueueDmBatch(interaction.guild.id, async () => {
       let sent = 0;
       let failed = 0;
       for (const [, member] of uniqueTargets) {

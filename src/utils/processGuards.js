@@ -20,6 +20,7 @@ const MAX_LOGS_PER_WINDOW = 30;
 let windowStart = 0;
 let loggedInWindow = 0;
 let suppressed = 0;
+let shuttingDown = false;
 
 /**
  * Limita el volumen de logs: un fallo que se repite miles de veces por segundo
@@ -89,8 +90,32 @@ const installProcessGuards = (client) => {
     });
 
     process.on('SIGTERM', () => {
-      console.log('[INFO] SIGTERM recibido, cerrando el bot...');
-      process.exit(0);
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log('[INFO] SIGTERM recibido, guardando estado antes de cerrar...');
+
+      const timeout = setTimeout(() => {
+        console.error('[GUARD] El cierre ordenado superó 10 segundos; terminando el proceso.');
+        process.exit(1);
+      }, 10_000);
+      timeout.unref?.();
+
+      (async () => {
+        try {
+          await require('../services/raidRegistry').flushAll();
+          require('./reminderManager').clearAllReminders();
+          if (client?.destroy) await client.destroy();
+
+          const mongoose = require('mongoose');
+          if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
+          clearTimeout(timeout);
+          process.exit(0);
+        } catch (error) {
+          clearTimeout(timeout);
+          logUncontrolledError('Error durante el cierre ordenado', error);
+          process.exit(1);
+        }
+      })();
     });
   }
 

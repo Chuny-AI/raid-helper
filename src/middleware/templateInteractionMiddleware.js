@@ -4,7 +4,6 @@
  */
 
 const { handleTemplateButton, handleTemplateModal, handleTemplateSelectMenu } = require('../lib/template/template-interaction-handler');
-const templateDelete = require('../commands/utility/template-delete');
 
 /**
  * Maneja las interactions de botones
@@ -16,12 +15,6 @@ async function handleButtonInteraction(interaction) {
   if (customId.startsWith('template_') || customId.startsWith('group_') || customId.includes('_group_') || customId.includes('back_to_group_') || customId.includes('confirm_delete_group_')) {
     await handleTemplateButton(interaction);
     return true; // Indica que la interaction fue manejada
-  }
-
-  // Template delete buttons
-  if (customId.startsWith('template_delete_')) {
-    await templateDelete.handleButton(interaction);
-    return true;
   }
 
   return false; // Indica que esta interaction no fue manejada por este middleware

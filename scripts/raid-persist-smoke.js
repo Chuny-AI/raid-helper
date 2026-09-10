@@ -25,6 +25,7 @@ async function test(name, fn) {
 }
 
 const raidRegistry = require('../src/services/raidRegistry');
+const { finishRaid } = require('../src/utils/raidInteractions');
 
 /**
  * Documento falso que imita a mongoose: si se llama a `save()` mientras otro
@@ -112,15 +113,42 @@ const drain = async (rondas = 6) => {
   await test('un guardado que falla no bloquea el siguiente', async () => {
     const doc = registerFake('P4', fakeDoc({ failTimes: 1 }));
     doc.value = 7;
-    await raidRegistry.saveRaid('P4');   // este falla y se traga el error
+    await assert.rejects(raidRegistry.saveRaid('P4'), /fallo simulado de BD/);
     doc.value = 9;
     await raidRegistry.saveRaid('P4');
     assert.deepStrictEqual(doc.saved, [9]);
     raidRegistry.unregister('P4');
   });
 
+  await test('flushAll espera todos los raids registrados', async () => {
+    const first = registerFake('F1', fakeDoc());
+    const second = registerFake('F2', fakeDoc());
+    first.value = 11;
+    second.value = 22;
+    await raidRegistry.flushAll();
+    assert.deepStrictEqual(first.saved, [11]);
+    assert.deepStrictEqual(second.saved, [22]);
+    raidRegistry.unregister('F1');
+    raidRegistry.unregister('F2');
+  });
+
   await test('saveRaid sobre un raid no registrado no lanza', async () => {
     await raidRegistry.saveRaid('NO-EXISTE');
+  });
+
+  await test('un cierre que no se puede guardar vuelve a estado activo', async () => {
+    const doc = fakeDoc({ failTimes: 1 });
+    doc.guildId = 'guild';
+    doc.status = 'active';
+    doc.closedBy = null;
+    doc.closedAt = null;
+    registerFake('CLOSEFAIL', doc);
+    const result = await finishRaid('CLOSEFAIL', 'admin', { id: 'guild' });
+    assert.deepStrictEqual(result, { ok: false, reason: 'persist_failed' });
+    assert.strictEqual(doc.status, 'active');
+    assert.strictEqual(doc.closedBy, null);
+    assert.strictEqual(doc.closedAt, null);
+    raidRegistry.unregister('CLOSEFAIL');
   });
 
   console.log('\n— persistRaid (no bloqueante) —');

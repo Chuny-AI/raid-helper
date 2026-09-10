@@ -8,6 +8,8 @@ const EconomyBalance = require('../database/models/economy/EconomyBalance');
 const EconomyTransaction = require('../database/models/economy/EconomyTransaction');
 const EconomyRole = require('../database/models/economy/EconomyRole');
 const EconomyLogChannel = require('../database/models/economy/EconomyLogChannel');
+const AuthorizedUser = require('../database/models/AuthorizedUser');
+const UserCategory = require('../database/models/UserCategory');
 
 /**
  * Crea las colecciones en MongoDB si no existen.
@@ -25,6 +27,8 @@ const ensureCollections = async () => {
     EconomyTransaction,
     EconomyRole,
     EconomyLogChannel,
+    AuthorizedUser,
+    UserCategory,
   ];
 
   for (const model of models) {

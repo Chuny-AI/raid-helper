@@ -48,6 +48,26 @@ const templateSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  color: {
+    type: String,
+    default: ""
+  },
+  url: {
+    type: String,
+    default: ""
+  },
+  roles: {
+    type: [String],
+    default: []
+  },
+  notifyAll: {
+    type: Boolean,
+    default: false
+  },
+  reminder: {
+    type: String,
+    default: ""
+  },
   weapons: {
     type: mongoose.Schema.Types.Mixed,
     default: {}

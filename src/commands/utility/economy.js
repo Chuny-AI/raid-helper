@@ -9,6 +9,7 @@ const {
   getLogChannel,
   setLogChannel,
 } = require('../../services/economy/economyService');
+const { PermissionFlagsBits } = require('discord.js');
 const {
   addEconomyRole,
   removeEconomyRole,
@@ -36,9 +37,30 @@ const checkEconomyPermission = async (interaction) => {
 
 const checkLogChannel = async (interaction) => {
   const channelId = await getLogChannel(interaction.guild.id);
-  if (channelId) return channelId;
+  if (!channelId) {
+    await safeReply(interaction, {
+      embeds: [createErrorEmbed('Canal no configurado', 'No hay canal de logs configurado. Usa /eco set-channel')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return null;
+  }
+
+  const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+  const permissions = channel?.permissionsFor?.(interaction.guild.members.me);
+  const required = [
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.EmbedLinks,
+  ];
+  if (channel?.isTextBased?.() && typeof channel.send === 'function' && permissions?.has(required)) {
+    return channel;
+  }
+
   await safeReply(interaction, {
-    embeds: [createErrorEmbed('Canal no configurado', 'No hay canal de logs configurado. Usa /eco set-channel')],
+    embeds: [createErrorEmbed(
+      'Canal de logs no disponible',
+      'El canal configurado no existe o el bot no puede verlo, escribir o enviar embeds. Corrígelo con /eco set-channel.'
+    )],
     flags: MessageFlags.Ephemeral,
   });
   return null;
@@ -120,14 +142,16 @@ const buildEmbed = (opts) => {
 
 /**
  * Sends the unified public embed to the configured log channel.
- * Never throws — failure must not block the command response.
+ * @returns {Promise<boolean>} si el registro quedó publicado.
  */
-const sendPublic = async (guild, channelId, embed) => {
+const sendPublic = async (channel, embed) => {
   try {
-    const channel = await guild.channels.fetch(channelId).catch(() => null);
-    if (!channel || !channel.isTextBased()) return;
     await channel.send({ embeds: [embed] });
-  } catch (_) {}
+    return true;
+  } catch (error) {
+    console.error('[ERROR] /eco: no se pudo publicar el registro de auditoría:', error);
+    return false;
+  }
 };
 
 /**
@@ -136,6 +160,16 @@ const sendPublic = async (guild, channelId, embed) => {
 const ackEphemeral = async (interaction, logChannelId) => {
   await safeReply(interaction, {
     embeds: [createSuccessEmbed('Accion registrada', `Resultado publicado en <#${logChannelId}>`)],
+    flags: MessageFlags.Ephemeral,
+  });
+};
+
+const warnLogFailure = async (interaction) => {
+  await safeReply(interaction, {
+    embeds: [createErrorEmbed(
+      'Cambio guardado, registro no publicado',
+      'La operación económica se guardó, pero Discord rechazó el mensaje del canal de logs. Revisa sus permisos antes de continuar.'
+    )],
     flags: MessageFlags.Ephemeral,
   });
 };
@@ -265,6 +299,22 @@ module.exports = {
         if (!channel.isTextBased()) {
           await safeReply(interaction, {
             embeds: [createErrorEmbed('Canal invalido', 'El canal seleccionado debe ser un canal de texto.')],
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        const botPermissions = channel.permissionsFor?.(interaction.guild.members.me);
+        const required = [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.EmbedLinks,
+        ];
+        if (!botPermissions?.has(required) || typeof channel.send !== 'function') {
+          await safeReply(interaction, {
+            embeds: [createErrorEmbed(
+              'Permisos insuficientes',
+              'El bot necesita ver el canal, enviar mensajes y adjuntar enlaces/embeds antes de configurarlo.'
+            )],
             flags: MessageFlags.Ephemeral,
           });
           return;
@@ -455,8 +505,8 @@ module.exports = {
       }
 
       // ── Action commands (add/remove/reset): require log channel ──────────
-      const logChannelId = await checkLogChannel(interaction);
-      if (!logChannelId) return;
+      const logChannel = await checkLogChannel(interaction);
+      if (!logChannel) return;
 
       // ── add ───────────────────────────────────────────────────────────────
       if (subcommand === 'add') {
@@ -484,8 +534,8 @@ module.exports = {
           description: description || null,
         });
 
-        await sendPublic(interaction.guild, logChannelId, embed);
-        await ackEphemeral(interaction, logChannelId);
+        if (!await sendPublic(logChannel, embed)) return warnLogFailure(interaction);
+        await ackEphemeral(interaction, logChannel.id);
         return;
       }
 
@@ -515,8 +565,8 @@ module.exports = {
           description: description || null,
         });
 
-        await sendPublic(interaction.guild, logChannelId, embed);
-        await ackEphemeral(interaction, logChannelId);
+        if (!await sendPublic(logChannel, embed)) return warnLogFailure(interaction);
+        await ackEphemeral(interaction, logChannel.id);
         return;
       }
 
@@ -559,8 +609,8 @@ module.exports = {
           sourceChannelMention,
         });
 
-        await sendPublic(interaction.guild, logChannelId, embed);
-        await ackEphemeral(interaction, logChannelId);
+        if (!await sendPublic(logChannel, embed)) return warnLogFailure(interaction);
+        await ackEphemeral(interaction, logChannel.id);
         return;
       }
     } catch (error) {
