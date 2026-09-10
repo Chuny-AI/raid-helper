@@ -1493,7 +1493,7 @@ module.exports = {
       }
 
       // Actualizar el template con el nuevo título
-      const updatedTemplate = await updateTemplate(currentTemplate._id, { title: newTitle });
+      const updatedTemplate = await updateTemplate(currentTemplate._id, { title: newTitle }, guildId);
 
       const successEmbed = createSuccessEmbed(
         'Template Renombrado',
@@ -5799,7 +5799,7 @@ templateModule.saveTemplateChanges = async function(interaction, sessionId) {
     }
     
     // Actualizar el template en la base de datos
-    await updateTemplate(session.templateId, finalData);
+    await updateTemplate(session.templateId, finalData, interaction.guild.id);
 
     // Limpiar la sesión
     templateEditSessions.delete(sessionId);

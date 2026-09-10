@@ -9,6 +9,11 @@
 const assert = require('node:assert');
 const { PermissionFlagsBits } = require('discord.js');
 
+// Aquí no hay Mongo. El caso "raid de otro servidor" cae al respaldo en BD
+// a propósito (es el segundo cerrojo), así que se recorta la espera de
+// mongoose para no bloquear la prueba 10 segundos por un fallo esperado.
+require('mongoose').set('bufferTimeoutMS', 50);
+
 let passed = 0;
 async function test(name, fn) {
   try {
@@ -92,8 +97,9 @@ function fakeThread({ id = 'T1', members = [], archived = false, failAdd = [] } 
   };
 }
 
-function fakeGuild(thread) {
+function fakeGuild(thread, { id = 'G1' } = {}) {
   return {
+    id,
     members: { me: { id: 'BOT' } },
     client: { user: { id: 'BOT' } },
     channels: {
@@ -109,6 +115,7 @@ function fakeGuild(thread) {
 function fakeRaid(overrides = {}) {
   return {
     eventId: 'AB3K9F',
+    guildId: 'G1',
     title: 'Raid de prueba',
     status: 'active',
     leaderId: 'LEADER',
@@ -465,6 +472,19 @@ async function main() {
     const it = fakeInteraction({ customId: `raid:thdelok:${raid.eventId}`, userId: 'U1', guild: fakeGuild(thread) });
     await routeRaidInteraction(it);
     assert.strictEqual(thread.log.deleted, false);
+    assert.strictEqual(raid.threadId, 'T1');
+    raidRegistry.unregister(raid.eventId);
+  });
+
+  await test('un raid de otro servidor no se puede tocar', async () => {
+    const thread = fakeThread();
+    const raid = montarRuntime(thread);
+    const it = fakeInteraction({
+      customId: `raid:thdelok:${raid.eventId}`,
+      guild: fakeGuild(thread, { id: 'OTRO-SERVIDOR' }),
+    });
+    await routeRaidInteraction(it);
+    assert.strictEqual(thread.log.deleted, false, 'no se puede borrar el hilo de otro gremio');
     assert.strictEqual(raid.threadId, 'T1');
     raidRegistry.unregister(raid.eventId);
   });

@@ -62,15 +62,34 @@ function parseCustomId(customId) {
 
 /**
  * Resuelve (y registra bajo demanda si hace falta) el runtime de un raid.
+ *
+ * Todo queda acotado al servidor de la interacción. El eventId es un código de
+ * 6 caracteres que va a la vista en el embed, y ni el registro en memoria ni la
+ * colección de raids están particionados por gremio: sin este filtro, quien
+ * viera un id en un servidor podía manejar ese raid desde otro (basta con ser
+ * administrador de un servidor propio con el bot invitado, porque
+ * `canManageRaid` evalúa los permisos del miembro que ejecuta, no los del
+ * servidor dueño del raid). Con esto, un raid de otro gremio se comporta como
+ * si no existiera.
  * @param {{raidId?:string|null, messageId?:string|null, guild:Object}} params
  */
 async function getOrLoadRuntime({ raidId, messageId, guild }) {
-  let runtime = raidId ? raidRegistry.getByRaidId(raidId) : null;
-  if (!runtime && messageId) runtime = raidRegistry.getByMessageId(messageId);
+  // Sin servidor no hay forma de acotar la búsqueda, así que no se busca.
+  const guildId = guild?.id;
+  if (!guildId) return null;
+
+  const delGremio = (entry) => (entry && entry.raid?.guildId === guildId ? entry : null);
+
+  let runtime = raidId ? delGremio(raidRegistry.getByRaidId(raidId)) : null;
+  if (!runtime && messageId) runtime = delGremio(raidRegistry.getByMessageId(messageId));
   if (runtime) return runtime;
 
   const RaidEvent = require('../database/models/RaidEvent');
-  const query = raidId ? { eventId: raidId } : messageId ? { messageId } : null;
+  const query = raidId
+    ? { eventId: raidId, guildId }
+    : messageId
+      ? { messageId, guildId }
+      : null;
   if (!query) return null;
 
   const raidDoc = await RaidEvent.findOne(query);

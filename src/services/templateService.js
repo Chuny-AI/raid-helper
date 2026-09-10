@@ -77,9 +77,14 @@ const createTemplate = async (templateData, serverId) => {
 };
 
 /**
- * Actualiza un template existente
+ * Actualiza un template existente, acotado al servidor indicado.
+ *
+ * `serverId` es obligatorio por el mismo motivo que en `getTemplateById`: el
+ * id llega desde un customId o desde una sesión, y un `findByIdAndUpdate` a
+ * secas escribiría en el template de cualquier gremio. Que el filtro esté
+ * aquí y no en cada llamada es lo que impide que se olvide en la siguiente.
  */
-const updateTemplate = async (templateId, updateData) => {
+const updateTemplate = async (templateId, updateData, serverId) => {
   try {
     console.log(`[DEBUG] updateTemplate - Actualizando template ${templateId}`);
     console.log(`[DEBUG] updateTemplate - Datos recibidos:`, JSON.stringify(updateData, null, 2));
@@ -87,6 +92,9 @@ const updateTemplate = async (templateId, updateData) => {
     // Validar que el templateId sea válido
     if (!templateId) {
       throw new Error('Template ID es requerido');
+    }
+    if (!serverId) {
+      throw new Error('serverId es requerido para actualizar un template');
     }
     
     // Validar estructura de weapons si está presente
@@ -113,14 +121,14 @@ const updateTemplate = async (templateId, updateData) => {
       updateData.weapons = removeSendBuild(updateData.weapons);
     }
     
-    const result = await Template.findByIdAndUpdate(
-      templateId,
+    const result = await Template.findOneAndUpdate(
+      { _id: templateId, serverId },
       updateData,
       { new: true }
     );
     
     if (!result) {
-      throw new Error(`Template con ID ${templateId} no encontrado`);
+      throw new Error(`Template con ID ${templateId} no encontrado en este servidor`);
     }
     
     console.log(`[DEBUG] updateTemplate - Template actualizado exitosamente`);
@@ -141,25 +149,27 @@ const updateTemplate = async (templateId, updateData) => {
 };
 
 /**
- * Elimina un template
+ * Elimina un template del servidor indicado.
+ *
+ * `serverId` es obligatorio: borrar es irreversible y el id viene de un
+ * customId, así que el filtro va en la propia consulta. Un template de otro
+ * gremio se comporta como si no existiera (devuelve null).
  */
-const deleteTemplate = async (templateId, serverId = null) => {
+const deleteTemplate = async (templateId, serverId) => {
   try {
-    const template = await Template.findById(templateId);
-    if (!template) {
+    if (!serverId) {
+      throw new Error('serverId es requerido para eliminar un template');
+    }
+
+    const deletedTemplate = await Template.findOneAndDelete({ _id: templateId, serverId });
+    if (!deletedTemplate) {
       return null;
     }
 
-    const deletedTemplate = await Template.findByIdAndDelete(templateId);
-
-    if (deletedTemplate) {
-      // Usar el serverId del template si no se proporciona
-      const guildId = serverId || template.serverId;
-      await Server.findOneAndUpdate(
-        { guildId },
-        { $pull: { templates: templateId } }
-      );
-    }
+    await Server.findOneAndUpdate(
+      { guildId: serverId },
+      { $pull: { templates: templateId } }
+    );
 
     return deletedTemplate;
   } catch (error) {
