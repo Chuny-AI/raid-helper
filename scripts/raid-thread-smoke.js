@@ -2,8 +2,9 @@
  * Prueba de humo del hilo privado del raid (src/utils/raidThread.js).
  *
  * Cubre quién tiene derecho a estar dentro, el diff de membresía, los fallos de
- * permisos y el borrado al finalizar. No requiere BD ni conexión a Discord: la
- * API se sustituye por dobles que registran las llamadas.
+ * permisos y el borrado (siempre manual: ninguna rutina borra hilos por su
+ * cuenta). No requiere BD ni conexión a Discord: la API se sustituye por dobles
+ * que registran las llamadas.
  */
 const assert = require('node:assert');
 const { PermissionFlagsBits } = require('discord.js');
@@ -32,7 +33,13 @@ const {
   describeThreadFailure,
 } = require('../src/utils/raidThread');
 const { buildInitialState, joinSlot } = require('../src/services/raidState');
-const { renderRaidEmbed } = require('../src/utils/raidRender');
+const raidRegistry = require('../src/services/raidRegistry');
+const { routeRaidInteraction, finishRaid } = require('../src/utils/raidInteractions');
+const {
+  renderRaidEmbed,
+  renderRaidComponents,
+  renderThreadDeleteRow,
+} = require('../src/utils/raidRender');
 
 const ALL_PERMISSIONS = [
   PermissionFlagsBits.ViewChannel,
@@ -268,7 +275,7 @@ async function main() {
     assert.deepStrictEqual([...a.added, ...b.added].sort(), ['L1', 'LEADER', 'U1', 'U2']);
   });
 
-  console.log('\n— Borrado al finalizar —');
+  console.log('\n— Borrado del hilo (a petición) —');
 
   await test('borra el hilo del raid', async () => {
     const thread = fakeThread();
@@ -329,9 +336,148 @@ async function main() {
     assert.ok(!embed.data.fields.some((f) => f.name.includes('Hilo privado')));
   });
 
-  await test('un raid finalizado no enlaza un hilo que ya se borró', () => {
+  await test('un raid finalizado sigue enlazando su hilo: no se borra solo', () => {
     const embed = renderRaidEmbed({ eventId: 'AB3K9F', title: 'X', status: 'closed', threadId: 'T1' }, state);
-    assert.ok(!embed.data.fields.some((f) => f.name.includes('Hilo privado')));
+    const field = embed.data.fields.find((f) => f.name.includes('Hilo privado'));
+    assert.ok(field, 'falta el campo del hilo en el raid cerrado');
+    assert.match(field.value, /<#T1>/);
+  });
+
+  console.log('\n— El borrado del hilo es manual —');
+
+  await test('un raid cerrado con hilo ofrece asistencia y borrado', () => {
+    const rows = renderRaidComponents({ eventId: 'AB3K9F', status: 'closed', threadId: 'T1' }, state);
+    const ids = rows.flatMap((r) => r.components.map((c) => c.data.custom_id));
+    assert.deepStrictEqual(ids, ['raid:att:AB3K9F', 'raid:thdel:AB3K9F']);
+  });
+
+  await test('un raid cerrado sin hilo solo ofrece la asistencia', () => {
+    const rows = renderRaidComponents({ eventId: 'AB3K9F', status: 'closed', threadId: null }, state);
+    const ids = rows.flatMap((r) => r.components.map((c) => c.data.custom_id));
+    assert.deepStrictEqual(ids, ['raid:att:AB3K9F']);
+  });
+
+  await test('un raid cerrado sin participantes pero con hilo deja borrarlo', () => {
+    const vacio = buildInitialState({ template, leaderId: 'LEADER', lootersMax: 0 });
+    const rows = renderRaidComponents({ eventId: 'AB3K9F', status: 'closed', threadId: 'T1' }, vacio);
+    const ids = rows.flatMap((r) => r.components.map((c) => c.data.custom_id));
+    assert.deepStrictEqual(ids, ['raid:thdel:AB3K9F']);
+  });
+
+  await test('el panel de asistencia ofrece el borrado solo si queda hilo', () => {
+    assert.ok(renderThreadDeleteRow({ eventId: 'AB3K9F', threadId: 'T1' }));
+    assert.strictEqual(renderThreadDeleteRow({ eventId: 'AB3K9F', threadId: null }), null);
+  });
+
+  await test('cerrar un raid en BD ya no suelta el threadId', () => {
+    const fuente = require('node:fs').readFileSync(
+      require('node:path').join(__dirname, '..', 'src', 'services', 'raidEventService.js'),
+      'utf8'
+    );
+    assert.ok(!/threadId:\s*null/.test(fuente), 'closeRaidEvent no debe borrar la referencia al hilo');
+  });
+
+  console.log('\n— El flujo de borrado a petición —');
+
+  // Runtime completo (registro + mensaje falso) para ejercitar los handlers
+  // reales: es la única forma de comprobar que finalizar NO borra y que el
+  // botón sí lo hace.
+  function montarRuntime(thread, { status = 'closed' } = {}) {
+    const raid = {
+      ...fakeRaid({ status, threadId: thread ? thread.id : null }),
+      stateVersion: 2,
+      groups: [],
+      absentUserIds: [],
+      save: async () => {},
+    };
+    const message = { id: 'M1', edit: async (payload) => ({ id: 'M1', edit: message.edit, payload }) };
+    raidRegistry.register({ raidId: raid.eventId, raid, message, templateName: 't' });
+    return raid;
+  }
+
+  function fakeInteraction({ customId, userId = 'LEADER', guild }) {
+    const log = { updates: [], replies: [] };
+    return {
+      log,
+      customId,
+      guild,
+      deferred: false,
+      replied: false,
+      message: { id: 'M1' },
+      user: { id: userId, username: userId },
+      member: { id: userId, permissions: { has: () => false } },
+      update: async (payload) => { log.updates.push(payload); },
+      reply: async (payload) => { log.replies.push(payload); },
+      followUp: async (payload) => { log.replies.push(payload); },
+    };
+  }
+
+  const idsDe = (payload) =>
+    (payload.components || []).flatMap((r) => r.components.map((c) => c.data.custom_id));
+
+  await test('finalizar un raid ya no borra el hilo', async () => {
+    const thread = fakeThread();
+    const raid = montarRuntime(thread, { status: 'active' });
+    const result = await finishRaid(raid.eventId, 'LEADER', fakeGuild(thread));
+    assert.ok(result.ok);
+    assert.strictEqual(thread.log.deleted, false, 'el hilo no debe borrarse al finalizar');
+    assert.strictEqual(raid.threadId, 'T1', 'el raid debe seguir apuntando al hilo');
+    raidRegistry.unregister(raid.eventId);
+  });
+
+  await test('el botón Eliminar hilo solo pide confirmación', async () => {
+    const thread = fakeThread();
+    const raid = montarRuntime(thread);
+    const it = fakeInteraction({ customId: `raid:thdel:${raid.eventId}`, guild: fakeGuild(thread) });
+    assert.strictEqual(await routeRaidInteraction(it), true);
+    assert.strictEqual(thread.log.deleted, false);
+    assert.deepStrictEqual(idsDe(it.log.replies[0]), [
+      `raid:thdelok:${raid.eventId}`,
+      `raid:thdelno:${raid.eventId}`,
+    ]);
+    raidRegistry.unregister(raid.eventId);
+  });
+
+  await test('confirmar borra el hilo y suelta la referencia', async () => {
+    const thread = fakeThread();
+    const raid = montarRuntime(thread);
+    const it = fakeInteraction({ customId: `raid:thdelok:${raid.eventId}`, guild: fakeGuild(thread) });
+    await routeRaidInteraction(it);
+    assert.strictEqual(thread.log.deleted, true);
+    assert.strictEqual(raid.threadId, null);
+    assert.match(it.log.updates[0].content, /borrado/i);
+    raidRegistry.unregister(raid.eventId);
+  });
+
+  await test('cancelar deja el hilo intacto', async () => {
+    const thread = fakeThread();
+    const raid = montarRuntime(thread);
+    const it = fakeInteraction({ customId: `raid:thdelno:${raid.eventId}`, guild: fakeGuild(thread) });
+    await routeRaidInteraction(it);
+    assert.strictEqual(thread.log.deleted, false);
+    assert.strictEqual(raid.threadId, 'T1');
+    raidRegistry.unregister(raid.eventId);
+  });
+
+  await test('quien no gestiona el raid no puede borrar el hilo', async () => {
+    const thread = fakeThread();
+    const raid = montarRuntime(thread);
+    const it = fakeInteraction({ customId: `raid:thdelok:${raid.eventId}`, userId: 'U1', guild: fakeGuild(thread) });
+    await routeRaidInteraction(it);
+    assert.strictEqual(thread.log.deleted, false);
+    assert.strictEqual(raid.threadId, 'T1');
+    raidRegistry.unregister(raid.eventId);
+  });
+
+  await test('un borrado que falla conserva la referencia al hilo', async () => {
+    const thread = fakeThread();
+    thread.delete = async () => { throw Object.assign(new Error('nope'), { code: 50013 }); };
+    const raid = montarRuntime(thread);
+    const it = fakeInteraction({ customId: `raid:thdelok:${raid.eventId}`, guild: fakeGuild(thread) });
+    await routeRaidInteraction(it);
+    assert.strictEqual(raid.threadId, 'T1', 'sin borrado no se puede soltar el id');
+    assert.match(it.log.updates[0].content, /No se pudo borrar/);
+    raidRegistry.unregister(raid.eventId);
   });
 
   console.log(`\n${passed} comprobaciones OK\n`);

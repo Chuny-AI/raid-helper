@@ -43,8 +43,9 @@ const RaidEventSchema = new mongoose.Schema({
   },
 
   // Hilo privado de coordinación pedido en `/raid create` (opción `thread`).
-  // `threadId` es la fuente de verdad de si el hilo existe ahora mismo: se pone
-  // a null al finalizar el raid, cuando el hilo se borra.
+  // `threadId` es la fuente de verdad de si el hilo existe ahora mismo. Un raid
+  // finalizado conserva su hilo: solo se pone a null cuando alguien lo borra a
+  // mano desde el botón "Eliminar hilo".
   threadEnabled: {
     type: Boolean,
     default: false

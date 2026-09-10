@@ -16,6 +16,7 @@ const {
   renderGroupPickSelect,
   renderWaitlistSelect,
   renderAttendanceRows,
+  renderThreadDeleteRow,
   ATTENDANCE_PAGE_SIZE,
   ATTENDANCE_CAPACITY,
 } = require('./raidRender');
@@ -319,7 +320,11 @@ async function handleCannotGo(interaction, raidId) {
   });
 }
 
-/** Botón "Looters": toggle, solo habilitado (a nivel de negocio) cuando el raid está completo. */
+/**
+ * Botón "Looters": toggle, solo habilitado (a nivel de negocio) cuando el raid
+ * está completo. Ser looter es excluyente con tener plaza / lista de espera /
+ * "no puedo ir", así que apuntarse puede liberar un slot y disparar una promoción.
+ */
 async function handleLooter(interaction, raidId) {
   await safeDeferUpdate(interaction);
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
@@ -339,6 +344,15 @@ async function handleLooter(interaction, raidId) {
     }
     await raidRegistry.renderAndEdit(runtime.raidId);
     raidRegistry.persistRaid(runtime.raidId);
+
+    if (result.freedSlotIds && result.freedSlotIds.length > 0) {
+      const promoted = raidState.promoteFromWaitlist(runtime.raid, result.freedSlotIds);
+      if (promoted.length > 0) {
+        await raidRegistry.renderAndEdit(runtime.raidId);
+        raidRegistry.persistRaid(runtime.raidId);
+        for (const p of promoted) notifyPromotedUser(p, runtime, interaction.guild);
+      }
+    }
   });
 }
 
@@ -394,6 +408,9 @@ async function handleFinishCancel(interaction) {
  * Cierra un raid: marca status=closed, deja el mensaje en solo lectura y saca
  * el runtime del registro. Compartido entre el botón "Finalizar evento" y
  * `/raid close`.
+ *
+ * No borra el hilo privado: sobrevive al cierre y solo desaparece si alguien
+ * pulsa "Eliminar hilo".
  * @param {string} raidId
  * @param {string} actorId
  * @param {import('discord.js').Guild} guild
@@ -408,10 +425,9 @@ async function finishRaid(raidId, actorId, guild) {
     runtime.raid.closedBy = actorId;
     runtime.raid.closedAt = new Date();
 
-    // El id se suelta antes de guardar: aunque el borrado falle, el raid ya no
-    // referencia un hilo que nadie va a volver a usar.
-    const threadId = runtime.raid.threadId;
-    runtime.raid.threadId = null;
+    // El hilo privado se queda como está: cerrar el raid ya no lo borra. Quien
+    // quiera quitarlo usa el botón "Eliminar hilo", que sigue en el mensaje
+    // mientras `threadId` apunte a algo.
 
     // Vía el serializador del registro: un `persistRaid` de la última
     // interacción puede seguir en vuelo sobre este mismo documento.
@@ -422,10 +438,6 @@ async function finishRaid(raidId, actorId, guild) {
       console.error('[WARN] finishRaid: error cancelando recordatorio:', e?.message);
     }
     await raidRegistry.renderAndEdit(raidId);
-
-    if (threadId) {
-      await deleteRaidThread(guild, threadId, raidId);
-    }
 
     raidRegistry.unregister(raidId);
     return { ok: true };
@@ -533,20 +545,104 @@ async function handleAttendancePick(interaction, raidId, extra) {
   );
 }
 
-/** Botón "Listo": cierra el panel efímero. Lo registrado ya está guardado. */
+/**
+ * Botón "Listo": cierra el panel efímero. Lo registrado ya está guardado.
+ *
+ * Es el momento en que el hilo privado deja de hacer falta, así que aquí se
+ * ofrece borrarlo. Solo se ofrece: si el líder no pulsa nada, el hilo se queda.
+ */
 async function handleAttendanceDone(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) {
     return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
   }
   const { attended, absent } = raidState.attendanceReport(runtime.raid);
+  const threadRow = renderThreadDeleteRow(runtime.raid);
+  const resumen =
+    `📋 Asistencia del raid **#${runtime.raidId}** registrada: ` +
+    `**${attended.length}** asistieron · **${absent.length}** no asistieron. ` +
+    'Ya se ve en el mensaje del raid.';
+
   await interaction.update({
+    content: threadRow
+      ? `${resumen}\n\n💬 El hilo privado sigue abierto. Bórralo si ya no hace falta; ` +
+        'si prefieres conservarlo, ignora este botón: el hilo no se borra solo y ' +
+        'lo tienes también en el mensaje del raid.'
+      : resumen,
+    components: threadRow ? [threadRow] : [],
+  });
+}
+
+// ───────────────────────── Borrado del hilo privado ─────────────────────────
+// Nunca es automático: ni al finalizar el raid, ni al expirar, ni al registrar
+// la asistencia. Siempre lo pide alguien que puede gestionar el raid, y en dos
+// pasos porque borrar un hilo se lleva por delante toda la conversación.
+
+/** Botón "Eliminar hilo": pide confirmación en dos pasos. */
+async function handleThreadDelete(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
+  if (!runtime) return replyGone(interaction);
+  if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
+    return ephemeralReply(interaction, 'Solo el líder del raid o un administrador puede borrar el hilo privado.');
+  }
+  if (!runtime.raid.threadId) {
+    return ephemeralReply(interaction, 'Este raid ya no tiene hilo privado.');
+  }
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`raid:thdelok:${runtime.raidId}`).setLabel('Sí, borrar el hilo').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`raid:thdelno:${runtime.raidId}`).setLabel('Conservarlo').setStyle(ButtonStyle.Secondary)
+  );
+  await ephemeralReply(interaction, {
     content:
-      `📋 Asistencia del raid **#${runtime.raidId}** registrada: ` +
-      `**${attended.length}** asistieron · **${absent.length}** no asistieron. ` +
-      'Ya se ve en el mensaje del raid.',
+      `⚠️ ¿Seguro que quieres borrar el hilo privado del raid **#${runtime.raidId}**? ` +
+      'Se perderá todo lo que se haya escrito ahí y no se puede deshacer.',
+    components: [row],
+  });
+}
+
+/** Confirmación del borrado. Es el único punto del bot que borra un hilo. */
+async function handleThreadDeleteConfirm(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
+  if (!runtime) {
+    return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  }
+  if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
+    return interaction.update({
+      content: 'Solo el líder del raid o un administrador puede borrar el hilo privado.',
+      components: [],
+    });
+  }
+
+  const threadId = runtime.raid.threadId;
+  if (!threadId) {
+    return interaction.update({ content: 'Este raid ya no tiene hilo privado.', components: [] });
+  }
+
+  const result = await deleteRaidThread(interaction.guild, threadId, runtime.raidId);
+  if (!result.ok) {
+    return interaction.update({
+      content:
+        '❌ No se pudo borrar el hilo. Comprueba que el bot conserve el permiso ' +
+        '«Gestionar hilos» en el canal e inténtalo de nuevo.',
+      components: [],
+    });
+  }
+
+  // El id se suelta solo después de que Discord confirme el borrado: soltarlo
+  // antes y fallar la llamada dejaría el hilo vivo y sin botón para quitarlo.
+  runtime.raid.threadId = null;
+  await raidRegistry.saveRaid(runtime.raidId);
+  await raidRegistry.renderAndEdit(runtime.raidId);
+
+  await interaction.update({
+    content: `🗑️ Hilo privado del raid **#${runtime.raidId}** borrado.`,
     components: [],
   });
+}
+
+async function handleThreadDeleteCancel(interaction) {
+  await interaction.update({ content: 'El hilo privado se queda como está.', components: [] });
 }
 
 /**
@@ -564,7 +660,8 @@ function scheduleThreadSync(raidId, interaction) {
     ? raidRegistry.getByRaidId(raidId)
     : raidRegistry.getByMessageId(interaction.message?.id);
 
-  // Un raid finalizado ya no tiene hilo: se borró al cerrarlo.
+  // Un raid finalizado conserva el hilo, pero su membresía ya no se toca: la
+  // lista queda congelada tal como estaba al cerrar.
   if (!runtime?.raid?.threadId || runtime.raid.status !== 'active') return;
 
   setImmediate(async () => {
@@ -626,6 +723,15 @@ async function routeRaidInteraction(interaction) {
         break;
       case 'attdone':
         await handleAttendanceDone(interaction, raidId);
+        break;
+      case 'thdel':
+        await handleThreadDelete(interaction, raidId);
+        break;
+      case 'thdelok':
+        await handleThreadDeleteConfirm(interaction, raidId);
+        break;
+      case 'thdelno':
+        await handleThreadDeleteCancel(interaction);
         break;
       case 'full':
         break; // select decorativo/deshabilitado, no debería dispararse

@@ -12,7 +12,6 @@ const { logUncontrolledError } = require('./processGuards');
 const raidRegistry = require('../services/raidRegistry');
 const raidInteractions = require('./raidInteractions');
 const { migrateFromSnapshot } = require('../services/raidStateMigration');
-const { deleteRaidThread } = require('./raidThread');
 const { renderRaidEmbed, renderRaidComponents } = require('./raidRender');
 
 // Import template command
@@ -43,7 +42,6 @@ async function sealRaidMessage(raid, clientRef, motivo) {
     const runtime = raidRegistry.getByRaidId(raid.eventId);
     if (runtime) {
       runtime.raid.status = 'closed';
-      runtime.raid.threadId = null;
       await raidRegistry.renderAndEdit(raid.eventId);
       raidRegistry.unregister(raid.eventId);
       return;
@@ -55,7 +53,6 @@ async function sealRaidMessage(raid, clientRef, motivo) {
     if (!message) return;
 
     raid.status = 'closed';
-    raid.threadId = null;
     // Un raid legacy (stateVersion 1) no tiene el estado estructurado que
     // necesita el render, así que ahí solo se le quitan los componentes.
     // En stateVersion 2 el render deja el botón de registrar asistencia: un
@@ -73,23 +70,17 @@ async function sealRaidMessage(raid, clientRef, motivo) {
 }
 
 /**
- * Cierra un raid desde las rutinas automáticas borrando antes su hilo privado.
- * `closeRaidEvent` solo toca la BD: sin esto, un raid que expira (o cuyo mensaje
- * ya no existe) dejaría su hilo privado colgando en el canal para siempre.
+ * Cierra un raid desde las rutinas automáticas: marca el documento como cerrado
+ * y deja el mensaje en solo lectura.
+ *
+ * El hilo privado NO se toca. Ningún cierre borra hilos: el borrado es siempre
+ * una decisión del líder, que la toma con el botón "Eliminar hilo" del mensaje
+ * del raid (o al terminar de registrar la asistencia).
  * @param {Object} raid documento RaidEvent
  * @param {import('discord.js').Client} clientRef
  * @param {string} motivo para el log
  */
-async function closeRaidAndThread(raid, clientRef, motivo) {
-  if (raid.threadId) {
-    try {
-      const guild = clientRef.guilds.cache.get(raid.guildId)
-        || await clientRef.guilds.fetch(raid.guildId);
-      await deleteRaidThread(guild, raid.threadId, raid.eventId);
-    } catch (e) {
-      console.error(`[WARN] ${motivo}: no se pudo borrar el hilo del raid #${raid.eventId}:`, e?.message);
-    }
-  }
+async function closeRaidAndSeal(raid, clientRef, motivo) {
   const cerrado = await closeRaidEvent(raid.eventId);
   await sealRaidMessage(raid, clientRef, motivo);
   return cerrado;
@@ -154,7 +145,7 @@ const getEvents = () => {
       for (const raid of activeRaids) {
         // Expirar raids cuya hora ya pasó hace más de 2 horas
         if (raid.eventTimestamp && raid.eventTimestamp * 1000 + 2 * 60 * 60 * 1000 < now) {
-          await closeRaidAndThread(raid, readyClient, 'expiración al arrancar');
+          await closeRaidAndSeal(raid, readyClient, 'expiración al arrancar');
           console.log(`[INFO] Raid #${raid.eventId} expirado y cerrado automáticamente.`);
           continue;
         }
@@ -163,7 +154,7 @@ const getEvents = () => {
           const result = await migrateFromSnapshot(raid);
           if (!result.ok) {
             console.error(`[MIGRATE] Raid #${raid.eventId}: no se pudo migrar (${result.reason}). Se cierra para evitar dejarlo en un estado inconsistente.`);
-            await closeRaidAndThread(raid, readyClient, 'migración fallida');
+            await closeRaidAndSeal(raid, readyClient, 'migración fallida');
             continue;
           }
           try {
@@ -184,7 +175,7 @@ const getEvents = () => {
           const message = channel ? await channel.messages.fetch(raid.messageId) : null;
           if (!message) {
             console.error(`[WARN] Raid #${raid.eventId}: no se encontró su mensaje (${raid.messageId}), se cierra.`);
-            await closeRaidAndThread(raid, readyClient, 'mensaje inexistente');
+            await closeRaidAndSeal(raid, readyClient, 'mensaje inexistente');
             continue;
           }
           raidRegistry.register({ raidId: raid.eventId, raid, message, templateName: raid.templateName });
@@ -226,7 +217,7 @@ const getEvents = () => {
         for (const raid of activeRaids) {
           if (!raid.eventTimestamp) continue;
           if (raid.eventTimestamp * 1000 + 2 * 60 * 60 * 1000 < now) {
-            await closeRaidAndThread(raid, readyClient, 'limpieza periódica');
+            await closeRaidAndSeal(raid, readyClient, 'limpieza periódica');
             raidRegistry.unregister(raid.eventId);
             console.log(`[INFO] Raid #${raid.eventId} expirado, cerrado por limpieza periódica.`);
           }

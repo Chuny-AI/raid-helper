@@ -281,12 +281,14 @@ function renderRaidEmbed(raid, state) {
     });
   }
 
-  // El hilo se borra al finalizar el raid, así que en un raid cerrado el enlace
-  // apuntaría a un canal inexistente.
-  if (raid.threadId && !isClosed) {
+  // El hilo sobrevive al cierre del raid (solo se borra si alguien lo pide),
+  // así que el enlace sigue siendo válido en un raid finalizado.
+  if (raid.threadId) {
     fields.push({
       name: '💬 Hilo privado:',
-      value: `<#${raid.threadId}> — solo pueden escribir quienes estén anotados.`,
+      value: isClosed
+        ? `<#${raid.threadId}> — el evento terminó; sigue disponible hasta que el líder lo borre.`
+        : `<#${raid.threadId}> — solo pueden escribir quienes estén anotados.`,
     });
   }
 
@@ -456,30 +458,59 @@ function buildButtonRow(raid, state) {
   return new ActionRowBuilder().addComponents(buttons);
 }
 
+/** Botón que dispara el borrado (con confirmación) del hilo privado. */
+function buildThreadDeleteButton(raid) {
+  return new ButtonBuilder()
+    .setCustomId(`raid:thdel:${raid.eventId}`)
+    .setLabel('Eliminar hilo')
+    .setStyle(ButtonStyle.Danger)
+    .setEmoji('🗑️');
+}
+
 /**
- * Única acción que queda en un raid finalizado: registrar quién no apareció.
- * @returns {ActionRowBuilder}
+ * Fila con el botón de borrar el hilo, para colgarla de un panel efímero
+ * (el de asistencia). null si el raid ya no tiene hilo que borrar.
+ * @returns {ActionRowBuilder|null}
  */
-function buildAttendanceButtonRow(raid) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`raid:att:${raid.eventId}`)
-      .setLabel('Registrar asistencia')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('📋')
-  );
+function renderThreadDeleteRow(raid) {
+  if (!raid?.threadId) return null;
+  return new ActionRowBuilder().addComponents(buildThreadDeleteButton(raid));
+}
+
+/**
+ * Acciones que quedan en un raid finalizado: registrar quién no apareció y,
+ * si el hilo privado sigue vivo, borrarlo. El borrado nunca es automático, así
+ * que este botón es la única vía para quitarlo de en medio.
+ * @returns {ActionRowBuilder[]} vacío si no queda ninguna acción
+ */
+function buildClosedRaidRows(raid, state) {
+  const buttons = [];
+
+  if (raidRoster(state).length > 0) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`raid:att:${raid.eventId}`)
+        .setLabel('Registrar asistencia')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('📋')
+    );
+  }
+
+  if (raid.threadId) buttons.push(buildThreadDeleteButton(raid));
+
+  return buttons.length > 0 ? [new ActionRowBuilder().addComponents(buttons)] : [];
 }
 
 /**
  * Construye los componentes (selects + botones) del mensaje del raid.
  *
- * Un raid cerrado ya no admite inscripciones, pero conserva un único botón para
- * que el líder registre la asistencia: es justo después de finalizar cuando se
- * sabe quién apareció de verdad.
+ * Un raid cerrado ya no admite inscripciones, pero conserva los botones para
+ * registrar la asistencia (es justo después de finalizar cuando se sabe quién
+ * apareció de verdad) y para borrar el hilo privado cuando ya no haga falta.
  */
 function renderRaidComponents(raid, state) {
   if (raid.status !== 'active') {
-    return raidRoster(state).length > 0 ? [buildAttendanceButtonRow(raid)] : [];
+    return buildClosedRaidRows(raid, state);
   }
 
   const rows = [];
@@ -608,6 +639,7 @@ module.exports = {
   safeFieldValue,
   renderRaidEmbed,
   renderRaidComponents,
+  renderThreadDeleteRow,
   renderGroupPickSelect,
   renderWaitlistSelect,
   renderAttendanceRows,

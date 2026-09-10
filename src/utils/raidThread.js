@@ -9,6 +9,10 @@
  * Por eso el hilo se crea en el canal (no colgando del mensaje) y su membresía
  * se sincroniza con el estado del raid en cada cambio.
  *
+ * El hilo no se borra nunca solo: sobrevive al cierre del raid para que quede
+ * el registro de la coordinación, y solo desaparece cuando el líder pulsa
+ * "Eliminar hilo" (ver los handlers thdel* de ./raidInteractions.js).
+ *
  * Nada de lo que hay aquí puede tumbar un raid: si el hilo no se puede crear,
  * sincronizar o borrar, se registra el fallo y el raid sigue su curso.
  */
@@ -22,8 +26,9 @@ const THREAD_NAME_MAX = 100;
 
 /**
  * Permisos que el bot necesita en el canal padre. `ManageThreads` entra en la
- * lista porque el hilo se borra al finalizar el evento: sin ese permiso el hilo
- * quedaría huérfano, así que es mejor no crearlo y avisar al líder.
+ * lista porque el líder puede pedir el borrado del hilo cuando el evento
+ * termina: sin ese permiso ese botón no funcionaría nunca, así que es mejor no
+ * crear el hilo y avisar al líder al publicar el raid.
  */
 const REQUIRED_PERMISSIONS = [
   [PermissionFlagsBits.ViewChannel, 'Ver canal'],
@@ -161,7 +166,8 @@ async function createRaidThread({ channel, guild, raid }) {
         `💬 Hilo privado del raid **#${raid?.eventId}**.\n` +
         'Solo pueden verlo y escribir aquí quienes estén anotados en el embed ' +
         '(participantes y looters) y el líder de la actividad.\n' +
-        'Al finalizar el evento este hilo se borrará automáticamente.',
+        'El hilo no se borra solo al finalizar el evento: se queda aquí hasta ' +
+        'que el líder lo elimine con el botón «Eliminar hilo» del mensaje del raid.',
     });
   } catch (error) {
     // Un hilo sin mensaje de bienvenida sigue sirviendo; no se aborta por esto.
@@ -234,8 +240,9 @@ async function syncRaidThread(guild, raid) {
 }
 
 /**
- * Borra el hilo del raid. Que ya no exista cuenta como éxito: el objetivo es
- * que no quede hilo, no que lo borre precisamente esta llamada.
+ * Borra el hilo del raid. Solo se llama a petición explícita de un usuario:
+ * ninguna rutina automática lo invoca. Que el hilo ya no exista cuenta como
+ * éxito: el objetivo es que no quede hilo, no que lo borre esta llamada.
  * @param {Object} guild
  * @param {string} threadId
  * @param {string} raidId
@@ -247,7 +254,7 @@ async function deleteRaidThread(guild, threadId, raidId) {
   if (!thread) return { ok: true, reason: 'already_gone' };
 
   try {
-    await thread.delete(`Raid #${raidId} finalizado`);
+    await thread.delete(`Hilo borrado a petición del líder del raid #${raidId}`);
     return { ok: true };
   } catch (error) {
     logDiscordError(`raidThread.deleteRaidThread: no se pudo borrar el hilo del raid #${raidId}`, error);
