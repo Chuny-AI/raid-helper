@@ -2,6 +2,31 @@ const Weapon = require('../database/models/Weapon');
 const { loadWeapons, PROD_FILE, DEV_FILE } = require('../weapons/weaponsSource');
 
 /**
+ * Catálogo efectivo del proceso actual.
+ *
+ * Producción y desarrollo pueden compartir Mongo, pero no comparten emojis de
+ * Discord. Por eso los selectores interactivos deben leer el JSON del entorno
+ * y no la unión de documentos activos almacenados en la base de datos.
+ */
+const getCurrentCatalog = () => (loadWeapons()?.weapons || {});
+
+const catalogWeapon = (category, group, weapon) => ({
+  emojiId: String(weapon.emoji || weapon.emojiId || '').trim(),
+  name: String(weapon.name || '').trim(),
+  units: Number.parseInt(weapon.units ?? weapon.quantity, 10) || 1,
+  image: String(weapon.image || ''),
+  url: String(weapon.url || weapon.link || ''),
+  category,
+  categoryDisplayName: String(group.displayName || category),
+  categoryDefaultEmoji: String(group.defaultEmoji || ''),
+  sendBuildToPrivate: weapon.private !== false,
+  isActive: true,
+});
+
+const flattenCurrentCatalog = () => Object.entries(getCurrentCatalog()).flatMap(([category, group]) =>
+  (group?.data || []).map((weapon) => catalogWeapon(category, group, weapon)));
+
+/**
  * Obtiene todas las armas activas
  */
 const getAllWeapons = async () => {
@@ -19,8 +44,11 @@ const getAllWeapons = async () => {
  */
 const getWeaponsByCategory = async (category) => {
   try {
-    const weapons = await Weapon.find({ category, isActive: true }).sort({ name: 1 });
-    return weapons;
+    const group = getCurrentCatalog()[String(category)];
+    if (!group) return [];
+    return (group.data || [])
+      .map((weapon) => catalogWeapon(String(category), group, weapon))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
   } catch (error) {
     console.error('[ERROR] Error en getWeaponsByCategory:', error);
     throw error;
@@ -28,36 +56,19 @@ const getWeaponsByCategory = async (category) => {
 };
 
 /**
- * Obtiene todas las categorías de armas con su nombre y emoji por defecto.
- *
- * Una sola agregación en vez de un `distinct` seguido de un `findOne` por
- * categoría: aquello eran N+1 consultas y se ejecuta en cada paso del asistente
- * de creación de templates y en `/show_all_*`. `$first` toma los datos de
- * categoría de un arma cualquiera del grupo, igual que hacía el `findOne`.
+ * Obtiene las categorías del catálogo JSON activo, con su nombre y emoji.
+ * Leer el archivo del entorno evita mezclar los emojis de dos aplicaciones de
+ * Discord cuando desarrollo y producción utilizan la misma base de datos.
  */
 const getWeaponCategories = async () => {
   try {
-    const grupos = await Weapon.aggregate([
-      { $match: { isActive: true } },
-      {
-        $group: {
-          _id: '$category',
-          displayName: { $first: '$categoryDisplayName' },
-          defaultEmoji: { $first: '$categoryDefaultEmoji' },
-        },
-      },
-    ]);
-
-    const categoriesWithInfo = grupos.map((grupo) => ({
-      key: grupo._id,
-      displayName: grupo.displayName,
-      defaultEmoji: grupo.defaultEmoji,
-    }));
-
-    // Fallback a la clave si falta el displayName: sin él, localeCompare
-    // reventaba sobre undefined y tumbaba toda la consulta.
-    return categoriesWithInfo.sort((a, b) =>
-      String(a.displayName || a.key).localeCompare(String(b.displayName || b.key)));
+    return Object.entries(getCurrentCatalog())
+      .map(([key, group]) => ({
+        key,
+        displayName: group?.displayName || key,
+        defaultEmoji: String(group?.defaultEmoji || ''),
+      }))
+      .sort((a, b) => String(a.displayName).localeCompare(String(b.displayName), 'es'));
   } catch (error) {
     console.error('[ERROR] Error en getWeaponCategories:', error);
     throw error;
@@ -69,8 +80,7 @@ const getWeaponCategories = async () => {
  */
 const getWeaponByEmojiId = async (emojiId) => {
   try {
-    const weapon = await Weapon.findOne({ emojiId, isActive: true });
-    return weapon;
+    return flattenCurrentCatalog().find((weapon) => weapon.emojiId === String(emojiId)) || null;
   } catch (error) {
     console.error('[ERROR] Error en getWeaponByEmojiId:', error);
     throw error;
@@ -82,11 +92,8 @@ const getWeaponByEmojiId = async (emojiId) => {
  */
 const getWeaponsByEmojiIds = async (emojiIds) => {
   try {
-    const weapons = await Weapon.find({ 
-      emojiId: { $in: emojiIds }, 
-      isActive: true 
-    });
-    return weapons;
+    const requested = new Set((emojiIds || []).map(String));
+    return flattenCurrentCatalog().filter((weapon) => requested.has(weapon.emojiId));
   } catch (error) {
     console.error('[ERROR] Error en getWeaponsByEmojiIds:', error);
     throw error;

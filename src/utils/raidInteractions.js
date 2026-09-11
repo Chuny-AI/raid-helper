@@ -9,16 +9,25 @@
  * También resuelve los customId legacy (pre-refactor) por interaction.message.id,
  * como red de seguridad si algún mensaje no se llegó a re-renderizar.
  */
-const { MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+  MessageFlags,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+} = require('discord.js');
 const raidState = require('../services/raidState');
 const raidRegistry = require('../services/raidRegistry');
 const {
   renderGroupPickSelect,
+  renderGroupBrowser,
+  renderGroupPickPanel,
   renderWaitlistSelect,
   renderAttendanceRows,
   renderThreadDeleteRow,
   ATTENDANCE_PAGE_SIZE,
-  ATTENDANCE_CAPACITY,
 } = require('./raidRender');
 const { safeDeferUpdate } = require('./interaction');
 const { createBuildEmbed } = require('./embed');
@@ -189,6 +198,21 @@ function markFullNotification(runtime) {
   return true;
 }
 
+/** Mantiene las confirmaciones bajo el límite de 2.000 caracteres de Discord. */
+function summarizeWeaponLabels(labels, maxLength = 1500) {
+  const shown = [];
+  let length = 0;
+  for (const label of labels || []) {
+    const next = String(label || 'Arma');
+    const extra = (shown.length > 0 ? 2 : 0) + next.length;
+    if (length + extra > maxLength) break;
+    shown.push(next);
+    length += extra;
+  }
+  const omitted = Math.max(0, (labels?.length || 0) - shown.length);
+  return `${shown.join(', ')}${omitted > 0 ? ` y ${omitted} más` : ''}`;
+}
+
 /** Post-procesa una unión exitosa a un slot: render, persistencia, notificaciones y promoción. */
 async function afterJoin(runtime, slotId, user, freedSlotIds, guild) {
   let promoted = [];
@@ -244,6 +268,119 @@ async function handleGroupPick(interaction, raidId) {
   await ephemeralReply(interaction, { content: 'Elige tu arma dentro del grupo:', components: [row] });
 }
 
+const normalizeGroupSearch = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/\p{Diacritic}/gu, '')
+  .trim()
+  .toLocaleLowerCase('es');
+
+function groupBrowserPayload(runtime, requestedPage = 0, filteredGroupKeys = null, query = '') {
+  const browser = renderGroupBrowser(runtime.raid, runtime.raid, requestedPage, filteredGroupKeys);
+  if (browser.rows.length === 0) {
+    return {
+      content: query
+        ? `No quedan grupos con plazas que coincidan con **${String(query).slice(0, 100)}**.`
+        : 'No quedan grupos con plazas disponibles.',
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`raid:grouppage:${runtime.raidId}:0`)
+          .setLabel('Ver todos').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`raid:groupsearch:${runtime.raidId}`)
+          .setLabel('Buscar de nuevo').setStyle(ButtonStyle.Primary).setEmoji('🔎')
+      )],
+    };
+  }
+
+  const detail = Array.isArray(filteredGroupKeys)
+    ? `Encontré **${browser.total}** grupo(s) para **${String(query).slice(0, 100)}**.${browser.truncated ? ' Se muestran los primeros 25; escribe algo más específico.' : ''}`
+    : `Elige un grupo con plazas. Página **${browser.page + 1}/${browser.pageCount}** · **${browser.total}** grupo(s) disponibles.`;
+  return { content: detail, components: browser.rows };
+}
+
+/** Abre o pagina el navegador privado de grupos para raids grandes. */
+async function handleGroupBrowser(interaction, raidId, requestedPage = 0) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
+  if (!runtime) return replyGone(interaction);
+  if (runtime.raid.status !== 'active') return replyClosed(interaction);
+  const payload = groupBrowserPayload(runtime, requestedPage);
+  if ((interaction.customId || '').startsWith('raid:grouppage:')) return interaction.update(payload);
+  return ephemeralReply(interaction, payload);
+}
+
+/** Selecciona un grupo desde el navegador privado y muestra sus armas. */
+async function handleGroupBrowserPick(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
+  if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
+  const groupKey = interaction.values[0];
+  const panel = renderGroupPickPanel(runtime.raid, runtime.raid, groupKey);
+  if (!panel) return interaction.update({ content: 'Ese grupo ya no tiene plazas disponibles.', components: [] });
+  return interaction.update({
+    content: `Elige tu arma en **${runtime.raid.groups.find((group) => group.groupKey === groupKey)?.displayName || groupKey}**:`,
+    components: panel.rows,
+  });
+}
+
+/** Pagina las armas de un grupo que por sí solo supera 25 opciones. */
+async function handleGroupWeaponPage(interaction, raidId, extra) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
+  if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
+  const [groupIndexText, pageText] = String(extra || '').split(':');
+  const group = runtime.raid.groups[Number(groupIndexText)];
+  if (!group) return interaction.update({ content: 'Ese grupo ya no existe.', components: [] });
+  const panel = renderGroupPickPanel(runtime.raid, runtime.raid, group.groupKey, Number(pageText));
+  if (!panel) return interaction.update({ content: 'Ese grupo ya no tiene plazas disponibles.', components: [] });
+  return interaction.update({ content: `Elige tu arma en **${group.displayName || group.groupKey}**:`, components: panel.rows });
+}
+
+/** Modal de búsqueda por nombre de grupo. */
+async function handleGroupSearchOpen(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
+  if (!runtime) return replyGone(interaction);
+  if (runtime.raid.status !== 'active') return replyClosed(interaction);
+  return interaction.showModal(new ModalBuilder()
+    .setCustomId(`raid:groupsearchsubmit:${runtime.raidId}`)
+    .setTitle('Buscar grupo')
+    .addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('query')
+        .setLabel('Nombre o parte del nombre')
+        .setPlaceholder('Ej: DPS 24, healer, tanque')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(100)
+    )));
+}
+
+/** Resuelve la búsqueda y abre directamente el grupo si solo hay un resultado. */
+async function handleGroupSearchSubmit(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
+  if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
+  const query = interaction.fields.getTextInputValue('query');
+  const normalized = normalizeGroupSearch(query);
+  const available = new Set(raidState.availableSlots(runtime.raid).map((slot) => slot.groupKey));
+  const matches = runtime.raid.groups
+    .filter((group) => available.has(group.groupKey))
+    .filter((group) => normalizeGroupSearch(group.displayName || group.groupKey).includes(normalized))
+    .map((group) => group.groupKey);
+
+  if (matches.length === 1) {
+    const group = runtime.raid.groups.find((candidate) => candidate.groupKey === matches[0]);
+    const panel = renderGroupPickPanel(runtime.raid, runtime.raid, matches[0]);
+    if (panel) {
+      return interaction.update({
+        content: `Elige tu arma en **${group?.displayName || matches[0]}**:`,
+        components: panel.rows,
+      });
+    }
+  }
+  return interaction.update(groupBrowserPayload(runtime, 0, matches, query));
+}
+
 /** Select de arma dentro de un grupo (segundo paso del modo >100 slots), en mensaje efímero. */
 async function handleJoinPick(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
@@ -265,18 +402,28 @@ async function handleJoinPick(interaction, raidId) {
   });
 }
 
-/** Botón "Lista de espera": abre el select efímero con todas las armas. */
-async function handleWaitlistOpen(interaction, raidId) {
+/** Botón/paginación de "Lista de espera": muestra armas únicas del raid. */
+async function handleWaitlistOpen(interaction, raidId, requestedPage = 0) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
   if (runtime.raid.status !== 'active') return replyClosed(interaction);
 
-  const rows = renderWaitlistSelect(runtime.raid, runtime.raid);
+  const weapons = raidState.waitlistWeaponChoices(runtime.raid);
+  const pageCount = Math.max(1, Math.ceil(weapons.length / 25));
+  const page = Math.min(Math.max(0, Number(requestedPage) || 0), pageCount - 1);
+  const rows = renderWaitlistSelect(runtime.raid, runtime.raid, page);
   if (rows.length === 0) return ephemeralReply(interaction, 'No hay armas configuradas en este raid.');
-  await ephemeralReply(interaction, {
-    content: 'Selecciona la(s) arma(s) para las que quieres esperar cupo:',
+  const payload = {
+    content: weapons.length > 25
+      ? `Selecciona la(s) arma(s) para las que quieres esperar cupo. Página **${page + 1}/${pageCount}** · ${weapons.length} armas únicas.`
+      : 'Selecciona la(s) arma(s) para las que quieres esperar cupo:',
     components: rows,
-  });
+  };
+  if ((interaction.customId || '').startsWith('raid:waitpage:')) {
+    await interaction.update(payload);
+  } else {
+    await ephemeralReply(interaction, payload);
+  }
 }
 
 /**
@@ -288,12 +435,20 @@ async function handleWaitlistPick(interaction, raidId) {
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
   if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
 
-  const slotIds = interaction.values;
+  const slotIds = raidState.expandWaitlistSlotIds(runtime.raid, interaction.values);
   const user = { userId: interaction.user.id, username: interaction.user.username };
 
+  if (slotIds.length === 0) {
+    return interaction.update({
+      content: 'La selección ya no corresponde a un arma activa del raid. Abre de nuevo la lista de espera.',
+      components: [],
+    });
+  }
+
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
-    const available = raidState.availableSlots(runtime.raid).map((s) => s.slotId);
-    const directSlot = slotIds.find((id) => available.includes(id));
+    const preferred = new Set(slotIds);
+    const directSlot = raidState.availableSlots(runtime.raid)
+      .find((slot) => preferred.has(slot.slotId))?.slotId;
 
     if (directSlot) {
       const result = raidState.joinSlot(runtime.raid, directSlot, user);
@@ -304,11 +459,28 @@ async function handleWaitlistPick(interaction, raidId) {
       }
     }
 
-    raidState.addToWaitlist(runtime.raid, user, slotIds);
+    const waiting = raidState.addToWaitlist(runtime.raid, user, slotIds);
+    const promoted = waiting.freedSlotIds?.length
+      ? raidState.promoteFromWaitlist(runtime.raid, waiting.freedSlotIds)
+      : [];
     await raidRegistry.saveRaid(runtime.raidId);
     await raidRegistry.renderAndEdit(runtime.raidId);
+    const selfPromotion = promoted.find((promotion) => promotion.userId === user.userId);
+    for (const promotion of promoted) {
+      if (promotion.userId !== user.userId) notifyPromotedUser(promotion, runtime, interaction.guild);
+    }
+    if (selfPromotion) {
+      sendBuildDm(runtime, selfPromotion.slotId, user);
+      await interaction.update({
+        content: `✅ Te uniste directamente a **${selfPromotion.weaponLabel}**: tu cambio dejó disponible una plaza compatible.`,
+        components: [],
+      });
+      return;
+    }
+    const labels = raidState.waitlistPreferenceLabels(runtime.raid, { slotIds });
+    const labelSummary = summarizeWeaponLabels(labels);
     await interaction.update({
-      content: '🕒 Te agregamos a la lista de espera para las armas elegidas. Te avisaremos por DM si se libera un cupo.',
+      content: `🕒 Te agregamos a la lista de espera para **${labelSummary}**. Te avisaremos por DM si se libera un cupo compatible.`,
       components: [],
     });
   });
@@ -483,27 +655,24 @@ async function finishRaid(raidId, actorId, guild) {
  *
  * @returns {{content:string, components:Array}|null} null si nadie participó
  */
-function attendancePanelPayload(runtime) {
+function attendancePanelPayload(runtime, requestedPage = 0) {
   const roster = raidState.raidRoster(runtime.raid);
   if (roster.length === 0) return null;
   const absentIds = raidState.getAbsentIds(runtime.raid);
   const ausentes = roster.filter((r) => absentIds.has(r.userId)).length;
+  const pageCount = Math.max(1, Math.ceil(roster.length / ATTENDANCE_PAGE_SIZE));
+  const page = Math.min(Math.max(0, Number(requestedPage) || 0), pageCount - 1);
 
   const lineas = [
     `Marca a quienes **NO** asistieron al raid **#${runtime.raidId}**. ` +
       'Los que dejes sin marcar cuentan como que sí participaron.',
     `Ahora mismo: **${roster.length - ausentes}** asistieron · **${ausentes}** no asistieron.`,
   ];
-  if (roster.length > ATTENDANCE_CAPACITY) {
-    lineas.push(
-      `⚠️ Discord solo deja marcar ${ATTENDANCE_CAPACITY} jugadores por panel: ` +
-        `los ${roster.length - ATTENDANCE_CAPACITY} últimos quedan como asistentes.`
-    );
-  }
+  if (pageCount > 1) lineas.push(`Página **${page + 1}/${pageCount}** · los cambios se guardan página por página.`);
 
   return {
     content: lineas.join('\n'),
-    components: renderAttendanceRows(runtime.raid, roster, absentIds),
+    components: renderAttendanceRows(runtime.raid, roster, absentIds, page),
   };
 }
 
@@ -563,8 +732,24 @@ async function handleAttendancePick(interaction, raidId, extra) {
     await raidRegistry.renderAndEdit(runtime.raidId);
   });
 
-  const panel = attendancePanelPayload(runtime);
+  const panel = attendancePanelPayload(runtime, page);
   await interaction.update(
+    panel || { content: 'Este raid no tuvo participantes, no hay asistencia que registrar.', components: [] }
+  );
+}
+
+/** Cambia de página sin perder las ausencias ya guardadas. */
+async function handleAttendancePage(interaction, raidId, extra) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
+  if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
+    return interaction.update({
+      content: 'Solo el líder del raid o un administrador puede registrar la asistencia.',
+      components: [],
+    });
+  }
+  const panel = attendancePanelPayload(runtime, Number(extra));
+  return interaction.update(
     panel || { content: 'Este raid no tuvo participantes, no hay asistencia que registrar.', components: [] }
   );
 }
@@ -712,14 +897,35 @@ async function routeRaidInteraction(interaction) {
       case 'join':
         await handleJoin(interaction, raidId);
         break;
+      case 'browse':
+        await handleGroupBrowser(interaction, raidId, 0);
+        break;
+      case 'grouppage':
+        await handleGroupBrowser(interaction, raidId, extra);
+        break;
+      case 'grouppick':
+        await handleGroupBrowserPick(interaction, raidId);
+        break;
       case 'group':
         await handleGroupPick(interaction, raidId);
+        break;
+      case 'gweaponpage':
+        await handleGroupWeaponPage(interaction, raidId, extra);
+        break;
+      case 'groupsearch':
+        await handleGroupSearchOpen(interaction, raidId);
+        break;
+      case 'groupsearchsubmit':
+        await handleGroupSearchSubmit(interaction, raidId);
         break;
       case 'joinpick':
         await handleJoinPick(interaction, raidId);
         break;
       case 'wait':
-        await handleWaitlistOpen(interaction, raidId);
+        await handleWaitlistOpen(interaction, raidId, extra);
+        break;
+      case 'waitpage':
+        await handleWaitlistOpen(interaction, raidId, extra);
         break;
       case 'waitpick':
         await handleWaitlistPick(interaction, raidId);
@@ -744,6 +950,9 @@ async function routeRaidInteraction(interaction) {
         break;
       case 'attpick':
         await handleAttendancePick(interaction, raidId, extra);
+        break;
+      case 'attpage':
+        await handleAttendancePage(interaction, raidId, extra);
         break;
       case 'attdone':
         await handleAttendanceDone(interaction, raidId);

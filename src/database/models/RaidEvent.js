@@ -92,7 +92,9 @@ const RaidEventSchema = new mongoose.Schema({
   waitlist: [{
     userId: String,
     username: String,
-    // slotIds vacío = comodín (acepta cualquier arma liberada)
+    // Todas las posiciones compatibles con las armas elegidas. Si una misma
+    // arma aparece en cinco grupos, una sola elección guarda los cinco slotIds.
+    // Vacío se conserva como comodín para raids legacy.
     slotIds: [String],
     createdAt: { type: Date, default: Date.now }
   }],

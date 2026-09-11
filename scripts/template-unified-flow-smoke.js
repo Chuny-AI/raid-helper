@@ -45,6 +45,13 @@ const buttonInteraction = (customId) => ({
   isRoleSelectMenu: () => false,
 });
 
+const selectInteraction = (customId, values) => ({
+  ...buttonInteraction(customId),
+  values,
+  isButton: () => false,
+  isStringSelectMenu: () => true,
+});
+
 (async () => {
   sessions.clearAllSessions();
   templateService.getTemplateByName = async () => null;
@@ -67,12 +74,30 @@ const buttonInteraction = (customId) => ({
 
   await command.handleInteraction(buttonInteraction(`te:group-new:${sessionId}`));
   assert.equal(modals.at(-1).data.custom_id, `te:group-new-submit:${sessionId}`);
+  assert.equal(
+    modals.at(-1).components.some((row) => row.components[0].data.custom_id === 'defaultEmoji'),
+    false,
+    'el emoji ya no se escribe manualmente',
+  );
 
   await command.handleInteraction(modalInteraction(`te:group-new-submit:${sessionId}`, {
-    displayName: 'DPS', defaultEmoji: '⚔️', maxPlayers: '5',
+    displayName: 'DPS', maxPlayers: '5',
   }));
+  const categorySelect = payloads.at(-1).components[0].components[0];
+  assert.equal(categorySelect.data.custom_id, `te:group-icon-category:create:new:${sessionId}`);
+  assert(categorySelect.options.every((option) => /^\d{17,20}$/.test(option.data.emoji.id)));
+
+  const selectedCategory = categorySelect.options[0].data.value;
+  await command.handleInteraction(selectInteraction(categorySelect.data.custom_id, [selectedCategory]));
+  const emojiSelect = payloads.at(-1).components[0].components[0];
+  assert.equal(emojiSelect.data.custom_id, `te:group-icon-select:create:new:${sessionId}`);
+  assert(emojiSelect.options.every((option) => /^\d{17,20}$/.test(option.data.emoji.id)));
+
+  const selectedEmoji = emojiSelect.options[0].data.value;
+  await command.handleInteraction(selectInteraction(emojiSelect.data.custom_id, [selectedEmoji]));
   const session = sessions.getValidSession(sessionId, 'user-1', 'guild-1').session;
   assert.equal(session.data.weapons.DPS.displayName, 'DPS');
+  assert.equal(session.data.weapons.DPS.defaultEmoji, selectedEmoji);
   assert.match(payloads.at(-1).embeds[0].data.title, /DPS/);
 
   await command.handleInteraction(buttonInteraction(`te:cancel:${sessionId}`));

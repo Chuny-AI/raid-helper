@@ -22,6 +22,8 @@ const {
   countActiveParticipants,
   raidRoster,
   attendanceReport,
+  waitlistWeaponChoices,
+  waitlistPreferenceLabels,
 } = require('../services/raidState');
 
 const BRAND_ICON =
@@ -34,10 +36,8 @@ const MAX_ROWS = 5;
 
 /** Jugadores por página del selector de asistencia (límite de Discord). */
 const ATTENDANCE_PAGE_SIZE = MAX_OPTIONS_PER_SELECT;
-/** 4 selectores + la fila del botón "Listo". */
-const ATTENDANCE_MAX_PAGES = MAX_ROWS - 1;
-/** Tope de jugadores que caben en el selector de asistencia. */
-const ATTENDANCE_CAPACITY = ATTENDANCE_PAGE_SIZE * ATTENDANCE_MAX_PAGES;
+/** Conservado por compatibilidad: la asistencia ahora se pagina sin tope global. */
+const ATTENDANCE_CAPACITY = Number.POSITIVE_INFINITY;
 
 /**
  * Trunca el valor de un campo embed para no superar el límite de 1024 chars de Discord.
@@ -318,7 +318,11 @@ function renderRaidEmbed(raid, state) {
   });
 
   if (state.waitlist && state.waitlist.length > 0) {
-    const lines = state.waitlist.map((w) => `<@${w.userId}>`);
+    const lines = state.waitlist.map((w) => {
+      const labels = waitlistPreferenceLabels(state, w);
+      const selected = labels.length > 0 ? ` — ${labels.join(', ')}` : '';
+      return `<@${w.userId}>${selected}`;
+    });
     fields.push({ name: WAITLIST_FIELD_NAME, value: safeFieldValue(lines.join('\n')), inline: false });
   }
 
@@ -397,21 +401,16 @@ function buildJoinSelectRows(raid, state, availableRoomForRows) {
   const avail = availableSlots(state);
   if (avail.length === 0) return [];
 
-  // Demasiadas opciones para listarlas todas: modo dos pasos (elegir grupo primero).
+  // Demasiadas opciones para listarlas todas: abre un navegador privado por
+  // jugador. Cambiar de página nunca modifica el mensaje público del raid.
   if (avail.length > 100) {
-    const groupKeys = [...new Set(avail.map((s) => s.groupKey))].slice(0, MAX_OPTIONS_PER_SELECT);
-    const options = groupKeys.map((gk) => {
-      const { current, max } = groupOccupancy(state, gk);
-      return new StringSelectMenuOptionBuilder()
-        .setLabel(groupDisplayName(state, gk).slice(0, 100))
-        .setValue(gk)
-        .setDescription(`${current}/${max} ocupados`.slice(0, 100));
-    });
-    const select = new StringSelectMenuBuilder()
-      .setCustomId(`raid:group:${raid.eventId}`)
-      .setPlaceholder('Elige tu grupo')
-      .addOptions(options);
-    return [new ActionRowBuilder().addComponents(select)];
+    return [new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`raid:browse:${raid.eventId}`)
+        .setLabel('Buscar plaza')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('🔎')
+    )];
   }
 
   const bins = binPackSlotsByGroup(avail).slice(0, availableRoomForRows);
@@ -424,6 +423,83 @@ function buildJoinSelectRows(raid, state, availableRoomForRows) {
       .addOptions(options);
     return new ActionRowBuilder().addComponents(select);
   });
+}
+
+/** Grupos con al menos una plaza libre, conservando el orden del raid. */
+function availableGroupKeys(state) {
+  const available = new Set(availableSlots(state).map((slot) => slot.groupKey));
+  return (state.groups || [])
+    .map((group) => group.groupKey)
+    .filter((groupKey) => available.has(groupKey));
+}
+
+/**
+ * Navegador efímero de grupos. Los resultados de búsqueda se limitan a una
+ * página y avisan si hace falta refinar; el listado completo sí es paginable.
+ */
+function renderGroupBrowser(raid, state, requestedPage = 0, filteredGroupKeys = null) {
+  const allAvailable = availableGroupKeys(state);
+  const available = new Set(allAvailable);
+  const filtered = Array.isArray(filteredGroupKeys);
+  const groupKeys = filtered
+    ? [...new Set(filteredGroupKeys)].filter((groupKey) => available.has(groupKey))
+    : allAvailable;
+  const pageCount = filtered ? 1 : Math.max(1, Math.ceil(groupKeys.length / MAX_OPTIONS_PER_SELECT));
+  const page = filtered
+    ? 0
+    : Math.min(Math.max(0, Number(requestedPage) || 0), pageCount - 1);
+  const visibleKeys = groupKeys.slice(
+    page * MAX_OPTIONS_PER_SELECT,
+    page * MAX_OPTIONS_PER_SELECT + MAX_OPTIONS_PER_SELECT,
+  );
+  if (visibleKeys.length === 0) {
+    return { rows: [], page, pageCount, total: groupKeys.length, truncated: false };
+  }
+
+  const options = visibleKeys.map((groupKey) => {
+    const { current, max } = groupOccupancy(state, groupKey);
+    return new StringSelectMenuOptionBuilder()
+      .setLabel(groupDisplayName(state, groupKey).slice(0, 100))
+      .setValue(groupKey)
+      .setDescription(`${current}/${max} ocupados`.slice(0, 100));
+  });
+  const rows = [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`raid:grouppick:${raid.eventId}`)
+      .setPlaceholder('Elige un grupo con plazas')
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(options)
+  )];
+
+  const buttons = [];
+  if (!filtered && pageCount > 1) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`raid:grouppage:${raid.eventId}:${Math.max(0, page - 1)}`)
+        .setLabel('Anterior').setStyle(ButtonStyle.Secondary).setEmoji('⬅️').setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId(`raid:grouppage:${raid.eventId}:${Math.min(pageCount - 1, page + 1)}`)
+        .setLabel('Siguiente').setStyle(ButtonStyle.Secondary).setEmoji('➡️').setDisabled(page + 1 >= pageCount),
+    );
+  }
+  if (filtered) {
+    buttons.push(new ButtonBuilder()
+      .setCustomId(`raid:grouppage:${raid.eventId}:0`)
+      .setLabel('Ver todos').setStyle(ButtonStyle.Secondary));
+  }
+  buttons.push(new ButtonBuilder()
+    .setCustomId(`raid:groupsearch:${raid.eventId}`)
+    .setLabel('Buscar grupo').setStyle(ButtonStyle.Primary).setEmoji('🔎'));
+  rows.push(new ActionRowBuilder().addComponents(buttons));
+
+  return {
+    rows,
+    page,
+    pageCount,
+    total: groupKeys.length,
+    truncated: filtered && groupKeys.length > MAX_OPTIONS_PER_SELECT,
+  };
 }
 
 function buildButtonRow(raid, state) {
@@ -532,48 +608,104 @@ function renderRaidComponents(raid, state) {
   return rows.slice(0, MAX_ROWS);
 }
 
-/**
- * Select ephemeral de segundo paso (modo >100 opciones): arma dentro de un grupo elegido.
- * @returns {ActionRowBuilder|null}
- */
+/** Panel paginado de armas dentro del grupo elegido. */
+function renderGroupPickPanel(raid, state, groupKey, requestedPage = 0) {
+  const available = availableSlots(state).filter((slot) => slot.groupKey === groupKey);
+  if (available.length === 0) return null;
+  const pageCount = Math.max(1, Math.ceil(available.length / MAX_OPTIONS_PER_SELECT));
+  const page = Math.min(Math.max(0, Number(requestedPage) || 0), pageCount - 1);
+  const chunk = available.slice(page * MAX_OPTIONS_PER_SELECT, (page + 1) * MAX_OPTIONS_PER_SELECT);
+  const options = chunk.map((slot) => optionFromSlot(state, slot));
+  const rows = [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`raid:joinpick:${raid.eventId}`)
+      .setPlaceholder(pageCount > 1 ? `Elige tu arma · ${page + 1}/${pageCount}` : 'Elige tu arma')
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(options)
+  )];
+
+  const groupIndex = (state.groups || []).findIndex((group) => group.groupKey === groupKey);
+  const buttons = [];
+  if (pageCount > 1) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`raid:gweaponpage:${raid.eventId}:${groupIndex}:${Math.max(0, page - 1)}`)
+        .setLabel('Anterior').setStyle(ButtonStyle.Secondary).setEmoji('⬅️').setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId(`raid:gweaponpage:${raid.eventId}:${groupIndex}:${Math.min(pageCount - 1, page + 1)}`)
+        .setLabel('Siguiente').setStyle(ButtonStyle.Secondary).setEmoji('➡️').setDisabled(page + 1 >= pageCount),
+    );
+  }
+  buttons.push(new ButtonBuilder()
+    .setCustomId(`raid:grouppage:${raid.eventId}:0`)
+    .setLabel('Volver a grupos').setStyle(ButtonStyle.Secondary));
+  rows.push(new ActionRowBuilder().addComponents(buttons));
+  return { rows, page, pageCount, total: available.length };
+}
+
+/** Compatibilidad con consumidores que solo necesitan la primera fila. */
 function renderGroupPickSelect(raid, state, groupKey) {
-  const avail = availableSlots(state)
-    .filter((s) => s.groupKey === groupKey)
-    .slice(0, MAX_OPTIONS_PER_SELECT);
-  if (avail.length === 0) return null;
-  const options = avail.map((slot) => optionFromSlot(state, slot));
-  const select = new StringSelectMenuBuilder()
-    .setCustomId(`raid:joinpick:${raid.eventId}:${groupKey}`)
-    .setPlaceholder('Elige tu arma')
-    .addOptions(options);
-  return new ActionRowBuilder().addComponents(select);
+  return renderGroupPickPanel(raid, state, groupKey)?.rows[0] || null;
 }
 
 /**
- * Select(s) ephemeral(es) para elegir por cuáles armas esperar en la lista de espera.
- * Incluye TODOS los slots no deshabilitados (llenos o no): si el elegido tiene
- * cupo, el handler une directo; si no, agrega a la waitlist.
+ * Panel efímero paginado para elegir armas únicas de la lista de espera.
+ * Una misma arma repetida en varios grupos se presenta una sola vez. Cada
+ * página usa como máximo 25 opciones y la navegación permite recorrerlas todas
+ * sin depender del límite de cinco filas de Discord.
  * @returns {ActionRowBuilder[]}
  */
-function renderWaitlistSelect(raid, state) {
-  const slots = state.slots.filter((s) => !s.disabled);
-  if (slots.length === 0) return [];
+function renderWaitlistSelect(raid, state, requestedPage = 0) {
+  const weapons = waitlistWeaponChoices(state);
+  if (weapons.length === 0) return [];
 
-  const chunks = [];
-  for (let i = 0; i < slots.length; i += MAX_OPTIONS_PER_SELECT) {
-    chunks.push(slots.slice(i, i + MAX_OPTIONS_PER_SELECT));
-  }
-
-  return chunks.slice(0, MAX_ROWS).map((chunk, page) => {
-    const options = chunk.map((slot) => optionFromSlot(state, slot));
-    const select = new StringSelectMenuBuilder()
-      .setCustomId(`raid:waitpick:${raid.eventId}:${page}`)
-      .setPlaceholder('Arma(s) para las que quieres esperar')
-      .setMinValues(1)
-      .setMaxValues(options.length)
-      .addOptions(options);
-    return new ActionRowBuilder().addComponents(select);
+  const pageCount = Math.max(1, Math.ceil(weapons.length / MAX_OPTIONS_PER_SELECT));
+  const page = Math.min(Math.max(0, Number(requestedPage) || 0), pageCount - 1);
+  const chunk = weapons.slice(page * MAX_OPTIONS_PER_SELECT, (page + 1) * MAX_OPTIONS_PER_SELECT);
+  const options = chunk.map((weapon) => {
+    const groups = weapon.groupKeys.length;
+    const option = new StringSelectMenuOptionBuilder()
+      .setLabel(String(weapon.label || 'Arma').slice(0, 100))
+      // El primer slot identifica el arma; el handler lo expande a todos los
+      // slots equivalentes antes de guardar la preferencia.
+      .setValue(weapon.slotIds[0])
+      .setDescription(
+        `${groups} grupo${groups === 1 ? '' : 's'} · ${weapon.occupied}/${weapon.capacity} plazas`.slice(0, 100)
+      );
+    applyEmoji(option, weapon.emoji);
+    return option;
   });
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`raid:waitpick:${raid.eventId}:${page}`)
+    .setPlaceholder(
+      (pageCount > 1
+        ? `Elige arma(s) · página ${page + 1}/${pageCount}`
+        : 'Arma(s) para las que quieres esperar').slice(0, 150)
+    )
+    .setMinValues(1)
+    .setMaxValues(options.length)
+    .addOptions(options);
+  const rows = [new ActionRowBuilder().addComponents(select)];
+
+  if (pageCount > 1) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`raid:waitpage:${raid.eventId}:${Math.max(0, page - 1)}`)
+        .setLabel('Anterior')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('⬅️')
+        .setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId(`raid:waitpage:${raid.eventId}:${Math.min(pageCount - 1, page + 1)}`)
+        .setLabel('Siguiente')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('➡️')
+        .setDisabled(page + 1 >= pageCount),
+    ));
+  }
+  return rows;
 }
 
 /**
@@ -589,49 +721,54 @@ function renderWaitlistSelect(raid, state) {
  * @param {Set<string>} absentIds
  * @returns {ActionRowBuilder[]} selectores + la fila del botón "Listo"
  */
-function renderAttendanceRows(raid, roster, absentIds) {
-  const pages = [];
-  for (let i = 0; i < roster.length; i += ATTENDANCE_PAGE_SIZE) {
-    pages.push(roster.slice(i, i + ATTENDANCE_PAGE_SIZE));
-  }
-
-  const rows = pages.slice(0, ATTENDANCE_MAX_PAGES).map((chunk, page) => {
-    const options = chunk.map((entry) => {
-      const absent = absentIds.has(entry.userId);
-      const weapon = entry.slotId ? entry.label || 'Sin arma' : 'Looter';
-      const opt = new StringSelectMenuOptionBuilder()
-        .setLabel((entry.username || entry.userId).slice(0, 100))
-        .setValue(entry.userId)
-        .setDescription(`${absent ? '❌ No asistió' : '✅ Asistió'} · ${weapon}`.slice(0, 100))
-        .setDefault(absent);
-      applyEmoji(opt, entry.emoji);
-      return opt;
-    });
-
-    const total = Math.min(pages.length, ATTENDANCE_MAX_PAGES);
-    const select = new StringSelectMenuBuilder()
-      .setCustomId(`raid:attpick:${raid.eventId}:${page}`)
-      .setPlaceholder(
-        (total > 1
-          ? `Marca quienes NO asistieron (${page + 1}/${total})`
-          : 'Marca quienes NO asistieron').slice(0, 150)
-      )
-      // 0 permite dejar la página entera como "todos asistieron".
-      .setMinValues(0)
-      .setMaxValues(options.length)
-      .addOptions(options);
-    return new ActionRowBuilder().addComponents(select);
+function renderAttendanceRows(raid, roster, absentIds, requestedPage = 0) {
+  if (roster.length === 0) return [];
+  const pageCount = Math.max(1, Math.ceil(roster.length / ATTENDANCE_PAGE_SIZE));
+  const page = Math.min(Math.max(0, Number(requestedPage) || 0), pageCount - 1);
+  const chunk = roster.slice(page * ATTENDANCE_PAGE_SIZE, (page + 1) * ATTENDANCE_PAGE_SIZE);
+  const options = chunk.map((entry) => {
+    const absent = absentIds.has(entry.userId);
+    const weapon = entry.slotId ? entry.label || 'Sin arma' : 'Looter';
+    const opt = new StringSelectMenuOptionBuilder()
+      .setLabel((entry.username || entry.userId).slice(0, 100))
+      .setValue(entry.userId)
+      .setDescription(`${absent ? '❌ No asistió' : '✅ Asistió'} · ${weapon}`.slice(0, 100))
+      .setDefault(absent);
+    applyEmoji(opt, entry.emoji);
+    return opt;
   });
 
-  rows.push(
-    new ActionRowBuilder().addComponents(
+  const rows = [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`raid:attpick:${raid.eventId}:${page}`)
+      .setPlaceholder(
+        (pageCount > 1
+          ? `Marca quienes NO asistieron (${page + 1}/${pageCount})`
+          : 'Marca quienes NO asistieron').slice(0, 150)
+      )
+      .setMinValues(0)
+      .setMaxValues(options.length)
+      .addOptions(options)
+  )];
+
+  if (pageCount > 1) {
+    rows.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`raid:attdone:${raid.eventId}`)
-        .setLabel('Listo')
-        .setStyle(ButtonStyle.Success)
-        .setEmoji('✅')
-    )
-  );
+        .setCustomId(`raid:attpage:${raid.eventId}:${Math.max(0, page - 1)}`)
+        .setLabel('Anterior').setStyle(ButtonStyle.Secondary).setEmoji('⬅️').setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId(`raid:attpage:${raid.eventId}:${Math.min(pageCount - 1, page + 1)}`)
+        .setLabel('Siguiente').setStyle(ButtonStyle.Secondary).setEmoji('➡️').setDisabled(page + 1 >= pageCount),
+    ));
+  }
+
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`raid:attdone:${raid.eventId}`)
+      .setLabel('Listo')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('✅')
+  ));
   return rows;
 }
 
@@ -640,6 +777,8 @@ module.exports = {
   renderRaidEmbed,
   renderRaidComponents,
   renderThreadDeleteRow,
+  renderGroupBrowser,
+  renderGroupPickPanel,
   renderGroupPickSelect,
   renderWaitlistSelect,
   renderAttendanceRows,

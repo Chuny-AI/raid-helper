@@ -136,6 +136,74 @@ function availableSlots(state) {
 }
 
 /**
+ * Identidad estable de un arma para la lista de espera. Se usa el nombre base,
+ * no `label`, porque una misma arma puede tener builds/etiquetas distintas y
+ * aparecer en varios grupos. Así "Falce de cristal" se ofrece una sola vez.
+ */
+function waitlistWeaponKey(slot) {
+  const name = String(slot?.weaponName || slot?.label || '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('es');
+  return name || `slot:${slot?.slotId || ''}`;
+}
+
+/**
+ * Armas únicas que se pueden elegir para esperar. Cada entrada conserva todos
+ * los slotIds compatibles, incluso si el arma aparece en varios grupos.
+ */
+function waitlistWeaponChoices(state) {
+  const choices = new Map();
+  for (const slot of state?.slots || []) {
+    if (slot.disabled) continue;
+    const key = waitlistWeaponKey(slot);
+    if (!choices.has(key)) {
+      choices.set(key, {
+        key,
+        label: slot.weaponName || slot.label || 'Arma',
+        emoji: slot.emoji || '',
+        slotIds: [],
+        groupKeys: [],
+        occupied: 0,
+        capacity: 0,
+      });
+    }
+    const choice = choices.get(key);
+    choice.slotIds.push(slot.slotId);
+    if (!choice.groupKeys.includes(slot.groupKey)) choice.groupKeys.push(slot.groupKey);
+    choice.occupied += (slot.users || []).length;
+    choice.capacity += Number(slot.units) || 0;
+  }
+  return [...choices.values()];
+}
+
+/**
+ * Los selects envían un slot representativo por arma. Esta función lo expande
+ * a todas las posiciones equivalentes para que una sola selección pueda ser
+ * promovida en cualquiera de los grupos donde exista esa arma.
+ */
+function expandWaitlistSlotIds(state, selectedSlotIds = []) {
+  const selectedKeys = new Set();
+  for (const slotId of selectedSlotIds || []) {
+    const slot = findSlot(state, slotId);
+    if (slot && !slot.disabled) selectedKeys.add(waitlistWeaponKey(slot));
+  }
+  return waitlistWeaponChoices(state)
+    .filter((choice) => selectedKeys.has(choice.key))
+    .flatMap((choice) => choice.slotIds);
+}
+
+/** Etiquetas únicas correspondientes a una preferencia ya guardada. */
+function waitlistPreferenceLabels(state, entry) {
+  if (!entry?.slotIds?.length) return [];
+  const preferred = new Set(entry.slotIds);
+  return waitlistWeaponChoices(state)
+    .filter((choice) => choice.slotIds.some((slotId) => preferred.has(slotId)))
+    .map((choice) => choice.label);
+}
+
+/**
  * Quita al usuario de TODAS sus posiciones: slot, waitlist, cannotGo y looters.
  * Un usuario solo puede estar en un estado a la vez, así que cualquier acción
  * que le dé uno nuevo pasa antes por aquí.
@@ -266,35 +334,47 @@ function kickUser(state, userId) {
 }
 
 /**
- * Promueve candidatos de la waitlist a los slots recién liberados, en orden
- * de llegada (createdAt). slotIds vacío en la entrada de waitlist = comodín.
+ * Promueve candidatos de la waitlist a las plazas que acaban de abrirse, en
+ * orden de llegada. También considera otras armas del mismo grupo: al liberar
+ * una espada puede quedar disponible la falce que antes bloqueaba el cupo
+ * global del grupo. slotIds vacío = comodín legacy.
  * @returns {Array<{userId:string, slotId:string, weaponLabel:string}>}
  */
 function promoteFromWaitlist(state, freedSlotIds) {
   const promoted = [];
-  const sortedWaitlist = () => [...state.waitlist].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const freed = (freedSlotIds || []).map((slotId) => findSlot(state, slotId)).filter(Boolean);
+  const freedIds = new Set(freed.map((slot) => slot.slotId));
+  const freedGroups = new Set(freed.map((slot) => slot.groupKey));
 
-  for (const slotId of freedSlotIds || []) {
-    const slot = findSlot(state, slotId);
-    if (!slot || slot.disabled) continue;
+  for (let vacancy = 0; vacancy < freed.length; vacancy += 1) {
+    const candidates = [...(state.waitlist || [])]
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const available = availableSlots(state)
+      .filter((slot) => freedIds.has(slot.slotId) || freedGroups.has(slot.groupKey))
+      .sort((a, b) => Number(!freedIds.has(a.slotId)) - Number(!freedIds.has(b.slotId)));
 
-    const { current, max } = slotOccupancy(state, slotId);
-    if (current >= max) continue;
-
-    const group = state.groups.find((g) => g.groupKey === slot.groupKey);
-    if (group) {
-      const { current: groupCurrent } = groupOccupancy(state, slot.groupKey);
-      if (groupCurrent >= group.maxPlayers) continue;
+    let match = null;
+    for (const candidate of candidates) {
+      const slot = available.find(
+        (availableSlot) => !candidate.slotIds?.length || candidate.slotIds.includes(availableSlot.slotId)
+      );
+      if (slot) {
+        match = { candidate, slot };
+        break;
+      }
     }
+    if (!match) break;
 
-    const candidate = sortedWaitlist().find(
-      (w) => !w.slotIds || w.slotIds.length === 0 || w.slotIds.includes(slotId)
-    );
-    if (!candidate) continue;
-
-    state.waitlist = state.waitlist.filter((w) => w.userId !== candidate.userId);
-    slot.users.push({ userId: candidate.userId, username: candidate.username, joinedAt: new Date() });
-    promoted.push({ userId: candidate.userId, slotId, weaponLabel: slot.label || slot.weaponName });
+    const joined = joinSlot(state, match.slot.slotId, {
+      userId: match.candidate.userId,
+      username: match.candidate.username,
+    });
+    if (!joined.ok) continue;
+    promoted.push({
+      userId: match.candidate.userId,
+      slotId: match.slot.slotId,
+      weaponLabel: match.slot.label || match.slot.weaponName,
+    });
   }
 
   return promoted;
@@ -451,6 +531,10 @@ module.exports = {
   slotOccupancy,
   groupOccupancy,
   availableSlots,
+  waitlistWeaponKey,
+  waitlistWeaponChoices,
+  expandWaitlistSlotIds,
+  waitlistPreferenceLabels,
   joinSlot,
   leaveAll,
   setCannotGo,

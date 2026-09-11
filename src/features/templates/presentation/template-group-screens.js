@@ -11,6 +11,7 @@ const {
 const sessions = require('../application/template-edit-session-store');
 const { getGroupEntries, getWeaponCollection } = require('../domain/template-editor');
 const { formatEmoji } = require('../../../utils/emoji');
+const { environmentName } = require('../../../config/environment');
 const { respondPanel } = require('./template-edit-screens');
 const { safeReply } = require('../../../utils/errorEmbeds');
 
@@ -30,6 +31,16 @@ const sessionOrReply = async (interaction, sessionId) => {
 const emojiText = (value) => {
   const text = String(value || '⚔️');
   return /^\d{15,20}$/.test(text) ? formatEmoji(text) : text;
+};
+
+const customEmoji = (value) => (/^\d{15,20}$/.test(String(value || ''))
+  ? { id: String(value) }
+  : undefined);
+
+const pageItems = (items, requestedPage) => {
+  const pageCount = Math.max(1, Math.ceil(items.length / 25));
+  const page = Math.min(Math.max(0, Number(requestedPage) || 0), pageCount - 1);
+  return { page, pageCount, items: items.slice(page * 25, page * 25 + 25) };
 };
 
 const groupAt = (session, groupIndex) => getGroupEntries(session.data.weapons)[Number(groupIndex)]?.[1];
@@ -86,7 +97,6 @@ const showMissingGroup = (interaction, sessionId) => respondPanel(interaction, {
 const showNewGroupModal = (interaction, sessionId) => interaction.showModal(
   new ModalBuilder().setCustomId(`te:group-new-submit:${sessionId}`).setTitle('Crear grupo de armas').addComponents(
     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('displayName').setLabel('Nombre del grupo').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100)),
-    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('defaultEmoji').setLabel('Emoji o ID del emoji').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(50).setValue('⚔️')),
     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('maxPlayers').setLabel('Cupo máximo').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3).setValue('1')),
   ),
 );
@@ -101,9 +111,119 @@ const showEditGroupModal = async (interaction, sessionId, groupIndex) => {
     .setTitle('Editar grupo de armas')
     .addComponents(
       new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('displayName').setLabel('Nombre del grupo').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100).setValue(group.displayName || group.name || 'Grupo')),
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('defaultEmoji').setLabel('Emoji o ID del emoji').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(50).setValue(String(group.defaultEmoji || '⚔️'))),
       new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('maxPlayers').setLabel('Cupo máximo').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3).setValue(String(group.max_players || 1))),
     ));
+};
+
+const groupIndexToken = (mode, groupIndex) => (mode === 'create' ? 'new' : String(groupIndex));
+
+const cancelGroupIconButton = (mode, groupIndex, sessionId) => new ButtonBuilder()
+  .setCustomId(mode === 'create'
+    ? `te:groups:0:${sessionId}`
+    : `te:group:${groupIndex}:${sessionId}`)
+  .setLabel(mode === 'create' ? 'Cancelar grupo' : 'Cancelar cambios')
+  .setStyle(ButtonStyle.Secondary)
+  .setEmoji('⬅️');
+
+const showGroupEmojiCategories = async (
+  interaction,
+  sessionId,
+  mode,
+  groupIndex,
+  categories,
+  requestedPage = 0,
+) => {
+  const valid = await sessionOrReply(interaction, sessionId);
+  if (!valid) return;
+  if (mode === 'edit' && !groupAt(valid.session, groupIndex)) {
+    return showMissingGroup(interaction, valid.sessionId);
+  }
+  const paged = pageItems(categories, requestedPage);
+  const options = paged.items.map((category) => ({
+    label: String(category.displayName || category.key).slice(0, 100),
+    value: String(category.key).slice(0, 100),
+    emoji: customEmoji(category.defaultEmoji),
+  }));
+  if (options.length === 0) {
+    return safeReply(interaction, { content: 'El catálogo de armas del entorno está vacío.', ephemeral: true });
+  }
+
+  const token = groupIndexToken(mode, groupIndex);
+  const navigation = [];
+  if (paged.page > 0) navigation.push(new ButtonBuilder()
+    .setCustomId(`te:group-icon-categories:${mode}:${token}:${paged.page - 1}:${valid.sessionId}`)
+    .setLabel('Anterior').setStyle(ButtonStyle.Secondary));
+  if (paged.page + 1 < paged.pageCount) navigation.push(new ButtonBuilder()
+    .setCustomId(`te:group-icon-categories:${mode}:${token}:${paged.page + 1}:${valid.sessionId}`)
+    .setLabel('Siguiente').setStyle(ButtonStyle.Secondary));
+  navigation.push(cancelGroupIconButton(mode, groupIndex, valid.sessionId));
+
+  return respondPanel(interaction, {
+    embeds: [new EmbedBuilder()
+      .setTitle('Elige el icono del grupo')
+      .setDescription(`Selecciona primero una familia. Solo se muestran emojis de armas del catálogo de **${environmentName()}**.`)
+      .setColor(0xf1c40f)
+      .setFooter({ text: `Familias · Página ${paged.page + 1}/${paged.pageCount}` })],
+    components: [
+      new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
+        .setCustomId(`te:group-icon-category:${mode}:${token}:${valid.sessionId}`)
+        .setPlaceholder('Selecciona una familia de armas')
+        .setMinValues(1).setMaxValues(1).addOptions(options)),
+      new ActionRowBuilder().addComponents(navigation),
+    ],
+  });
+};
+
+const showGroupEmojiWeapons = async (
+  interaction,
+  sessionId,
+  mode,
+  groupIndex,
+  category,
+  weapons,
+  requestedPage = 0,
+) => {
+  const valid = await sessionOrReply(interaction, sessionId);
+  if (!valid) return;
+  if (mode === 'edit' && !groupAt(valid.session, groupIndex)) {
+    return showMissingGroup(interaction, valid.sessionId);
+  }
+  const paged = pageItems(weapons, requestedPage);
+  const options = paged.items.map((weapon) => ({
+    label: String(weapon.name || 'Arma').slice(0, 100),
+    value: String(weapon.emojiId).slice(0, 100),
+    emoji: customEmoji(weapon.emojiId),
+  }));
+  if (options.length === 0) {
+    return safeReply(interaction, { content: 'Esa familia no contiene armas en el catálogo actual.', ephemeral: true });
+  }
+
+  const token = groupIndexToken(mode, groupIndex);
+  const navigation = [];
+  if (paged.page > 0) navigation.push(new ButtonBuilder()
+    .setCustomId(`te:group-icon-weapons:${mode}:${token}:${category}:${paged.page - 1}:${valid.sessionId}`)
+    .setLabel('Anterior').setStyle(ButtonStyle.Secondary));
+  if (paged.page + 1 < paged.pageCount) navigation.push(new ButtonBuilder()
+    .setCustomId(`te:group-icon-weapons:${mode}:${token}:${category}:${paged.page + 1}:${valid.sessionId}`)
+    .setLabel('Siguiente').setStyle(ButtonStyle.Secondary));
+  navigation.push(new ButtonBuilder()
+    .setCustomId(`te:group-icon-categories:${mode}:${token}:0:${valid.sessionId}`)
+    .setLabel('Volver a familias').setStyle(ButtonStyle.Secondary).setEmoji('⬅️'));
+
+  return respondPanel(interaction, {
+    embeds: [new EmbedBuilder()
+      .setTitle('Elige un arma como icono')
+      .setDescription('El emoji seleccionado se usará para identificar el grupo.')
+      .setColor(0xf1c40f)
+      .setFooter({ text: `Armas · Página ${paged.page + 1}/${paged.pageCount}` })],
+    components: [
+      new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
+        .setCustomId(`te:group-icon-select:${mode}:${token}:${valid.sessionId}`)
+        .setPlaceholder('Selecciona el icono del grupo')
+        .setMinValues(1).setMaxValues(1).addOptions(options)),
+      new ActionRowBuilder().addComponents(navigation),
+    ],
+  });
 };
 
 const showDeleteConfirmation = async (interaction, sessionId, groupIndex) => {
@@ -127,7 +247,7 @@ const showCatalogCategories = async (interaction, sessionId, groupIndex, categor
   const options = categories.slice(0, 25).map((category) => ({
     label: String(category.displayName || category.key).slice(0, 100),
     value: String(category.key).slice(0, 100),
-    emoji: /^\d{15,20}$/.test(String(category.defaultEmoji || '')) ? { id: String(category.defaultEmoji) } : undefined,
+    emoji: customEmoji(category.defaultEmoji),
   }));
   if (options.length === 0) return safeReply(interaction, { content: 'No hay categorías de armas activas.', ephemeral: true });
   return respondPanel(interaction, {
@@ -145,7 +265,7 @@ const showCatalogWeapons = async (interaction, sessionId, groupIndex, category, 
   const options = weapons.slice(0, 25).map((weapon) => ({
     label: String(weapon.name).slice(0, 100),
     value: String(weapon.emojiId).slice(0, 100),
-    emoji: /^\d{15,20}$/.test(String(weapon.emojiId)) ? { id: String(weapon.emojiId) } : undefined,
+    emoji: customEmoji(weapon.emojiId),
   }));
   if (options.length === 0) return safeReply(interaction, { content: 'Esta categoría no tiene armas activas.', ephemeral: true });
   return respondPanel(interaction, {
@@ -221,6 +341,8 @@ module.exports = {
   showDeleteConfirmation,
   showEditGroupModal,
   showGroup,
+  showGroupEmojiCategories,
+  showGroupEmojiWeapons,
   showNewGroupModal,
   showWeaponEditModal,
   showWeaponMenu,

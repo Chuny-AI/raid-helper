@@ -158,6 +158,65 @@ const updateGroup = ({ sessionId, userId, guildId, groupIndex, displayName, defa
   },
 );
 
+/**
+ * Conserva temporalmente los datos del modal mientras el usuario elige un
+ * icono del catálogo. El grupo no se modifica hasta confirmar un arma válida.
+ */
+const stageGroupChange = ({ sessionId, userId, guildId, groupIndex, displayName, maxPlayers }) => {
+  const normalizedIndex = groupIndex === null || groupIndex === undefined
+    ? null
+    : Number(groupIndex);
+  const valid = sessions.mutateOwnedSession(sessionId, userId, guildId, (session) => {
+    if (normalizedIndex !== null && !domain.getWeaponGroupFromSession(session, normalizedIndex)) {
+      throw new Error('El grupo seleccionado ya no existe.');
+    }
+    session.pendingGroupChange = {
+      mode: normalizedIndex === null ? 'create' : 'edit',
+      groupIndex: normalizedIndex,
+      displayName: requiredName(displayName, 'El nombre del grupo'),
+      maxPlayers: positiveInteger(maxPlayers, 'El cupo máximo'),
+    };
+    return session.pendingGroupChange;
+  });
+  if (!valid) throw new Error('La sesión de edición expiró o no te pertenece.');
+  return valid;
+};
+
+/** Confirma el borrador usando exclusivamente un emoji del JSON activo. */
+const applyStagedGroupEmoji = async ({ sessionId, userId, guildId, mode, groupIndex, emojiId }) => {
+  const weapon = await weaponService.getWeaponByEmojiId(String(emojiId || ''));
+  if (!weapon) {
+    throw new Error('Ese emoji no pertenece al catálogo de armas del entorno actual.');
+  }
+
+  const expectedIndex = mode === 'create' ? null : Number(groupIndex);
+  return mutate(sessionId, userId, guildId, (data, session) => {
+    const pending = session.pendingGroupChange;
+    if (!pending || pending.mode !== mode || pending.groupIndex !== expectedIndex) {
+      throw new Error('La selección del icono expiró. Abre de nuevo la edición del grupo.');
+    }
+
+    let resultIndex = pending.groupIndex;
+    if (pending.mode === 'create') {
+      resultIndex = domain.addGroup(data, {
+        displayName: pending.displayName,
+        defaultEmoji: weapon.emojiId,
+        max_players: pending.maxPlayers,
+        data: [],
+      });
+    } else if (!domain.updateGroup(data, pending.groupIndex, {
+      displayName: pending.displayName,
+      defaultEmoji: weapon.emojiId,
+      max_players: pending.maxPlayers,
+    })) {
+      throw new Error('El grupo seleccionado ya no existe.');
+    }
+
+    delete session.pendingGroupChange;
+    return resultIndex;
+  });
+};
+
 const deleteGroup = ({ sessionId, userId, guildId, groupIndex }) => mutate(
   sessionId,
   userId,
@@ -255,6 +314,7 @@ const cancel = ({ sessionId, userId, guildId }) =>
 module.exports = {
   addCatalogWeapons,
   addGroup,
+  applyStagedGroupEmoji,
   cancel,
   catalogCategories,
   catalogWeapons,
@@ -262,6 +322,7 @@ module.exports = {
   get,
   removeWeapons,
   save,
+  stageGroupChange,
   start,
   startCreate,
   updateBasic,

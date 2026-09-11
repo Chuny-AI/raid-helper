@@ -275,15 +275,15 @@ test('la última fila siempre es el botón Listo', () => {
   assert.strictEqual(ultima.custom_id, `raid:attdone:${closedRaid.eventId}`);
 });
 
-for (const [jugadores, selects] of [[1, 1], [25, 1], [26, 2], [60, 3], [100, 4], [200, 4]]) {
-  test(`${jugadores} jugadores -> ${selects} selector(es), nunca más de 5 filas`, () => {
+for (const jugadores of [1, 25, 26, 60, 100, 200, 500]) {
+  test(`${jugadores} jugadores -> panel paginado de hasta 3 filas`, () => {
     const state = stateWith(jugadores, 1);
     const roster = raidRoster(state);
     assert.strictEqual(roster.length, jugadores);
 
     const filas = renderAttendanceRows(closedRaid, roster, new Set());
-    assert.ok(filas.length <= 5, `${filas.length} filas`);
-    assert.strictEqual(filas.length, selects + 1);
+    assert.ok(filas.length <= 3, `${filas.length} filas`);
+    assert.strictEqual(filas.length, jugadores > 25 ? 3 : 2);
 
     for (const fila of filas) {
       for (const componente of fila.toJSON().components) {
@@ -296,12 +296,14 @@ for (const [jugadores, selects] of [[1, 1], [25, 1], [26, 2], [60, 3], [100, 4],
 }
 
 test('las páginas del selector no repiten ni se saltan jugadores', () => {
-  const roster = raidRoster(stateWith(60, 1));
-  const filas = renderAttendanceRows(closedRaid, roster, new Set());
-  const valores = filas
-    .slice(0, -1)
-    .flatMap((f) => f.toJSON().components[0].options.map((o) => o.value));
-  assert.deepStrictEqual(valores, roster.slice(0, 60).map((r) => r.userId));
+  const roster = raidRoster(stateWith(500, 1));
+  const pageCount = Math.ceil(roster.length / 25);
+  const valores = [];
+  for (let page = 0; page < pageCount; page += 1) {
+    const filas = renderAttendanceRows(closedRaid, roster, new Set(), page);
+    valores.push(...filas[0].toJSON().components[0].options.map((option) => option.value));
+  }
+  assert.deepStrictEqual(valores, roster.map((r) => r.userId));
   assert.strictEqual(new Set(valores).size, valores.length, 'hay jugadores repetidos');
 });
 

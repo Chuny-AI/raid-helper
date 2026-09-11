@@ -13,7 +13,12 @@
 const assert = require('node:assert');
 
 const { buildInitialState, joinSlot } = require('../src/services/raidState');
-const { renderRaidEmbed, renderRaidComponents } = require('../src/utils/raidRender');
+const {
+  renderRaidEmbed,
+  renderRaidComponents,
+  renderGroupBrowser,
+  renderGroupPickPanel,
+} = require('../src/utils/raidRender');
 
 let passed = 0;
 const test = (name, fn) => {
@@ -132,6 +137,37 @@ test('nunca más de 5 filas ni 25 opciones por selector', () => {
       }
     }
   }
+});
+
+console.log('\n── Navegación de raids masivos');
+
+test('50 grupos x 10 armas abren un navegador privado en vez de truncarse', () => {
+  const state = buildInitialState({ template: makeTemplate(50, 10), leaderId: 'L1', lootersMax: 2 });
+  const rows = renderRaidComponents(raid, state).map((row) => row.toJSON());
+  assert.ok(rows.some((row) => row.components.some((component) => component.custom_id === `raid:browse:${raid.eventId}`)));
+
+  const first = renderGroupBrowser(raid, state, 0);
+  const second = renderGroupBrowser(raid, state, 1);
+  assert.strictEqual(first.pageCount, 2);
+  assert.strictEqual(first.rows[0].toJSON().components[0].options.length, 25);
+  assert.strictEqual(second.rows[0].toJSON().components[0].options.length, 25);
+  assert.strictEqual(second.rows[0].toJSON().components[0].options[0].value, 'group_25');
+});
+
+test('la búsqueda puede mostrar un grupo fuera de la primera página', () => {
+  const state = buildInitialState({ template: makeTemplate(50, 10), leaderId: 'L1', lootersMax: 2 });
+  const result = renderGroupBrowser(raid, state, 0, ['group_49']);
+  const options = result.rows[0].toJSON().components[0].options;
+  assert.deepStrictEqual(options.map((option) => option.value), ['group_49']);
+});
+
+test('un grupo con más de 25 armas también se pagina completo', () => {
+  const state = buildInitialState({ template: makeTemplate(1, 30), leaderId: 'L1', lootersMax: 2 });
+  const first = renderGroupPickPanel(raid, state, 'group_0', 0);
+  const second = renderGroupPickPanel(raid, state, 'group_0', 1);
+  assert.strictEqual(first.pageCount, 2);
+  assert.strictEqual(first.rows[0].toJSON().components[0].options.length, 25);
+  assert.strictEqual(second.rows[0].toJSON().components[0].options.length, 5);
 });
 
 console.log('\n── Un raid cerrado se sigue renderizando', '');

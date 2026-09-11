@@ -84,6 +84,33 @@ const interaction = {
   await groupScreens.showGroup(interaction, sessionId, 0);
   assert(payloads.at(-1).embeds[0].data.fields.every((field) => field.value.length <= 1024));
 
+  const categories = Array.from({ length: 30 }, (_, index) => ({
+    key: `category_${index}`,
+    displayName: `Familia ${index}`,
+    defaultEmoji: String(90000000000000000n + BigInt(index)),
+  }));
+  await groupScreens.showGroupEmojiCategories(interaction, sessionId, 'edit', 0, categories, 0);
+  assert.equal(payloads.at(-1).components[0].components[0].options.length, 25);
+  assert(payloads.at(-1).components[1].components.some((button) => button.data.label === 'Siguiente'));
+  await groupScreens.showGroupEmojiCategories(interaction, sessionId, 'edit', 0, categories, 1);
+  assert.equal(payloads.at(-1).components[0].components[0].options[0].data.value, 'category_25');
+
+  const catalogWeapons = Array.from({ length: 30 }, (_, index) => ({
+    name: `Arma de catálogo ${index}`,
+    emojiId: String(91000000000000000n + BigInt(index)),
+  }));
+  await groupScreens.showGroupEmojiWeapons(
+    interaction,
+    sessionId,
+    'edit',
+    0,
+    'category_0',
+    catalogWeapons,
+    0,
+  );
+  assert.equal(payloads.at(-1).components[0].components[0].options.length, 25);
+  assert(payloads.at(-1).components[1].components.some((button) => button.data.label === 'Siguiente'));
+
   sessions.clearAllSessions();
   console.log('Template edit screens smoke tests passed.');
 })().catch((error) => {

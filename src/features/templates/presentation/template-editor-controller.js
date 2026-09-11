@@ -18,6 +18,7 @@ const deny = (interaction) => safeReply(interaction, {
 });
 
 const field = (interaction, name) => interaction.fields.getTextInputValue(name);
+const groupIndexFromToken = (token) => (token === 'new' ? null : Number(token));
 
 const executeEdit = async (interaction) => {
   if (!await checkAuthorizedAccess(interaction)) return deny(interaction);
@@ -80,24 +81,74 @@ const handleInteraction = async (interaction) => {
     else if (action === 'group') await groupScreens.showGroup(interaction, sessionId, Number(parts[2]));
     else if (action === 'group-new') await groupScreens.showNewGroupModal(interaction, sessionId);
     else if (action === 'group-new-submit') {
-      const result = editor.addGroup({
+      editor.stageGroupChange({
         ...context(interaction, sessionId),
+        groupIndex: null,
         displayName: field(interaction, 'displayName'),
-        defaultEmoji: field(interaction, 'defaultEmoji'),
         maxPlayers: field(interaction, 'maxPlayers'),
       });
-      await groupScreens.showGroup(interaction, sessionId, result.result);
+      const categories = await editor.catalogCategories();
+      await groupScreens.showGroupEmojiCategories(interaction, sessionId, 'create', null, categories);
     } else if (action === 'group-edit') await groupScreens.showEditGroupModal(interaction, sessionId, Number(parts[2]));
     else if (action === 'group-edit-submit') {
       const groupIndex = Number(parts[2]);
-      editor.updateGroup({
+      editor.stageGroupChange({
         ...context(interaction, sessionId),
         groupIndex,
         displayName: field(interaction, 'displayName'),
-        defaultEmoji: field(interaction, 'defaultEmoji'),
         maxPlayers: field(interaction, 'maxPlayers'),
       });
-      await groupScreens.showGroup(interaction, sessionId, groupIndex);
+      const categories = await editor.catalogCategories();
+      await groupScreens.showGroupEmojiCategories(interaction, sessionId, 'edit', groupIndex, categories);
+    } else if (action === 'group-icon-categories') {
+      const mode = parts[2];
+      const groupIndex = groupIndexFromToken(parts[3]);
+      const categories = await editor.catalogCategories();
+      await groupScreens.showGroupEmojiCategories(
+        interaction,
+        sessionId,
+        mode,
+        groupIndex,
+        categories,
+        Number(parts[4]),
+      );
+    } else if (action === 'group-icon-category') {
+      const mode = parts[2];
+      const groupIndex = groupIndexFromToken(parts[3]);
+      const category = interaction.values[0];
+      const weapons = await editor.catalogWeapons(category);
+      await groupScreens.showGroupEmojiWeapons(
+        interaction,
+        sessionId,
+        mode,
+        groupIndex,
+        category,
+        weapons,
+      );
+    } else if (action === 'group-icon-weapons') {
+      const mode = parts[2];
+      const groupIndex = groupIndexFromToken(parts[3]);
+      const category = parts[4];
+      const weapons = await editor.catalogWeapons(category);
+      await groupScreens.showGroupEmojiWeapons(
+        interaction,
+        sessionId,
+        mode,
+        groupIndex,
+        category,
+        weapons,
+        Number(parts[5]),
+      );
+    } else if (action === 'group-icon-select') {
+      const mode = parts[2];
+      const groupIndex = groupIndexFromToken(parts[3]);
+      const result = await editor.applyStagedGroupEmoji({
+        ...context(interaction, sessionId),
+        mode,
+        groupIndex,
+        emojiId: interaction.values[0],
+      });
+      await groupScreens.showGroup(interaction, sessionId, result.result);
     } else if (action === 'group-delete') {
       await groupScreens.showDeleteConfirmation(interaction, sessionId, Number(parts[2]));
     } else if (action === 'group-delete-ok') {
