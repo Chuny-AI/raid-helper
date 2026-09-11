@@ -1,7 +1,7 @@
 <header class="site-header">
   <a class="brand" href="#inicio" aria-label="Albions, volver al inicio">
     <span class="brand-mark" aria-hidden="true">A</span>
-    <span>ALBIONS</span>
+    <span>Albions</span>
   </a>
 
   <button
@@ -15,115 +15,135 @@
   </button>
 
   <nav [class.open]="mobileMenuOpen()" aria-label="Navegación principal">
-    <a href="#capacidades" (click)="closeMobileMenu()">Capacidades</a>
+    <a href="#sistema" (click)="closeMobileMenu()">El sistema</a>
+    <a href="#espera" (click)="closeMobileMenu()">Lista de espera</a>
     <a href="#evidencias" (click)="closeMobileMenu()">Evidencias</a>
-    <a href="#flujo" (click)="closeMobileMenu()">Cómo funciona</a>
   </nav>
 
-  <a class="header-cta" href="#evidencias">Verlo en acción</a>
+  <a class="header-cta" href="#evidencias">Abrir el archivo</a>
 </header>
 
 <main>
   <section class="hero" id="inicio">
-    <div class="hero-grid" aria-hidden="true"></div>
     <div class="hero-copy">
-      <p class="eyebrow"><span></span> Operaciones de gremio, bajo control</p>
-      <h1>Tu raid.<br><em>Sin improvisar.</em></h1>
+      <p class="hero-kicker">Organización de raids dentro de Discord</p>
+      <h1>El raid se organiza antes del ping.</h1>
       <p class="hero-lead">
-        Albions convierte composiciones, plazas, builds y asistencia en un flujo claro dentro de Discord.
-        Menos mensajes cruzados. Más gente lista a tiempo.
+        Albions convierte una composición en plazas reales. Cada jugador encuentra su arma,
+        la espera cubre las ausencias y el cierre conserva quién asistió.
       </p>
       <div class="hero-actions">
-        <a class="button button-primary" href="#evidencias">Explorar evidencias <span aria-hidden="true">↗</span></a>
-        <a class="button button-ghost" href="#capacidades">Conocer Albions</a>
+        <a class="button button-light" href="#evidencias">Ver una raid completa</a>
+        <a class="text-link" href="#sistema">Entender el flujo <span aria-hidden="true">↓</span></a>
       </div>
-      <dl class="hero-stats" aria-label="Resumen de funciones">
-        <div><dt>01</dt><dd>Flujo guiado</dd></div>
-        <div><dt>24/7</dt><dd>Roster visible</dd></div>
-        <div><dt>100%</dt><dd>Dentro de Discord</dd></div>
+      <p class="hero-note">Hecho para Albion Online. Operado sin salir de Discord.</p>
+    </div>
+
+    <div class="hero-case" aria-label="Evidencia real de una raid gestionada con Albions">
+      <div class="case-heading">
+        <span>Parte de operaciones</span>
+        <strong>Raid finalizada</strong>
+      </div>
+      <figure class="case-screen">
+        <img src="evidencias/raid-avalon-03.png" alt="Raid gremial real gestionada por Albions" width="378" height="1185">
+      </figure>
+      <dl class="case-data">
+        <div><dt>Composición</dt><dd>por arma</dd></div>
+        <div><dt>Sustituciones</dt><dd>automáticas</dd></div>
+        <div><dt>Cierre</dt><dd>verificable</dd></div>
       </dl>
     </div>
-
-    <div class="hero-visual" aria-label="Vista real de Albions funcionando en Discord">
-      <div class="visual-aura"></div>
-      <figure class="screen screen-main">
-        <img src="evidencias/raid-avalon-03.png" alt="Raid real gestionada por Albions" width="378" height="1185">
-      </figure>
-      <figure class="screen screen-float">
-        <img src="evidencias/plantilla-editor.png" alt="Editor visual de plantillas de Albions" width="420" height="308">
-      </figure>
-      <div class="status-chip"><span></span> Raid operativa</div>
-    </div>
   </section>
 
-  <section class="proof-strip" aria-label="Funciones principales">
-    <p>Diseñado para gremios que coordinan de verdad</p>
-    <div class="proof-items">
-      <span>Plantillas visuales</span>
-      <span>Composición por arma</span>
-      <span>Lista de espera inteligente</span>
-      <span>Asistencia verificable</span>
-    </div>
+  <section class="operation-line" aria-label="Áreas que organiza Albions">
+    <p>Una sola fuente de verdad para el líder y el grupo.</p>
+    <ul>
+      <li>Plantilla</li>
+      <li>Composición</li>
+      <li>Espera</li>
+      <li>Asistencia</li>
+    </ul>
   </section>
 
-  <section class="capabilities section" id="capacidades">
-    <div class="section-heading">
-      <p class="eyebrow"><span></span> Todo el ciclo de una raid</p>
-      <h2>De la composición<br>a la asistencia.</h2>
-      <p>Albions acompaña cada decisión sin sacar a tu equipo de Discord.</p>
+  <section class="system section" id="sistema">
+    <div class="section-intro">
+      <p class="section-label">El sistema</p>
+      <h2>La estrategia deja de vivir entre mensajes sueltos.</h2>
+      <p>Albions ordena las decisiones que normalmente se pierden entre menciones, listas copiadas y cambios de último minuto.</p>
     </div>
 
-    <div class="feature-grid">
-      <article class="feature-card feature-primary">
-        <span class="feature-number">01</span>
-        <div class="feature-icon" aria-hidden="true">⚔</div>
-        <h3>Composición exacta</h3>
-        <p>Define grupos, armas, builds y cupos. Cada jugador ve únicamente las plazas que todavía puede ocupar.</p>
-        <div class="mini-roster" aria-hidden="true">
-          <span><i class="cyan"></i>DPS 1 <b>5/5</b></span>
-          <span><i class="gold"></i>Support <b>2/2</b></span>
-          <span><i class="violet"></i>Healer <b>1/1</b></span>
-        </div>
-      </article>
-
-      <article class="feature-card">
-        <span class="feature-number">02</span>
-        <div class="feature-icon" aria-hidden="true">⌛</div>
-        <h3>Espera inteligente</h3>
-        <p>Una misma arma repetida en varios grupos aparece una sola vez. Cuando se abre un cupo compatible, Albions encuentra al siguiente.</p>
-      </article>
-
-      <article class="feature-card">
-        <span class="feature-number">03</span>
-        <div class="feature-icon" aria-hidden="true">✓</div>
-        <h3>Cierre con evidencia</h3>
-        <p>Registra asistentes, ausentes, looters y cambios de última hora sin perder la composición final.</p>
-      </article>
-
-      <article class="feature-card feature-wide">
-        <span class="feature-number">04</span>
+    <div class="briefing-list">
+      <article class="briefing briefing-composition">
+        <p class="briefing-index">01</p>
         <div>
-          <div class="feature-icon" aria-hidden="true">◇</div>
-          <h3>Plantillas que evolucionan</h3>
-          <p>Crea y edita configuraciones completas desde botones y formularios. Reutiliza la estrategia sin volver a escribirla.</p>
+          <h3>Publica una composición que se entiende sola.</h3>
+          <p>Grupos, armas, cupos y requisitos aparecen donde la gente ya está: el mensaje del raid.</p>
         </div>
-        <div class="template-steps" aria-hidden="true">
-          <span class="done">Información <i>✓</i></span>
-          <span class="done">Configuración <i>✓</i></span>
-          <span>Roles <i>3</i></span>
-          <span>Armas <i>24</i></span>
+        <div class="formation-board" aria-label="Ejemplo de composición de grupos">
+          <span><b>DPS 1</b><i>5 de 5</i></span>
+          <span><b>Support</b><i>2 de 2</i></span>
+          <span><b>Healer</b><i>1 de 1</i></span>
         </div>
       </article>
+
+      <article class="briefing briefing-template">
+        <p class="briefing-index">02</p>
+        <div>
+          <h3>Edita plantillas sin memorizar comandos.</h3>
+          <p>Información, configuración, roles y armas se resuelven mediante un setup guiado que permite avanzar y volver sin romper el proceso.</p>
+        </div>
+        <figure class="briefing-image">
+          <img src="evidencias/plantilla-editor.png" alt="Panel visual para editar una plantilla de Albions" loading="lazy">
+        </figure>
+      </article>
+
+      <article class="briefing briefing-scale">
+        <p class="briefing-index">03</p>
+        <div>
+          <h3>Encuentra una plaza incluso en formaciones grandes.</h3>
+          <p>El navegador privado permite buscar y recorrer grupos y armas sin depender de un único selector de Discord.</p>
+        </div>
+        <div class="search-demo" aria-hidden="true">
+          <span>Buscar grupo o arma</span>
+          <strong>falce de cristal</strong>
+          <i>3 plazas compatibles</i>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="waitlist" id="espera">
+    <div class="waitlist-copy">
+      <p class="section-label">Lista de espera inteligente</p>
+      <h2>Una misma arma. Una sola elección.</h2>
+      <p>
+        Si Falce de cristal aparece en varios grupos, el jugador no ve opciones duplicadas.
+        Elige el arma una vez y Albions conserva todas las plazas compatibles para promoverlo cuando alguna se libere.
+      </p>
+    </div>
+
+    <div class="waitlist-diagram" aria-label="Tres plazas de Falce de cristal se agrupan en una sola opción de espera">
+      <div class="slot-list">
+        <span><small>DPS 1</small><strong>Falce de cristal</strong></span>
+        <span><small>DPS 2</small><strong>Falce de cristal</strong></span>
+        <span><small>DPS 3</small><strong>Falce de cristal</strong></span>
+      </div>
+      <div class="merge-line" aria-hidden="true"><span></span></div>
+      <div class="unique-choice">
+        <small>Opción para el jugador</small>
+        <strong>Falce de cristal</strong>
+        <span>1 elección · 3 plazas compatibles</span>
+      </div>
     </div>
   </section>
 
   <section class="evidence section" id="evidencias">
     <div class="evidence-head">
-      <div class="section-heading">
-        <p class="eyebrow"><span></span> No son promesas</p>
-        <h2>Esto ya ocurre<br>en Discord.</h2>
+      <div>
+        <p class="section-label">Archivo de campo</p>
+        <h2>Lo que ocurre en Discord queda a la vista.</h2>
       </div>
-      <p class="evidence-intro">Raids reales, flujos reales y resultados que permanecen consultables cuando termina la actividad.</p>
+      <p>Estas son capturas reales del bot: raids publicadas, sustituciones, cierres y el editor de plantillas.</p>
     </div>
 
     <div class="evidence-tabs" role="tablist" aria-label="Tipos de evidencia">
@@ -133,14 +153,14 @@
         [attr.aria-selected]="activeCategory() === 'raids'"
         [class.active]="activeCategory() === 'raids'"
         (click)="setCategory('raids')"
-      >Raids gestionadas <span>04</span></button>
+      >Raids gestionadas <span>4</span></button>
       <button
         type="button"
         role="tab"
         [attr.aria-selected]="activeCategory() === 'templates'"
         [class.active]="activeCategory() === 'templates'"
         (click)="setCategory('templates')"
-      >Editor de plantillas <span>03</span></button>
+      >Editor de plantillas <span>3</span></button>
     </div>
 
     <div class="evidence-stage">
@@ -153,7 +173,7 @@
         <span class="image-frame">
           <img [src]="activeEvidence().src" [alt]="activeEvidence().alt">
         </span>
-        <span class="zoom-label">Ampliar <i aria-hidden="true">↗</i></span>
+        <span class="zoom-label">Ver captura completa</span>
       </button>
 
       <div class="evidence-list" role="tablist" aria-label="Capturas disponibles">
@@ -167,11 +187,10 @@
           >
             <span class="thumb"><img [src]="evidence.src" alt=""></span>
             <span class="evidence-meta">
-              <small>0{{ index + 1 }}</small>
+              <small>{{ index + 1 }}</small>
               <strong>{{ evidence.title }}</strong>
               <span>{{ evidence.detail }}</span>
             </span>
-            <i aria-hidden="true">→</i>
           </button>
         }
       </div>
@@ -179,37 +198,36 @@
   </section>
 
   <section class="workflow section" id="flujo">
-    <div class="section-heading centered">
-      <p class="eyebrow"><span></span> Menos fricción</p>
-      <h2>Tres momentos.<br>Un solo sistema.</h2>
+    <div class="workflow-heading">
+      <p class="section-label">La jornada</p>
+      <h2>Tres momentos, el mismo registro.</h2>
     </div>
     <ol class="workflow-list">
       <li>
-        <span>01</span>
-        <div><strong>Prepara</strong><p>Elige una plantilla, ajusta la composición y publica el evento.</p></div>
+        <span>1</span>
+        <div><strong>Antes</strong><p>Elige la plantilla, ajusta grupos y publica el raid.</p></div>
       </li>
       <li>
-        <span>02</span>
-        <div><strong>Coordina</strong><p>Albions controla plazas, espera, bajas y comunicación del grupo.</p></div>
+        <span>2</span>
+        <div><strong>Durante</strong><p>Gestiona plazas, espera, bajas y promociones.</p></div>
       </li>
       <li>
-        <span>03</span>
-        <div><strong>Cierra</strong><p>Registra asistencia y conserva una evidencia clara de lo ocurrido.</p></div>
+        <span>3</span>
+        <div><strong>Después</strong><p>Cierra asistencia y conserva la composición final.</p></div>
       </li>
     </ol>
   </section>
 
   <section class="closing section">
-    <div class="closing-mark" aria-hidden="true">A</div>
-    <p class="eyebrow"><span></span> El próximo grupo empieza aquí</p>
-    <h2>Tu gremio ya tiene estrategia.<br><em>Ahora necesita sistema.</em></h2>
-    <a class="button button-primary" href="#evidencias">Ver Albions en acción <span aria-hidden="true">↗</span></a>
+    <p>Albions no cambia cómo juega tu gremio.</p>
+    <h2>Le da un sistema para llegar listo.</h2>
+    <a class="button button-dark" href="#evidencias">Revisar las evidencias</a>
   </section>
 </main>
 
 <footer>
   <a class="brand" href="#inicio" aria-label="Albions, volver al inicio">
-    <span class="brand-mark" aria-hidden="true">A</span><span>ALBIONS</span>
+    <span class="brand-mark" aria-hidden="true">A</span><span>Albions</span>
   </a>
   <p>Organización de raids para comunidades de Albion Online.</p>
   <span>© {{ currentYear }} Albions</span>
