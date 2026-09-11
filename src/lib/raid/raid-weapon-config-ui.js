@@ -34,12 +34,15 @@ const { formatEmoji, toComponentEmoji, applyEmoji } = require('../../utils/emoji
  * (que captura `group_`, `_group_`, `edit_`, `template_`, etc.).
  */
 const PREFIX = 'raidcfg';
+const PAGE_SIZE = 25;
+const encodePart = (value) => String(value).replace(/%/g, '%25').replace(/-/g, '%2D');
+const decodePart = (value) => String(value).replace(/%2D/gi, '-').replace(/%25/gi, '%');
 
 /** Construye un customId del panel. */
 const buildId = (action, pendingId, groupKey, weaponIndex) => {
   const parts = [PREFIX, action, pendingId];
-  if (groupKey !== undefined && groupKey !== null) parts.push(groupKey);
-  if (weaponIndex !== undefined && weaponIndex !== null) parts.push(String(weaponIndex));
+  if (groupKey !== undefined && groupKey !== null) parts.push(encodePart(groupKey));
+  if (weaponIndex !== undefined && weaponIndex !== null) parts.push(encodePart(weaponIndex));
   return parts.join('-');
 };
 
@@ -55,13 +58,47 @@ const parseId = (customId) => {
   return {
     action,
     pendingId,
-    groupKey: groupKey || null,
+    groupKey: groupKey ? decodePart(groupKey) : null,
     weaponIndex: weaponIndex !== undefined ? parseInt(weaponIndex, 10) : null,
   };
 };
 
 /** Recorta un texto al límite admitido por Discord. */
 const clamp = (text, max) => String(text ?? '').slice(0, max);
+
+const clampPage = (page, total) => {
+  const maxPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
+  return Math.min(Math.max(0, Number.parseInt(page, 10) || 0), maxPage);
+};
+
+const addPager = (components, { action, pendingId, groupKey = null, page, total }) => {
+  const pages = Math.ceil(total / PAGE_SIZE);
+  if (pages <= 1) return;
+  const previousPage = Math.max(0, page - 1);
+  const nextPage = Math.min(pages - 1, page + 1);
+  const pageId = (target) => groupKey === null
+    ? buildId(action, pendingId, String(target))
+    : buildId(action, pendingId, groupKey, target);
+  components.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(pageId(previousPage))
+      .setLabel('Anterior')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('⬅️')
+      .setDisabled(page <= 0),
+    new ButtonBuilder()
+      .setCustomId(buildId('pageinfo', pendingId, groupKey || 'groups', page))
+      .setLabel(`${page + 1}/${pages}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(pageId(nextPage))
+      .setLabel('Siguiente')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('➡️')
+      .setDisabled(page >= pages - 1)
+  ));
+};
 
 /** Límites de caracteres de Discord en un embed. */
 const FIELD_VALUE_LIMIT = 1024;
@@ -167,8 +204,9 @@ const describeGroupStatus = (template, overrides, groupKey) => {
  * Panel principal: lista de grupos + selector para configurar uno.
  * @returns {{embeds: EmbedBuilder[], components: ActionRowBuilder[]}}
  */
-const buildOverviewPanel = (template, overrides, pendingId) => {
+const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
   const groupKeys = Object.keys(template.weapons || {});
+  const page = clampPage(options.page, groupKeys.length);
 
   const lines = [];
   for (const groupKey of groupKeys) {
@@ -215,6 +253,40 @@ const buildOverviewPanel = (template, overrides, pendingId) => {
     .setColor(totalCapacity > 0 ? 0x00ffff : 0xff5555)
     .setDescription(`${intro}\n\n${cabecera}\n${listado}`);
 
+  if (options.draft) {
+    const draft = options.draft;
+    embed.addFields(
+      {
+        name: 'Datos del raid',
+        value: [
+          `**Título:** ${clamp(draft.title || template.title || 'Sin título', 120)}`,
+          `**Hora UTC:** ${draft.time || 'Sin definir'}`,
+          `**Color:** ${draft.color || 'Predeterminado'}`,
+          `**Imagen:** ${draft.image ? 'Configurada' : 'Sin imagen'}`,
+        ].join('\n'),
+        inline: true,
+      },
+      {
+        name: 'Avisos y capacidad',
+        value: [
+          `**Recordatorio:** ${draft.finalReminder || 'Desactivado'}`,
+          `**Roles:** ${(draft.finalNotificationRoles || []).length}`,
+          `**Looters:** ${draft.looters || 0}`,
+          `**Hilo privado:** ${draft.threadEnabled ? 'Sí' : 'No'}`,
+        ].join('\n'),
+        inline: true,
+      }
+    );
+  }
+
+  if (options.weaponsLocked) {
+    embed.addFields({
+      name: '🔒 Armas protegidas',
+      value: 'Este raid ya tiene inscripciones. Puedes editar sus datos y avisos, pero no cambiar grupos, armas ni cupos.',
+      inline: false,
+    });
+  }
+
   if (totalCapacity <= 0) {
     embed.addFields({
       name: '⚠️ Atención',
@@ -225,7 +297,7 @@ const buildOverviewPanel = (template, overrides, pendingId) => {
 
   const components = [];
 
-  const options = groupKeys.slice(0, 25).map((groupKey) => {
+  const groupOptions = groupKeys.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((groupKey) => {
     const group = template.weapons[groupKey];
     const option = new StringSelectMenuOptionBuilder()
       .setLabel(clamp(group.displayName || groupKey, 100))
@@ -235,21 +307,44 @@ const buildOverviewPanel = (template, overrides, pendingId) => {
     return option;
   });
 
-  if (options.length > 0) {
+  if (groupOptions.length > 0 && !options.weaponsLocked) {
     components.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(buildId('grp', pendingId))
         .setPlaceholder('Selecciona un grupo de armas para configurarlo')
         .setMinValues(1)
         .setMaxValues(1)
-        .addOptions(options)
+        .addOptions(groupOptions)
+    ));
+  }
+
+  if (!options.weaponsLocked) {
+    addPager(components, { action: 'gpage', pendingId, page, total: groupKeys.length });
+  }
+
+  if (options.draft) {
+    components.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(buildId('basic', pendingId))
+        .setLabel('Editar datos')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('✏️'),
+      new ButtonBuilder()
+        .setCustomId(buildId('settings', pendingId))
+        .setLabel('Editar avisos')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('🔔'),
+      new ButtonBuilder()
+        .setCustomId(buildId('cancel', pendingId))
+        .setLabel('Cancelar')
+        .setStyle(ButtonStyle.Danger)
     ));
   }
 
   components.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`raid_confirm_create-${pendingId}`)
-      .setLabel('Confirmar y publicar raid')
+      .setCustomId(`${options.mode === 'edit' ? 'raid_confirm_edit' : 'raid_confirm_create'}-${pendingId}`)
+      .setLabel(options.mode === 'edit' ? 'Guardar cambios' : 'Confirmar y publicar raid')
       .setStyle(ButtonStyle.Success)
       .setEmoji('✅')
       .setDisabled(totalCapacity <= 0),
@@ -258,6 +353,7 @@ const buildOverviewPanel = (template, overrides, pendingId) => {
       .setLabel('Restablecer todo')
       .setStyle(ButtonStyle.Secondary)
       .setEmoji('♻️')
+      .setDisabled(!!options.weaponsLocked)
   ));
 
   return { embeds: [embed], components };
@@ -267,12 +363,13 @@ const buildOverviewPanel = (template, overrides, pendingId) => {
  * Panel de un grupo: cupo del grupo, on/off del grupo y selector de armas.
  * @returns {{embeds: EmbedBuilder[], components: ActionRowBuilder[]}}
  */
-const buildGroupPanel = (template, overrides, pendingId, groupKey) => {
+const buildGroupPanel = (template, overrides, pendingId, groupKey, page = 0, options = {}) => {
   const group = template.weapons[groupKey];
   const groupDisabled = isGroupDisabled(overrides, groupKey);
   const capacity = getGroupCapacity(template, overrides, groupKey);
   const maxPlayers = getGroupMaxPlayers(template, overrides, groupKey);
   const items = getGroupItemsFor(template, groupKey);
+  const safePage = clampPage(page, items.length);
 
   const enabledSum = getEnabledItems(template, overrides, groupKey)
     .reduce((acc, entry) => acc + entry.units, 0);
@@ -330,7 +427,7 @@ const buildGroupPanel = (template, overrides, pendingId, groupKey) => {
 
   // Selector de armas: se listan TODAS (habilitadas y no) para poder revertir.
   // Las repetidas conservan su índice, así se distinguen entre sí.
-  const weaponOptions = items.slice(0, 25).map((item) => {
+  const weaponOptions = items.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE).map((item) => {
     const index = item.index;
     const name = getWeaponLabel(item);
     const units = getWeaponUnits(template, overrides, groupKey, index);
@@ -346,13 +443,17 @@ const buildGroupPanel = (template, overrides, pendingId, groupKey) => {
   if (weaponOptions.length > 0) {
     components.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
-        .setCustomId(buildId('wpn', pendingId, groupKey))
+        .setCustomId(buildId('wpn', pendingId, groupKey, safePage > 0 ? safePage : null))
         .setPlaceholder('Selecciona un arma del grupo para configurarla')
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(weaponOptions)
     ));
   }
+
+  addPager(components, {
+    action: 'wpage', pendingId, groupKey, page: safePage, total: items.length,
+  });
 
   components.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -373,9 +474,13 @@ const buildGroupPanel = (template, overrides, pendingId, groupKey) => {
       .setEmoji('♻️')
   ));
 
+  const homePage = clampPage(
+    Object.keys(template.weapons || {}).indexOf(groupKey) / PAGE_SIZE,
+    Object.keys(template.weapons || {}).length
+  );
   components.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(buildId('home', pendingId))
+      .setCustomId(buildId('home', pendingId, homePage > 0 ? String(homePage) : null))
       .setLabel('Volver a los grupos')
       .setStyle(ButtonStyle.Secondary)
       .setEmoji('⬅️')
@@ -388,7 +493,7 @@ const buildGroupPanel = (template, overrides, pendingId, groupKey) => {
  * Panel de un arma concreta: cupo individual y on/off.
  * @returns {{embeds: EmbedBuilder[], components: ActionRowBuilder[]}}
  */
-const buildWeaponPanel = (template, overrides, pendingId, groupKey, weaponIndex) => {
+const buildWeaponPanel = (template, overrides, pendingId, groupKey, weaponIndex, options = {}) => {
   const group = template.weapons[groupKey];
   const items = getGroupItemsFor(template, groupKey);
   const item = items.find((it) => it.index === Number(weaponIndex));
@@ -464,7 +569,12 @@ const buildWeaponPanel = (template, overrides, pendingId, groupKey, weaponIndex)
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(buildId('gback', pendingId, groupKey))
+        .setCustomId(buildId(
+          'gback',
+          pendingId,
+          groupKey,
+          Math.floor(Math.max(0, items.findIndex((entry) => entry.index === Number(weaponIndex))) / PAGE_SIZE) || null
+        ))
         .setLabel('Volver al grupo')
         .setStyle(ButtonStyle.Secondary)
         .setEmoji('⬅️'),
@@ -478,6 +588,65 @@ const buildWeaponPanel = (template, overrides, pendingId, groupKey, weaponIndex)
 
   return { embeds: [embed], components };
 };
+
+const setOptionalValue = (input, value) => {
+  const maxLength = Number(input.data?.max_length) || 4000;
+  const text = String(value || '').slice(0, maxLength);
+  if (text) input.setValue(text);
+  return input;
+};
+
+const buildRaidBasicsModal = (pendingId, draft) => new ModalBuilder()
+  .setCustomId(buildId('mbasic', pendingId))
+  .setTitle('Datos del raid')
+  .addComponents(
+    new ActionRowBuilder().addComponents(setOptionalValue(
+      new TextInputBuilder().setCustomId('title').setLabel('Título').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(256),
+      draft.title
+    )),
+    new ActionRowBuilder().addComponents(setOptionalValue(
+      new TextInputBuilder().setCustomId('time').setLabel('Hora UTC (HH:MM)').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(5),
+      draft.time
+    )),
+    new ActionRowBuilder().addComponents(setOptionalValue(
+      new TextInputBuilder().setCustomId('description').setLabel('Descripción').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(4000),
+      draft.description
+    )),
+    new ActionRowBuilder().addComponents(setOptionalValue(
+      new TextInputBuilder().setCustomId('color').setLabel('Color hexadecimal').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(7),
+      draft.color
+    )),
+    new ActionRowBuilder().addComponents(setOptionalValue(
+      new TextInputBuilder().setCustomId('image').setLabel('URL de imagen').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(1000),
+      draft.image
+    ))
+  );
+
+const buildRaidSettingsModal = (pendingId, draft) => new ModalBuilder()
+  .setCustomId(buildId('msettings', pendingId))
+  .setTitle('Avisos y configuración')
+  .addComponents(
+    new ActionRowBuilder().addComponents(setOptionalValue(
+      new TextInputBuilder().setCustomId('reminder').setLabel('Recordatorio: 10m, 1h o vacío').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(10),
+      draft.finalReminder
+    )),
+    new ActionRowBuilder().addComponents(setOptionalValue(
+      new TextInputBuilder().setCustomId('roles').setLabel('Roles: menciones, IDs o nombres').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(1000),
+      (draft.finalNotificationRoles || []).join(', ')
+    )),
+    new ActionRowBuilder().addComponents(setOptionalValue(
+      new TextInputBuilder().setCustomId('looters').setLabel('Máximo de looters (0 desactiva)').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3),
+      String(draft.looters || 0)
+    )),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('thread').setLabel('Crear hilo privado: sí o no').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3)
+        .setValue(draft.threadEnabled ? 'sí' : 'no')
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('mass_dm').setLabel('Enviar DM a los roles: sí o no').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3)
+        .setValue(draft.shouldSendMassDm ? 'sí' : 'no')
+    )
+  );
 
 /**
  * Modal para cambiar el cupo máximo de un grupo.
@@ -534,6 +703,8 @@ module.exports = {
   buildOverviewPanel,
   buildGroupPanel,
   buildWeaponPanel,
+  buildRaidBasicsModal,
+  buildRaidSettingsModal,
   buildGroupMaxModal,
   buildWeaponUnitsModal,
   isGroupVisible,

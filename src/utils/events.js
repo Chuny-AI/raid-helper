@@ -452,6 +452,11 @@ const getEvents = () => {
         return;
       }
 
+      if (interaction.customId.startsWith('raid_confirm_edit-')) {
+        await raidCommand.handleConfirmRaidEdit(interaction);
+        return;
+      }
+
       // Panel de configuración de armas al crear raid (navegación y toggles)
       if (interaction.customId.startsWith(RAID_CONFIG_PREFIX)) {
         await raidCommand.handleWeaponConfigInteraction(interaction);

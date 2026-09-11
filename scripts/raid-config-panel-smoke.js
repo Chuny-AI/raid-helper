@@ -51,28 +51,30 @@ const LEADER = { id: '999', toString: () => '<@999>' };
 const PENDING_ID = '1234567890123456789';
 
 /** Crea una sesión pendiente limpia y devuelve sus overrides. */
-const newSession = () => {
+const newSession = (customTemplate = template, extra = {}) => {
   const weaponOverrides = cfg.emptyOverrides();
   raid.pendingRaids.set(PENDING_ID, {
-    templateName: 'Raid', template, eventTimestamp: 1, time: '00:00',
+    mode: 'create', templateName: 'Raid', template: customTemplate, eventTimestamp: 4_102_444_800, time: '00:00',
     title: 'Raid', color: null, image: null, description: null,
-    finalReminder: null, finalNotificationRoles: [], looters: null,
+    finalReminder: null, finalNotificationRoles: [], shouldSendMassDm: false, looters: null,
     guildId: '1', user: LEADER, weaponOverrides,
+    ...extra,
   });
   return weaponOverrides;
 };
 
 /** Interacción simulada; registra la última llamada a update/reply/showModal. */
-const makeInteraction = (customId, { values, modalValue, user = LEADER } = {}) => {
+const makeInteraction = (customId, { values, modalValue, modalValues, user = LEADER } = {}) => {
   const calls = { update: null, reply: null, modal: null };
   return {
     customId,
     user,
+    guild: { id: '1', roles: { cache: new Map() } },
     values,
     replied: false,
     deferred: false,
-    fields: { getTextInputValue: () => modalValue },
-    isModalSubmit: () => modalValue !== undefined,
+    fields: { getTextInputValue: (name) => modalValues ? modalValues[name] : modalValue },
+    isModalSubmit: () => modalValue !== undefined || modalValues !== undefined,
     isFromMessage: () => true,
     async update(payload) { calls.update = payload; },
     async reply(payload) { calls.reply = payload; this.replied = true; },
@@ -115,6 +117,84 @@ const run = async (customId, options) => {
       calls.update.components[0].components[0].data.custom_id,
       `raidcfg-grp-${PENDING_ID}`
     );
+  });
+
+  await test('"Volver al grupo" regresa desde un arma sin perder la selección', async () => {
+    newSession();
+    const calls = await run(`raidcfg-gback-${PENDING_ID}-group_2`);
+    assert.strictEqual(
+      calls.update.components[0].components[0].data.custom_id,
+      `raidcfg-wpn-${PENDING_ID}-group_2`
+    );
+  });
+
+  await test('pagina todos los grupos que exceden el límite de Discord', async () => {
+    const manyGroups = { ...template, weapons: {} };
+    for (let i = 1; i <= 30; i++) {
+      manyGroups.weapons[`group_${i}`] = {
+        displayName: `Grupo ${i}`,
+        defaultEmoji: '⚔️',
+        max_players: 1,
+        data: [weapon(`Arma ${i}`, 1)],
+      };
+    }
+    newSession(manyGroups);
+    const calls = await run(`raidcfg-gpage-${PENDING_ID}-1`);
+    const select = calls.update.components[0].components[0];
+    assert.strictEqual(select.options.length, 5);
+    assert.strictEqual(select.options[0].data.value, 'group_26');
+  });
+
+  await test('pagina todas las armas y vuelve a la página correcta', async () => {
+    const manyWeapons = {
+      ...template,
+      weapons: {
+        group_1: {
+          displayName: 'Grupo grande', defaultEmoji: '⚔️', max_players: 30,
+          data: Array.from({ length: 30 }, (_, i) => weapon(`Arma ${i}`, 1)),
+        },
+      },
+    };
+    newSession(manyWeapons);
+    const page = await run(`raidcfg-wpage-${PENDING_ID}-group_1-1`);
+    assert.strictEqual(page.update.components[0].components[0].options.length, 5);
+    assert.strictEqual(page.update.components[0].components[0].options[0].data.value, '25');
+
+    const weaponPanel = await run(`raidcfg-wpn-${PENDING_ID}-group_1-1`, { values: ['27'] });
+    const backId = weaponPanel.update.components[1].components[0].data.custom_id;
+    assert.strictEqual(backId, `raidcfg-gback-${PENDING_ID}-group_1-1`);
+    const back = await run(backId);
+    assert.strictEqual(back.update.components[0].components[0].options[0].data.value, '25');
+  });
+
+  await test('permite editar los datos iniciales y volver al panel', async () => {
+    newSession();
+    const modal = await run(`raidcfg-basic-${PENDING_ID}`);
+    assert.strictEqual(modal.modal.data.custom_id, `raidcfg-mbasic-${PENDING_ID}`);
+    const calls = await run(`raidcfg-mbasic-${PENDING_ID}`, {
+      modalValues: {
+        title: 'Raid actualizado', time: '23:59', description: 'Nueva descripción',
+        color: '#123456', image: 'https://example.com/raid.png',
+      },
+    });
+    const pending = raid.pendingRaids.get(PENDING_ID);
+    assert.strictEqual(pending.title, 'Raid actualizado');
+    assert.strictEqual(pending.color, '#123456');
+    assert.ok(calls.update.components.length > 0, 'debe regresar al panel navegable');
+  });
+
+  await test('permite editar avisos y volver al panel', async () => {
+    newSession();
+    const calls = await run(`raidcfg-msettings-${PENDING_ID}`, {
+      modalValues: {
+        reminder: '1h', roles: '', looters: '3', thread: 'sí', mass_dm: 'no',
+      },
+    });
+    const pending = raid.pendingRaids.get(PENDING_ID);
+    assert.strictEqual(pending.finalReminder, '1h');
+    assert.strictEqual(pending.looters, 3);
+    assert.strictEqual(pending.threadEnabled, true);
+    assert.ok(calls.update.components.length > 0, 'debe regresar al panel navegable');
   });
 
   await test('Un grupo inexistente devuelve al panel principal sin romperse', async () => {
@@ -260,7 +340,7 @@ const run = async (customId, options) => {
     const overrides = newSession();
     const otro = { id: '111', toString: () => '<@111>' };
     const calls = await run(`raidcfg-gtoggle-${PENDING_ID}-group_1`, { user: otro });
-    assert.ok(calls.reply?.content.includes('Solo quien ejecutó'));
+    assert.ok(calls.reply?.content.includes('Solo quien inició'));
     assert.strictEqual(cfg.isGroupDisabled(overrides, 'group_1'), false);
   });
 

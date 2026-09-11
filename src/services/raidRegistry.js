@@ -71,6 +71,8 @@ function withRaidLock(raidId, fn) {
  * terminar — así nunca se pierden ediciones ni se dispara más de una a la vez
  * (protege del rate limit de Discord en raids muy activos).
  * @param {string} raidId
+ * @returns {Promise<boolean|undefined>} true si Discord confirmó la edición,
+ * false si falló y undefined si el raid no está registrado o no tiene mensaje.
  */
 async function renderAndEdit(raidId) {
   const entry = byRaidId.get(raidId);
@@ -78,23 +80,30 @@ async function renderAndEdit(raidId) {
 
   if (entry._editing) {
     entry._dirty = true;
-    return;
+    return entry._editing;
   }
-  entry._editing = true;
-  try {
-    do {
-      entry._dirty = false;
-      const embed = renderRaidEmbed(entry.raid, entry.raid);
-      const components = renderRaidComponents(entry.raid, entry.raid);
-      try {
+
+  const run = (async () => {
+    try {
+      do {
+        entry._dirty = false;
+        const embed = renderRaidEmbed(entry.raid, entry.raid);
+        const components = renderRaidComponents(entry.raid, entry.raid);
         entry.message = await entry.message.edit({ embeds: [embed], components });
-      } catch (e) {
-        console.error(`[ERROR] raidRegistry.renderAndEdit: fallo al editar el mensaje del raid #${raidId}:`, e);
-      }
-    } while (entry._dirty);
+      } while (entry._dirty);
+      return true;
+    } catch (error) {
+      console.error(`[ERROR] raidRegistry.renderAndEdit: fallo al editar el mensaje del raid #${raidId}:`, error);
+      return false;
+    }
+  })();
+  entry._editing = run;
+  try {
+    await run;
   } finally {
-    entry._editing = false;
+    if (entry._editing === run) entry._editing = null;
   }
+  return run;
 }
 
 /**

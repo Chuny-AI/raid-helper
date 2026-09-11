@@ -76,6 +76,19 @@ async function main() {
     assert.deepStrictEqual(recibido, { content: 'x' });
   });
 
+  await testAsync('una confirmación diferida edita la respuesta sin reconocerla dos veces', async () => {
+    let recibido = null;
+    let updates = 0;
+    const ok = await safeInteractionUpdate({
+      deferred: true,
+      editReply: async (payload) => { recibido = payload; },
+      update: async () => { updates += 1; },
+    }, { content: 'terminado' });
+    assert.strictEqual(ok, true);
+    assert.strictEqual(updates, 0);
+    assert.deepStrictEqual(recibido, { content: 'terminado' });
+  });
+
   await testAsync('token caducado (10062) devuelve false en vez de lanzar', async () => {
     const error = Object.assign(new Error('Unknown interaction'), { code: 10062 });
     const ok = await safeInteractionUpdate({ update: async () => { throw error; } }, { content: 'x' });

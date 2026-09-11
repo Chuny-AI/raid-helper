@@ -190,6 +190,25 @@ const cancelReminder = (interactionId) => {
   }
 };
 
+/** Cancela el timeout anterior y lo reconstruye desde el estado persistido del raid. */
+const rescheduleRaidReminder = (raid) => {
+  cancelReminder(raid.eventId);
+  if (!raid.reminder || !raid.eventTimestamp || raid.status !== 'active') return null;
+
+  const timeoutId = createReminder(
+    raid.eventId,
+    raid.reminder,
+    raid.eventTimestamp * 1000,
+    raid.templateName,
+    raid.channelId,
+    raid.guildId,
+    raid.title,
+    []
+  );
+  if (timeoutId && raid.leaderId) addInterestedUser(raid.eventId, raid.leaderId);
+  return timeoutId;
+};
+
 /**
  * Obtiene todos los recordatorios activos
  * @returns {Map} Mapa de recordatorios activos
@@ -214,6 +233,7 @@ module.exports = {
   updateReminderParticipants,
   addInterestedUser,
   cancelReminder,
+  rescheduleRaidReminder,
   getActiveReminders,
   clearAllReminders
 };

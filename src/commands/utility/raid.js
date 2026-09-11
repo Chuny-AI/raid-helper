@@ -20,6 +20,8 @@ const {
   buildWeaponPanel,
   buildGroupMaxModal,
   buildWeaponUnitsModal,
+  buildRaidBasicsModal,
+  buildRaidSettingsModal,
 } = require("../../lib/raid/raid-weapon-config-ui");
 const {
   MAX_ROLES_TO_NOTIFY,
@@ -51,6 +53,63 @@ const {
  * Se limpian automáticamente a los 15 minutos (expiración del token de Discord).
  */
 const pendingRaids = new Map();
+
+const panelOptions = (pending, page = 0) => ({
+  page,
+  draft: pending,
+  mode: pending.mode || 'create',
+  weaponsLocked: !!pending.weaponsLocked,
+});
+
+const overviewFor = (pending, pendingId, page = 0) => buildOverviewPanel(
+  pending.template,
+  pending.weaponOverrides,
+  pendingId,
+  panelOptions(pending, page)
+);
+
+const groupFor = (pending, pendingId, groupKey, page = 0) => buildGroupPanel(
+  pending.template,
+  pending.weaponOverrides,
+  pendingId,
+  groupKey,
+  page,
+  panelOptions(pending)
+);
+
+const weaponFor = (pending, pendingId, groupKey, weaponIndex) => buildWeaponPanel(
+  pending.template,
+  pending.weaponOverrides,
+  pendingId,
+  groupKey,
+  weaponIndex,
+  panelOptions(pending)
+);
+
+const isHttpUrl = (value) => {
+  if (!value) return true;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const parseYesNo = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['sí', 'si', 's', 'yes', 'y', 'true', '1'].includes(normalized)) return true;
+  if (['no', 'n', 'false', '0'].includes(normalized)) return false;
+  return null;
+};
+
+const validateReminder = (reminder, eventTimestamp) => {
+  if (!reminder) return null;
+  const delay = parseMinutes(reminder);
+  const untilEvent = eventTimestamp * 1000 - Date.now();
+  if (delay >= untilEvent) throw new Error('El recordatorio debe programarse antes de la hora del evento.');
+  return reminder;
+};
 
 /**
  * Manejador del subcomando /raid kick
@@ -167,11 +226,6 @@ async function executeEditSubcommand(interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const raidId = interaction.options.getString('raid_id').toUpperCase().trim();
-  const newTime = interaction.options.getString('time');
-  const newDescription = interaction.options.getString('description');
-  const newColor = interaction.options.getString('color');
-  const newTitle = interaction.options.getString('title');
-
   const runtime = await getOrLoadRuntime({ raidId, guild: interaction.guild });
   if (!runtime) {
     return interaction.editReply({ content: `No se encontró ningún raid activo con el ID **${raidId}**.` });
@@ -182,38 +236,106 @@ async function executeEditSubcommand(interaction) {
   if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
     return interaction.editReply({ content: 'Solo el líder del raid puede editarlo.' });
   }
-  if (newColor && !isValidHex(newColor)) {
-    return interaction.editReply({ content: 'Color inválido. Usa formato hexadecimal: `#FFFFFF`' });
-  }
 
-  let parsedTimestamp = null;
-  if (newTime) {
-    try {
-      parsedTimestamp = parseUTCTime(newTime);
-    } catch (e) {
-      return interaction.editReply({ content: `Hora inválida: ${e.message}` });
-    }
-  }
+  const requestedTime = interaction.options.getString('time');
+  const requestedColor = interaction.options.getString('color');
+  const requestedImage = interaction.options.getString('image');
+  const requestedReminder = interaction.options.getString('reminder');
+  const requestedRoles = interaction.options.getString('roles_to_notify');
 
+  const time = requestedTime || runtime.raid.time;
+  let eventTimestamp = runtime.raid.eventTimestamp;
   try {
-    await raidRegistry.withRaidLock(raidId, async () => {
-      if (newTitle) runtime.raid.title = newTitle;
-      if (newDescription) runtime.raid.description = newDescription;
-      if (newColor) runtime.raid.color = newColor;
-      if (newTime) {
-        runtime.raid.time = newTime;
-        runtime.raid.eventTimestamp = parsedTimestamp;
-      }
-      await raidRegistry.saveRaid(raidId);
-      await raidRegistry.renderAndEdit(raidId);
-    });
-  } catch (e) {
-    console.error('[ERROR] edit: No se pudo actualizar el mensaje:', e);
-    raidRegistry.unregister(raidId);
-    return interaction.editReply({ content: 'No se pudo actualizar el mensaje del raid.' });
+    if (requestedTime) eventTimestamp = parseUTCTime(requestedTime);
+  } catch (error) {
+    return interaction.editReply({ content: `Hora inválida: ${error.message}` });
   }
 
-  await interaction.editReply({ content: `✅ Raid **#${raidId}** actualizado correctamente.` });
+  const color = requestedColor ?? runtime.raid.color ?? null;
+  const image = requestedImage ?? runtime.raid.image ?? null;
+  const finalReminder = requestedReminder === null
+    ? runtime.raid.reminder || null
+    : requestedReminder.trim() === '' || requestedReminder.trim() === '0'
+      ? null
+      : requestedReminder.trim();
+  try {
+    if (color && !isValidHex(color)) throw new Error('Color inválido. Usa `#FFFFFF`.');
+    if (!isHttpUrl(image)) throw new Error('La imagen debe usar una URL http o https válida.');
+    validateReminder(finalReminder, eventTimestamp);
+  } catch (error) {
+    return interaction.editReply({ content: `⚠️ ${error.message}` });
+  }
+
+  let finalNotificationRoles = Array.from(runtime.raid.rolesToNotify || []);
+  if (requestedRoles !== null) {
+    const parsed = parseRolesToNotify(requestedRoles, interaction.guild);
+    if (parsed.blockedEveryone || parsed.exceededLimit || parsed.unresolved.length > 0) {
+      return interaction.editReply({
+        content: parsed.blockedEveryone
+          ? '⚠️ `@everyone` no está permitido.'
+          : parsed.exceededLimit
+            ? `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles.`
+            : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
+      });
+    }
+    finalNotificationRoles = parsed.roleIds;
+  }
+
+  let template = await getTemplateByName(runtime.raid.templateName, interaction.guild.id);
+  if (!template) {
+    const weapons = {};
+    for (const group of runtime.raid.groups || []) {
+      weapons[group.groupKey] = {
+        displayName: group.displayName,
+        defaultEmoji: group.emoji,
+        max_players: group.maxPlayers,
+        data: (runtime.raid.slots || [])
+          .filter((slot) => slot.groupKey === group.groupKey)
+          .map((slot) => ({
+            name: slot.weaponName || slot.label,
+            emoji: slot.emoji,
+            units: slot.units,
+            url: slot.url || '',
+          })),
+      };
+    }
+    template = { title: runtime.raid.title, description: runtime.raid.description, weapons };
+  }
+
+  const hasMembers = (runtime.raid.slots || []).some((slot) => (slot.users || []).length > 0)
+    || (runtime.raid.waitlist || []).length > 0
+    || (runtime.raid.cannotGo || []).length > 0
+    || (runtime.raid.looters?.users || []).length > 0;
+  const weaponOverrides = JSON.parse(JSON.stringify(runtime.raid.weaponOverrides || emptyOverrides()));
+  const requestedLooters = interaction.options.getInteger('looters');
+  const requestedThread = interaction.options.getBoolean('thread');
+
+  pendingRaids.set(interaction.id, {
+    mode: 'edit',
+    raidId,
+    templateName: runtime.raid.templateName,
+    template,
+    eventTimestamp,
+    time,
+    title: interaction.options.getString('title') ?? runtime.raid.title,
+    color,
+    image,
+    description: interaction.options.getString('description') ?? runtime.raid.description,
+    finalReminder,
+    finalNotificationRoles,
+    shouldSendMassDm: false,
+    looters: requestedLooters ?? runtime.raid.looters?.max ?? 0,
+    currentLooterCount: (runtime.raid.looters?.users || []).length,
+    threadEnabled: requestedThread ?? runtime.raid.threadEnabled ?? false,
+    guildId: interaction.guild.id,
+    user: interaction.user,
+    weaponOverrides,
+    originalWeaponOverrides: JSON.stringify(weaponOverrides),
+    weaponsLocked: hasMembers,
+  });
+  setTimeout(() => pendingRaids.delete(interaction.id), 15 * 60 * 1000);
+
+  await interaction.editReply(overviewFor(pendingRaids.get(interaction.id), interaction.id));
 }
 
 /**
@@ -270,7 +392,7 @@ async function handleWeaponConfigInteraction(interaction) {
 
   if (!pending) {
     const expired = {
-      content: '⏰ Esta sesión de creación ha expirado (15 min). Ejecuta `/raid create` nuevamente.',
+      content: '⏰ Esta sesión ha expirado (15 min). Ejecuta el comando de creación o edición nuevamente.',
       embeds: [],
       components: [],
     };
@@ -288,7 +410,7 @@ async function handleWeaponConfigInteraction(interaction) {
   if (pending.user?.id && interaction.user.id !== pending.user.id) {
     try {
       await interaction.reply({
-        content: 'Solo quien ejecutó `/raid create` puede configurar este raid.',
+        content: 'Solo quien inició esta creación o edición puede configurar el raid.',
         flags: MessageFlags.Ephemeral,
       });
     } catch { /* ignored */ }
@@ -299,59 +421,168 @@ async function handleWeaponConfigInteraction(interaction) {
   const overrides = pending.weaponOverrides;
 
   // Validar que el grupo/arma referidos sigan existiendo en el template
-  const group = groupKey ? template.weapons?.[groupKey] : null;
-  if (groupKey && !group) {
+  const actionsWithoutGroup = new Set(['home', 'gpage', 'basic', 'settings', 'mbasic', 'msettings', 'cancel', 'resetall']);
+  const group = !actionsWithoutGroup.has(action) && groupKey ? template.weapons?.[groupKey] : null;
+  if (!actionsWithoutGroup.has(action) && groupKey && !group) {
     try {
-      await interaction.update(buildOverviewPanel(template, overrides, pendingId));
+      await interaction.update(overviewFor(pending, pendingId));
     } catch { /* ignored */ }
     return;
   }
+
   const hasWeapon = weaponIndex !== null && !isNaN(weaponIndex)
     && Array.isArray(group?.data) && !!group.data[weaponIndex];
+
+  const weaponMutationActions = new Set(['gtoggle', 'greset', 'resetall', 'gmax', 'wtoggle', 'wreset', 'wunits', 'mgmax', 'mwunits']);
+  if (pending.weaponsLocked && weaponMutationActions.has(action)) {
+    await interaction.reply({
+      content: '🔒 Este raid ya tiene inscripciones; sus armas y cupos no se pueden cambiar.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   try {
     switch (action) {
       // ── Navegación
       case 'home':
-        return await interaction.update(buildOverviewPanel(template, overrides, pendingId));
+        return await interaction.update(overviewFor(pending, pendingId, groupKey));
+
+      case 'gpage':
+        return await interaction.update(overviewFor(pending, pendingId, groupKey));
 
       case 'grp': {
         const selected = interaction.values?.[0];
         if (!selected || !template.weapons?.[selected]) {
-          return await interaction.update(buildOverviewPanel(template, overrides, pendingId));
+          return await interaction.update(overviewFor(pending, pendingId));
         }
-        return await interaction.update(buildGroupPanel(template, overrides, pendingId, selected));
+        return await interaction.update(groupFor(pending, pendingId, selected));
       }
 
       case 'gback':
-        return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        return await interaction.update(groupFor(pending, pendingId, groupKey, weaponIndex));
+
+      case 'wpage':
+        return await interaction.update(groupFor(pending, pendingId, groupKey, weaponIndex));
 
       case 'wpn': {
         const selectedIndex = parseInt(interaction.values?.[0], 10);
         if (isNaN(selectedIndex) || !group.data?.[selectedIndex]) {
-          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+          return await interaction.update(groupFor(pending, pendingId, groupKey, weaponIndex));
         }
         return await interaction.update(
-          buildWeaponPanel(template, overrides, pendingId, groupKey, selectedIndex)
+          weaponFor(pending, pendingId, groupKey, selectedIndex)
         );
+      }
+
+      case 'basic':
+        return await interaction.showModal(buildRaidBasicsModal(pendingId, pending));
+
+      case 'settings':
+        return await interaction.showModal(buildRaidSettingsModal(pendingId, pending));
+
+      case 'cancel':
+        pendingRaids.delete(pendingId);
+        return await interaction.update({ content: 'Creación/edición cancelada.', embeds: [], components: [] });
+
+      case 'mbasic': {
+        const title = interaction.fields.getTextInputValue('title').trim();
+        const time = interaction.fields.getTextInputValue('time').trim();
+        const description = interaction.fields.getTextInputValue('description').trim();
+        const color = interaction.fields.getTextInputValue('color').trim();
+        const image = interaction.fields.getTextInputValue('image').trim();
+
+        let eventTimestamp;
+        try {
+          eventTimestamp = parseUTCTime(time);
+          validateReminder(pending.finalReminder, eventTimestamp);
+        } catch (error) {
+          return await interaction.reply({ content: `⚠️ ${error.message}`, flags: MessageFlags.Ephemeral });
+        }
+        if (color && !isValidHex(color)) {
+          return await interaction.reply({ content: '⚠️ Color inválido. Usa `#FFFFFF`.', flags: MessageFlags.Ephemeral });
+        }
+        if (!isHttpUrl(image)) {
+          return await interaction.reply({ content: '⚠️ La imagen debe usar una URL http o https válida.', flags: MessageFlags.Ephemeral });
+        }
+
+        pending.title = title || null;
+        pending.time = time;
+        pending.eventTimestamp = eventTimestamp;
+        pending.description = pending.mode === 'edit' ? description : (description || null);
+        pending.color = color || null;
+        pending.image = image || null;
+        return await interaction.update(overviewFor(pending, pendingId));
+      }
+
+      case 'msettings': {
+        const reminderInput = interaction.fields.getTextInputValue('reminder').trim();
+        const roleInput = interaction.fields.getTextInputValue('roles').trim();
+        const lootersInput = interaction.fields.getTextInputValue('looters').trim();
+        const threadEnabled = parseYesNo(interaction.fields.getTextInputValue('thread'));
+        const shouldSendMassDm = parseYesNo(interaction.fields.getTextInputValue('mass_dm'));
+
+        if (threadEnabled === null || shouldSendMassDm === null) {
+          return await interaction.reply({ content: '⚠️ Responde “sí” o “no” en las opciones de hilo y DM.', flags: MessageFlags.Ephemeral });
+        }
+        const looters = Number.parseInt(lootersInput, 10);
+        if (!/^\d+$/.test(lootersInput) || !Number.isSafeInteger(looters) || looters < 0 || looters > 100) {
+          return await interaction.reply({ content: '⚠️ Looters debe ser un entero entre 0 y 100.', flags: MessageFlags.Ephemeral });
+        }
+
+        let finalReminder = null;
+        try {
+          finalReminder = reminderInput && reminderInput !== '0'
+            ? validateReminder(reminderInput, pending.eventTimestamp)
+            : null;
+        } catch (error) {
+          return await interaction.reply({ content: `⚠️ ${error.message}`, flags: MessageFlags.Ephemeral });
+        }
+
+        const parsedRoles = parseRolesToNotify(roleInput, interaction.guild);
+        if (parsedRoles.blockedEveryone) {
+          return await interaction.reply({ content: '⚠️ `@everyone` no está permitido.', flags: MessageFlags.Ephemeral });
+        }
+        if (parsedRoles.exceededLimit) {
+          return await interaction.reply({ content: `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles.`, flags: MessageFlags.Ephemeral });
+        }
+        if (parsedRoles.unresolved.length > 0) {
+          return await interaction.reply({
+            content: `⚠️ No se encontraron estos roles: ${parsedRoles.unresolved.join(', ')}`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        if (pending.mode === 'edit' && looters < (pending.currentLooterCount || 0)) {
+          return await interaction.reply({
+            content: `⚠️ Hay ${pending.currentLooterCount} looters inscritos; el máximo no puede ser menor.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        pending.finalReminder = finalReminder;
+        pending.finalNotificationRoles = parsedRoles.roleIds;
+        pending.looters = looters;
+        pending.threadEnabled = threadEnabled;
+        pending.shouldSendMassDm = shouldSendMassDm;
+        return await interaction.update(overviewFor(pending, pendingId));
       }
 
       // ── Acciones sobre el grupo
       case 'gtoggle': {
         const entry = ensureGroup(overrides, groupKey);
         entry.disabled = !entry.disabled;
-        return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        return await interaction.update(groupFor(pending, pendingId, groupKey));
       }
 
       case 'greset': {
         resetGroup(overrides, groupKey);
-        return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        return await interaction.update(groupFor(pending, pendingId, groupKey));
       }
 
       case 'resetall': {
         pending.weaponOverrides = emptyOverrides();
         return await interaction.update(
-          buildOverviewPanel(template, pending.weaponOverrides, pendingId)
+          overviewFor(pending, pendingId)
         );
       }
 
@@ -363,28 +594,28 @@ async function handleWeaponConfigInteraction(interaction) {
       // ── Acciones sobre un arma
       case 'wtoggle': {
         if (!hasWeapon) {
-          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+          return await interaction.update(groupFor(pending, pendingId, groupKey));
         }
         const entry = ensureWeapon(overrides, groupKey, weaponIndex);
         entry.disabled = !entry.disabled;
         return await interaction.update(
-          buildWeaponPanel(template, overrides, pendingId, groupKey, weaponIndex)
+          weaponFor(pending, pendingId, groupKey, weaponIndex)
         );
       }
 
       case 'wreset': {
         if (!hasWeapon) {
-          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+          return await interaction.update(groupFor(pending, pendingId, groupKey));
         }
         delete overrides.groups?.[groupKey]?.weapons?.[String(weaponIndex)];
         return await interaction.update(
-          buildWeaponPanel(template, overrides, pendingId, groupKey, weaponIndex)
+          weaponFor(pending, pendingId, groupKey, weaponIndex)
         );
       }
 
       case 'wunits': {
         if (!hasWeapon) {
-          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+          return await interaction.update(groupFor(pending, pendingId, groupKey));
         }
         return await interaction.showModal(
           buildWeaponUnitsModal(template, overrides, pendingId, groupKey, weaponIndex)
@@ -409,12 +640,12 @@ async function handleWeaponConfigInteraction(interaction) {
           }
           entry.maxPlayers = parsedValue;
         }
-        return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+        return await interaction.update(groupFor(pending, pendingId, groupKey));
       }
 
       case 'mwunits': {
         if (!hasWeapon) {
-          return await interaction.update(buildGroupPanel(template, overrides, pendingId, groupKey));
+          return await interaction.update(groupFor(pending, pendingId, groupKey));
         }
         const raw = interaction.fields.getTextInputValue('value').trim();
         const entry = ensureWeapon(overrides, groupKey, weaponIndex);
@@ -435,13 +666,13 @@ async function handleWeaponConfigInteraction(interaction) {
           entry.disabled = false;
         }
         return await interaction.update(
-          buildWeaponPanel(template, overrides, pendingId, groupKey, weaponIndex)
+          weaponFor(pending, pendingId, groupKey, weaponIndex)
         );
       }
 
       default:
         console.warn('[WARN] handleWeaponConfigInteraction: acción no reconocida:', action);
-        return await interaction.update(buildOverviewPanel(template, overrides, pendingId));
+        return await interaction.update(overviewFor(pending, pendingId));
     }
   } catch (error) {
     console.error('[ERROR] handleWeaponConfigInteraction:', error);
@@ -465,19 +696,22 @@ async function handleWeaponConfigInteraction(interaction) {
 /**
  * Actualiza el mensaje efímero del líder sin propagar el fallo.
  *
- * Cuando esto se llama el raid ya está publicado en el canal: que el aviso
- * privado al líder no se pueda editar (token caducado, interacción ya
- * respondida) no es motivo para tumbar nada.
+ * Soporta tanto una interacción aún sin reconocer como una confirmación ya
+ * diferida, y nunca permite que un fallo del mensaje efímero tumbe el proceso.
  * @param {Object} interaction
  * @param {Object} payload
  * @returns {Promise<boolean>} true si se pudo actualizar.
  */
 async function safeInteractionUpdate(interaction, payload) {
   try {
-    await interaction.update(payload);
+    if ((interaction.deferred || interaction.replied) && typeof interaction.editReply === 'function') {
+      await interaction.editReply(payload);
+    } else {
+      await interaction.update(payload);
+    }
     return true;
   } catch (error) {
-    logDiscordError('handleConfirmRaidCreate: no se pudo actualizar el mensaje del líder', error);
+    logDiscordError('raid: no se pudo actualizar el mensaje privado del líder', error);
     return false;
   }
 }
@@ -517,6 +751,23 @@ async function handleConfirmRaidCreate(interaction) {
     return;
   }
 
+  if (pending.user?.id && interaction.user.id !== pending.user.id) {
+    await interaction.reply({
+      content: 'Solo quien inició la creación puede publicar este raid.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!interaction.deferred && !interaction.replied && typeof interaction.deferUpdate === 'function') {
+    try {
+      await interaction.deferUpdate();
+    } catch (error) {
+      logDiscordError('handleConfirmRaidCreate: no se pudo reconocer la confirmación', error);
+      return;
+    }
+  }
+
   const {
     templateName, template, eventTimestamp, title, color, image, description,
     finalReminder, finalNotificationRoles, shouldSendMassDm, looters, threadEnabled, guildId, user,
@@ -529,7 +780,7 @@ async function handleConfirmRaidCreate(interaction) {
     await safeInteractionUpdate(interaction, {
       content: '⚠️ No puedes publicar el raid: todas las armas están deshabilitadas. ' +
         'Habilita al menos un grupo o arma antes de confirmar.',
-      ...buildOverviewPanel(template, weaponOverrides, originalId),
+      ...overviewFor(pending, originalId),
     });
     return;
   }
@@ -663,13 +914,19 @@ async function handleConfirmRaidCreate(interaction) {
   // embed (participantes y looters) más el líder. Si no se puede crear, el raid
   // ya está publicado y no se revierte: se avisa al líder y se sigue.
   let avisoHilo = null;
+  let createdThread = null;
   if (threadEnabled) {
     const threadResult = await createRaidThread({ channel, guild: interaction.guild, raid: raidDoc });
     if (threadResult.ok) {
-      raidDoc.threadId = threadResult.thread.id;
-      await syncRaidThread(interaction.guild, raidDoc);
-      // Re-render para que el embed enlace el hilo recién creado.
-      await raidRegistry.renderAndEdit(raidId);
+      createdThread = threadResult.thread;
+      raidDoc.threadId = createdThread.id;
+      try {
+        const syncResult = await syncRaidThread(interaction.guild, raidDoc);
+        if (!syncResult.ok) avisoHilo = 'El hilo se creó, pero su acceso no pudo sincronizarse por completo.';
+      } catch (error) {
+        console.error(`[ERROR] create: no se pudo sincronizar el hilo del raid #${raidId}:`, error);
+        avisoHilo = 'El hilo se creó, pero su acceso no pudo sincronizarse por completo.';
+      }
     } else {
       avisoHilo = describeThreadFailure(threadResult);
     }
@@ -684,6 +941,11 @@ async function handleConfirmRaidCreate(interaction) {
   } catch (dbError) {
     console.error('[ERROR] handleConfirmRaidCreate: Error guardando raid en DB:', dbError);
     raidRegistry.unregister(raidId);
+    if (createdThread) {
+      try { await createdThread.delete(`Reversión: no se pudo guardar el raid #${raidId}`); } catch (deleteError) {
+        logDiscordError('handleConfirmRaidCreate: no se pudo retirar el hilo tras fallar la persistencia', deleteError);
+      }
+    }
     try { await raidMessage.delete(); } catch (deleteError) {
       logDiscordError('handleConfirmRaidCreate: no se pudo retirar el mensaje tras fallar la persistencia', deleteError);
     }
@@ -692,6 +954,19 @@ async function handleConfirmRaidCreate(interaction) {
       components: [],
     });
     return;
+  }
+
+  if (createdThread) {
+    try {
+      // El raid ya está persistido; este render añade el enlace al hilo.
+      const rendered = await raidRegistry.renderAndEdit(raidId);
+      if (!rendered) throw new Error('Discord no actualizó el mensaje');
+    } catch (error) {
+      console.error(`[ERROR] create: no se pudo mostrar el hilo en el raid #${raidId}:`, error);
+      avisoHilo = avisoHilo
+        ? `${avisoHilo} El mensaje todavía no pudo mostrar el enlace.`
+        : 'El hilo se creó, pero el mensaje todavía no pudo mostrar el enlace.';
+    }
   }
 
   // Confirmar al líder que el raid fue publicado (actualiza el mensaje ephemeral).
@@ -717,19 +992,7 @@ async function handleConfirmRaidCreate(interaction) {
   // Configurar recordatorio si aplica (clave = raidId, sobrevive a un reinicio vía migración)
   if (finalReminder) {
     try {
-      const { createReminder, addInterestedUser } = require('../../utils/reminderManager');
-      const activityTitle = title || template.title;
-      createReminder(
-        raidId,
-        finalReminder,
-        eventTimestamp * 1000,
-        templateName,
-        channel.id,
-        guildId,
-        activityTitle,
-        []
-      );
-      addInterestedUser(raidId, user.id);
+      require('../../utils/reminderManager').rescheduleRaidReminder(raidDoc);
     } catch (reminderError) {
       console.error('[ERROR] handleConfirmRaidCreate: Error configurando recordatorio:', reminderError);
     }
@@ -767,6 +1030,276 @@ async function handleConfirmRaidCreate(interaction) {
   }
 }
 
+async function handleConfirmRaidEdit(interaction) {
+  const pendingId = interaction.customId.substring('raid_confirm_edit-'.length);
+  const pending = pendingRaids.get(pendingId);
+  if (!pending || pending.mode !== 'edit') {
+    return safeInteractionUpdate(interaction, {
+      content: '⏰ Esta sesión de edición ha expirado. Ejecuta `/raid edit` nuevamente.',
+      embeds: [],
+      components: [],
+    });
+  }
+  if (pending.user?.id !== interaction.user.id) {
+    await interaction.reply({ content: 'Solo quien inició la edición puede guardarla.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (!interaction.deferred && !interaction.replied && typeof interaction.deferUpdate === 'function') {
+    try {
+      await interaction.deferUpdate();
+    } catch (error) {
+      logDiscordError('handleConfirmRaidEdit: no se pudo reconocer la confirmación', error);
+      return;
+    }
+  }
+
+  const runtime = await getOrLoadRuntime({ raidId: pending.raidId, guild: interaction.guild });
+  if (!runtime || runtime.raid.status !== 'active') {
+    pendingRaids.delete(pendingId);
+    return safeInteractionUpdate(interaction, {
+      content: 'El raid ya no está activo o dejó de existir.', embeds: [], components: [],
+    });
+  }
+  if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
+    await safeInteractionUpdate(interaction, {
+      content: 'Ya no tienes permiso para editar este raid.',
+      ...overviewFor(pending, pendingId),
+    });
+    return;
+  }
+
+  const currentLooterCount = (runtime.raid.looters?.users || []).length;
+  if ((pending.looters || 0) < currentLooterCount) {
+    await safeInteractionUpdate(interaction, {
+      content: `⚠️ Hay ${currentLooterCount} looters inscritos; el máximo no puede ser menor.`,
+      ...overviewFor(pending, pendingId),
+    });
+    return;
+  }
+
+  const weaponConfigChanged = JSON.stringify(pending.weaponOverrides) !== pending.originalWeaponOverrides;
+  const hasMembers = (runtime.raid.slots || []).some((slot) => (slot.users || []).length > 0)
+    || (runtime.raid.waitlist || []).length > 0
+    || (runtime.raid.cannotGo || []).length > 0
+    || currentLooterCount > 0;
+  if (weaponConfigChanged && hasMembers) {
+    pending.weaponOverrides = JSON.parse(pending.originalWeaponOverrides);
+    pending.weaponsLocked = true;
+    await safeInteractionUpdate(interaction, {
+      content: '🔒 Alguien se inscribió durante la edición. Los cambios de armas se restablecieron automáticamente; los demás datos se conservaron.',
+      ...overviewFor(pending, pendingId),
+    });
+    return;
+  }
+  if (getTotalCapacity(pending.template, pending.weaponOverrides) <= 0) {
+    await safeInteractionUpdate(interaction, {
+      content: '⚠️ El raid debe conservar al menos un grupo o arma habilitada.',
+      ...overviewFor(pending, pendingId),
+    });
+    return;
+  }
+
+  const { valid: roles, missing: missingRoles } = resolveMentionableRoles(
+    interaction.guild,
+    pending.finalNotificationRoles
+  );
+
+  if (pending.shouldSendMassDm && roles.length > 0) {
+    const permit = consumeNotificationPermit(interaction.guild.id, interaction.user.id);
+    if (!permit.ok) {
+      await safeInteractionUpdate(interaction, {
+        content: `⏳ Espera ${formatRetryAfter(permit.retryAfterMs)} minuto(s) antes de volver a enviar DMs masivos.`,
+        ...overviewFor(pending, pendingId),
+      });
+      return;
+    }
+  }
+
+  const warnings = [];
+  let saveConflict = null;
+  let messageRenderFailed = false;
+  try {
+    await raidRegistry.withRaidLock(pending.raidId, async () => {
+      if (runtime.raid.status !== 'active') {
+        saveConflict = 'inactive';
+        return;
+      }
+      const lockedLooterCount = (runtime.raid.looters?.users || []).length;
+      if ((pending.looters || 0) < lockedLooterCount) {
+        pending.currentLooterCount = lockedLooterCount;
+        saveConflict = 'looters';
+        return;
+      }
+      const lockedHasMembers = (runtime.raid.slots || []).some((slot) => (slot.users || []).length > 0)
+        || (runtime.raid.waitlist || []).length > 0
+        || (runtime.raid.cannotGo || []).length > 0
+        || lockedLooterCount > 0;
+      if (weaponConfigChanged && lockedHasMembers) {
+        saveConflict = 'weapons';
+        return;
+      }
+
+      runtime.raid.title = pending.title || pending.template.title || runtime.raid.title;
+      runtime.raid.description = pending.description ?? pending.template.description ?? '';
+      runtime.raid.time = pending.time;
+      runtime.raid.eventTimestamp = pending.eventTimestamp;
+      runtime.raid.color = pending.color || null;
+      runtime.raid.image = pending.image || null;
+      runtime.raid.reminder = pending.finalReminder || null;
+      runtime.raid.rolesToNotify = roles;
+      if (!runtime.raid.looters) runtime.raid.looters = { max: 0, users: [] };
+      runtime.raid.looters.max = pending.looters || 0;
+
+      if (weaponConfigChanged) {
+        const rebuilt = raidState.buildInitialState({
+          template: pending.template,
+          weaponOverrides: pending.weaponOverrides,
+          lootersMax: pending.looters || 0,
+          leaderId: runtime.raid.leaderId,
+        });
+        runtime.raid.groups = rebuilt.groups;
+        runtime.raid.slots = rebuilt.slots;
+        runtime.raid.waitlist = rebuilt.waitlist;
+        runtime.raid.cannotGo = rebuilt.cannotGo;
+        runtime.raid.looters = rebuilt.looters;
+        runtime.raid.fullNotificationSent = false;
+        runtime.raid.disabledWeapons = toDisabledWeapons(pending.weaponOverrides);
+        runtime.raid.weaponOverrides = pending.weaponOverrides;
+      }
+
+      // Desactivar esta opción nunca borra un hilo existente: su eliminación
+      // sigue siendo una acción separada y confirmada por el líder.
+      runtime.raid.threadEnabled = Boolean(runtime.raid.threadId) || Boolean(pending.threadEnabled);
+      await raidRegistry.saveRaid(pending.raidId);
+      messageRenderFailed = !(await raidRegistry.renderAndEdit(pending.raidId));
+    });
+
+  } catch (error) {
+    console.error(`[ERROR] edit: no se pudo confirmar la edición de #${pending.raidId}:`, error);
+    raidRegistry.unregister(pending.raidId);
+    await safeInteractionUpdate(interaction, {
+      content: '❌ No se pudo completar la actualización. La sesión sigue abierta para comprobar los datos y reintentar.',
+      ...overviewFor(pending, pendingId),
+    });
+    return;
+  }
+
+  if (saveConflict) {
+    if (saveConflict === 'inactive') {
+      pendingRaids.delete(pendingId);
+      await safeInteractionUpdate(interaction, {
+        content: 'El raid dejó de estar activo durante la edición.', embeds: [], components: [],
+      });
+      return;
+    }
+    if (saveConflict === 'weapons') {
+      pending.weaponOverrides = JSON.parse(pending.originalWeaponOverrides);
+      pending.weaponsLocked = true;
+    }
+    await safeInteractionUpdate(interaction, {
+      content: saveConflict === 'looters'
+        ? `⚠️ Ahora hay ${pending.currentLooterCount} looters inscritos; ajusta el máximo antes de guardar.`
+        : '🔒 Alguien se inscribió mientras se guardaba. Los cambios de armas se restablecieron; los demás datos siguen listos.',
+      ...overviewFor(pending, pendingId),
+    });
+    return;
+  }
+
+  if (messageRenderFailed) {
+    warnings.push('los datos se guardaron, pero el mensaje no pudo actualizarse todavía');
+  }
+
+  const reminderTimeout = require('../../utils/reminderManager').rescheduleRaidReminder(runtime.raid);
+  if (runtime.raid.reminder && !reminderTimeout) {
+    warnings.push('el recordatorio quedó guardado, pero ya era demasiado tarde para programarlo');
+  }
+
+  if (pending.threadEnabled) {
+    try {
+      await raidRegistry.withRaidLock(pending.raidId, async () => {
+        // Otra sesión de edición pudo crear el hilo mientras esta esperaba el lock.
+        if (runtime.raid.threadId) return;
+        const raidChannel = await interaction.guild.channels.fetch(runtime.raid.channelId).catch(() => null);
+        const threadResult = await createRaidThread({ channel: raidChannel, guild: interaction.guild, raid: runtime.raid });
+        if (!threadResult.ok) {
+          warnings.push(describeThreadFailure(threadResult));
+          return;
+        }
+
+        const createdThread = threadResult.thread;
+        runtime.raid.threadId = createdThread.id;
+        runtime.raid.threadEnabled = true;
+        try {
+          // Persistir primero evita que un fallo posterior de Discord deje un hilo
+          // funcional sin relación con el raid en la base de datos.
+          await raidRegistry.saveRaid(pending.raidId);
+        } catch (error) {
+          runtime.raid.threadId = null;
+          runtime.raid.threadEnabled = false;
+          try {
+            await createdThread.delete(`Reversión: no se pudo vincular al raid #${pending.raidId}`);
+          } catch (deleteError) {
+            logDiscordError(`edit: no se pudo revertir el hilo del raid #${pending.raidId}`, deleteError);
+          }
+          console.error(`[ERROR] edit: no se pudo guardar el hilo del raid #${pending.raidId}:`, error);
+          warnings.push('no se pudo vincular el hilo privado; vuelve a editar el raid para reintentarlo');
+          return;
+        }
+
+        try {
+          const syncResult = await syncRaidThread(interaction.guild, runtime.raid);
+          if (!syncResult.ok) warnings.push('el hilo se creó, pero su acceso no pudo sincronizarse por completo');
+        } catch (error) {
+          console.error(`[ERROR] edit: no se pudo sincronizar el hilo del raid #${pending.raidId}:`, error);
+          warnings.push('el hilo se creó, pero su acceso no pudo sincronizarse por completo');
+        }
+        try {
+          const rendered = await raidRegistry.renderAndEdit(pending.raidId);
+          if (!rendered) throw new Error('Discord no actualizó el mensaje');
+        } catch (error) {
+          console.error(`[ERROR] edit: no se pudo mostrar el hilo en el raid #${pending.raidId}:`, error);
+          warnings.push('el hilo se creó, pero el mensaje no pudo mostrarlo todavía');
+        }
+      });
+    } catch (error) {
+      console.error(`[ERROR] edit: fallo inesperado creando el hilo del raid #${pending.raidId}:`, error);
+      warnings.push('no se pudo completar la creación del hilo privado');
+    }
+  } else if (!pending.threadEnabled && runtime.raid.threadId) {
+    warnings.push('el hilo existente se conservó; se elimina únicamente con su botón de confirmación');
+  }
+
+  pendingRaids.delete(pendingId);
+  if (missingRoles.length > 0) warnings.push(`${missingRoles.length} rol(es) ya no existen`);
+  await safeInteractionUpdate(interaction, {
+    content: `✅ Raid **#${pending.raidId}** actualizado correctamente.${warnings.length ? ` (${warnings.join('; ')})` : ''}`,
+    embeds: [],
+    components: [],
+  });
+
+  if (pending.shouldSendMassDm && roles.length > 0) {
+    enqueueDmBatch(interaction.guild.id, async () => {
+      const members = await interaction.guild.members.fetch();
+      const targets = members.filter((member) =>
+        !member.user.bot && roles.some((roleId) => member.roles.cache.has(roleId))
+      );
+      const messageUrl = `https://discord.com/channels/${interaction.guild.id}/${runtime.raid.channelId}/${runtime.raid.messageId}`;
+      const notification = createMassNotificationEmbed(
+        runtime.raid.title,
+        interaction.guild.name,
+        `<t:${runtime.raid.eventTimestamp}:F>`,
+        interaction.user.toString(),
+        messageUrl
+      );
+      for (const member of targets.values()) {
+        try { await member.send(notification); } catch { /* DMs cerrados */ }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }).catch((error) => console.error('[ERROR] edit: fallo notificando roles:', error));
+  }
+}
+
 
 /**
  * Comando para crear raids usando templates del servidor
@@ -795,6 +1328,8 @@ module.exports = {
               'Hora del evento en UTC (formato HH:MM) ej: "17:00", "21:30"'
             )
             .setRequired(true)
+            .setMinLength(4)
+            .setMaxLength(5)
         )
         .addStringOption((option) =>
           option
@@ -803,14 +1338,16 @@ module.exports = {
               "Especifica un título personalizado para la actividad (opcional)"
             )
             .setRequired(false)
+            .setMaxLength(256)
         )
         .addStringOption((option) =>
           option
             .setName("description")
             .setDescription(
               "Especifica una descripción personalizada para la actividad (opcional)"
-        )
-          .setRequired(false)
+            )
+            .setRequired(false)
+            .setMaxLength(4000)
         )
         .addStringOption((option) =>
           option
@@ -819,6 +1356,7 @@ module.exports = {
               "Especifica el color del embed en formato hexadecimal (#FFFFFF) (opcional)"
             )
             .setRequired(false)
+            .setMaxLength(7)
         )
         .addStringOption((option) =>
           option
@@ -827,14 +1365,16 @@ module.exports = {
               "Proporciona una URL para la imagen del embed (opcional)"
             )
             .setRequired(false)
+            .setMaxLength(1000)
         )
         .addStringOption((option) =>
           option
             .setName("reminder")
             .setDescription(
-              'Minutos antes del evento para enviar recordatorio ej: "10", "30" (opcional)'
+              'Antelación del recordatorio, ej: "10", "30m", "1h" (opcional)'
             )
             .setRequired(false)
+            .setMaxLength(10)
         )
         .addStringOption((option) =>
           option
@@ -843,6 +1383,7 @@ module.exports = {
               "Roles a notificar separados por coma: menciones, IDs o nombres (opcional)"
             )
             .setRequired(false)
+            .setMaxLength(1000)
             .setAutocomplete(true)
         )
         .addIntegerOption((option) =>
@@ -851,12 +1392,13 @@ module.exports = {
             .setDescription("Número máximo de looters permitidos (opcional)")
             .setRequired(false)
             .setMinValue(1)
+            .setMaxValue(100)
         )
         .addBooleanOption((option) =>
           option
             .setName("thread")
             .setDescription(
-              "Crea un hilo privado solo para los anotados; se borra al finalizar el raid (opcional)"
+              "Crea un hilo privado para los anotados; el líder decide cuándo borrarlo (opcional)"
             )
             .setRequired(false)
         )
@@ -887,29 +1429,72 @@ module.exports = {
             .setName("raid_id")
             .setDescription("ID de 6 caracteres del raid")
             .setRequired(true)
+            .setMinLength(6)
+            .setMaxLength(6)
         )
         .addStringOption((option) =>
           option
             .setName("title")
             .setDescription("Nuevo título del raid (opcional)")
             .setRequired(false)
+            .setMaxLength(256)
         )
         .addStringOption((option) =>
           option
             .setName("time")
             .setDescription('Nueva hora en UTC (formato HH:MM, opcional)')
             .setRequired(false)
+            .setMinLength(4)
+            .setMaxLength(5)
         )
         .addStringOption((option) =>
           option
             .setName("description")
             .setDescription("Nueva descripción del raid (opcional)")
             .setRequired(false)
+            .setMaxLength(4000)
         )
         .addStringOption((option) =>
           option
             .setName("color")
             .setDescription("Nuevo color en hexadecimal (#FFFFFF, opcional)")
+            .setRequired(false)
+            .setMaxLength(7)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("image")
+            .setDescription("Nueva URL de imagen (opcional)")
+            .setRequired(false)
+            .setMaxLength(1000)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("reminder")
+            .setDescription("Nuevo recordatorio: 10m, 1h o 0 para desactivar (opcional)")
+            .setRequired(false)
+            .setMaxLength(10)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("roles_to_notify")
+            .setDescription("Nuevos roles a notificar, separados por coma (opcional)")
+            .setRequired(false)
+            .setMaxLength(1000)
+            .setAutocomplete(true)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("looters")
+            .setDescription("Nuevo máximo de looters, 0 para desactivar (opcional)")
+            .setRequired(false)
+            .setMinValue(0)
+            .setMaxValue(100)
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName("thread")
+            .setDescription("Crear un hilo privado si todavía no existe (opcional)")
             .setRequired(false)
         )
     )
@@ -928,7 +1513,7 @@ module.exports = {
   async autocomplete(interaction) {
     let subcommand;
     try { subcommand = interaction.options.getSubcommand(); } catch { subcommand = null; }
-    if (subcommand !== 'create') return;
+    if (subcommand !== 'create' && subcommand !== 'edit') return;
 
     const focusedOption = interaction.options.getFocused(true);
 
@@ -954,6 +1539,8 @@ module.exports = {
       }
       return;
     }
+
+    if (subcommand !== 'create') return;
 
     if (focusedOption.name === 'template') {
       // Crear timeout para evitar interacciones que se cuelguen
@@ -1164,6 +1751,17 @@ module.exports = {
         });
       }
 
+      if (!isHttpUrl(finalImage)) {
+        const errorEmbed = createErrorEmbed(
+          'Imagen inválida',
+          'La imagen debe usar una URL http o https válida.'
+        );
+        return await safeReply(interaction, {
+          embeds: [errorEmbed],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
       const {
         roleIds: parsedNotificationRoles,
         unresolved: unresolvedRoles,
@@ -1234,6 +1832,7 @@ module.exports = {
       // Almacenar los parámetros del raid pendiente de confirmación
       const weaponOverrides = emptyOverrides();
       pendingRaids.set(interaction.id, {
+        mode: 'create',
         templateName,
         template,
         eventTimestamp,
@@ -1255,7 +1854,7 @@ module.exports = {
       setTimeout(() => pendingRaids.delete(interaction.id), 15 * 60 * 1000);
 
       // Mostrar el panel de configuración de armas antes de publicar
-      await interaction.editReply(buildOverviewPanel(template, weaponOverrides, interaction.id));
+      await interaction.editReply(overviewFor(pendingRaids.get(interaction.id), interaction.id));
 
     } catch (error) {
       console.error('[ERROR] Error en comando raid create:', error);
@@ -1278,6 +1877,7 @@ module.exports = {
   pendingRaids,
   handleWeaponConfigInteraction,
   handleConfirmRaidCreate,
+  handleConfirmRaidEdit,
   resolveMentionableRoles,
   safeInteractionUpdate,
 };
