@@ -100,11 +100,46 @@ const clearAuthorizedRoles = async (serverId) => {
   }
 };
 
+/**
+ * Reemplaza de forma idempotente la selección de roles de un servidor.
+ * Se usa en interfaces multi-select, donde el estado enviado por Discord es la
+ * fuente completa de verdad y no una sola operación add/remove.
+ */
+const syncAuthorizedRoles = async ({ serverId, roles, addedBy }) => {
+  const selected = Array.from(new Map(
+    (roles || []).map((role) => [String(role.id), role])
+  ).values());
+  const roleIds = selected.map((role) => String(role.id));
+
+  if (selected.length > 0) {
+    await AuthorizedRole.bulkWrite(selected.map((role) => ({
+      updateOne: {
+        filter: { serverId, roleId: String(role.id) },
+        update: {
+          $set: { roleName: role.name },
+          $setOnInsert: { serverId, roleId: String(role.id), addedBy, addedAt: new Date() },
+        },
+        upsert: true,
+      },
+    })));
+  }
+
+  // Elimina lo obsoleto después de asegurar lo seleccionado. Si el upsert
+  // falla, la configuración anterior permanece disponible.
+  await AuthorizedRole.deleteMany({
+    serverId,
+    ...(roleIds.length > 0 ? { roleId: { $nin: roleIds } } : {}),
+  });
+
+  return getAuthorizedRoles(serverId);
+};
+
 module.exports = {
   getAuthorizedRoles,
   isRoleAuthorized,
   isUserAuthorized,
   addAuthorizedRole,
   removeAuthorizedRole,
-  clearAuthorizedRoles
+  clearAuthorizedRoles,
+  syncAuthorizedRoles,
 };

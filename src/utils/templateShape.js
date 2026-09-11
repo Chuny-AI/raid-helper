@@ -7,8 +7,8 @@
  *
  * Este módulo centraliza la lectura/cálculo que antes estaba duplicado en:
  *  - scripts/migrate-max-players.js
- *  - src/lib/template/template-create-handlers.js (handleFinishGroup)
- *  - src/commands/utility/template.js (saveTemplateChanges)
+ *  - src/features/templates/domain/template-editor.js
+ *  - src/features/templates/application/template-editor-service.js
  *  - src/utils/embed.js (setCategoriesAndUnitsFromTemplate)
  */
 

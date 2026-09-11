@@ -38,7 +38,9 @@ const weaponSchema = new mongoose.Schema({
 const templateSchema = new mongoose.Schema({
   title: {
     type: String,
-    required: true
+    required: true,
+    trim: true,
+    maxlength: 100
   },
   description: {
     type: String,
@@ -86,6 +88,18 @@ const templateSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Un servidor no puede tener dos plantillas con el mismo nombre. La colación
+// evita variantes ambiguas como "Avalon" y "avalon", sin afectar a otros
+// servidores que sí pueden reutilizar ese título.
+templateSchema.index(
+  { serverId: 1, title: 1 },
+  {
+    unique: true,
+    name: 'uniq_template_server_title_ci',
+    collation: { locale: 'es', strength: 2 }
+  }
+);
 
 templateSchema.pre('save', function (next) {
   this.updatedAt = Date.now();

@@ -7,9 +7,10 @@
     "destroy-node-instances": "taskkill /F /IM node.exe",
     "check-commands": "node --env-file=.env check-commands.js",
     "cli": "node --env-file=.env scripts/cli.js",
+    "db:template-title-index": "node --env-file=.env scripts/ensure-template-title-index.js",
     "railway": "node index.js",
     "test:weapons": "node scripts/raid-weapon-config-smoke.js && node scripts/raid-config-panel-smoke.js && node scripts/raid-weapon-panel-smoke.js",
-    "test:all": "node scripts/raidstate-smoke.js && node scripts/render-smoke.js && node scripts/migration-smoke.js && node scripts/raidevent-schema-smoke.js && npm run test:weapons && npm run test:roles && npm run test:emoji && npm run test:weapons-source && npm run test:weapons-seed && npm run test:resilience && npm run test:thread && npm run test:persist && npm run test:decoder && npm run test:embed-limits && npm run test:attendance && npm run test:security && npm run test:economy-atomic && npm run test:raid-edit",
+    "test:all": "node scripts/raidstate-smoke.js && node scripts/render-smoke.js && node scripts/migration-smoke.js && node scripts/raidevent-schema-smoke.js && npm run test:weapons && npm run test:roles && npm run test:emoji && npm run test:weapons-source && npm run test:weapons-seed && npm run test:resilience && npm run test:thread && npm run test:persist && npm run test:decoder && npm run test:embed-limits && npm run test:attendance && npm run test:security && npm run test:economy-atomic && npm run test:raid-edit && npm run test:template-architecture && npm run test:template-editor-domain && npm run test:template-flow && npm run test:template-save && npm run test:setup && npm run test:setup-sync && npm run test:template-transfer && npm run test:template-screens",
     "test:roles": "node scripts/roles-to-notify-smoke.js",
     "test:emoji": "node scripts/emoji-smoke.js",
     "test:weapons-source": "node scripts/weapons-source-smoke.js",
@@ -22,7 +23,15 @@
     "test:attendance": "node scripts/raid-attendance-smoke.js",
     "test:security": "node scripts/security-regressions-smoke.js",
     "test:economy-atomic": "node scripts/economy-atomic-smoke.js",
-    "test:raid-edit": "node scripts/raid-edit-flow-smoke.js"
+    "test:raid-edit": "node scripts/raid-edit-flow-smoke.js",
+    "test:template-architecture": "node scripts/template-architecture-smoke.js",
+    "test:template-editor-domain": "node scripts/template-editor-domain-smoke.js",
+    "test:template-flow": "node scripts/template-unified-flow-smoke.js",
+    "test:template-save": "node scripts/template-editor-save-smoke.js",
+    "test:setup": "node scripts/setup-interactive-smoke.js",
+    "test:setup-sync": "node scripts/setup-role-sync-smoke.js",
+    "test:template-transfer": "node scripts/template-transfer-smoke.js",
+    "test:template-screens": "node scripts/template-edit-screens-smoke.js"
   },
   "keywords": [
     "discord",

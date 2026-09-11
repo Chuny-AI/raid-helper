@@ -152,7 +152,7 @@ module.exports = {
     if (!isAdmin && !hasRole) {
       const errorEmbed = createErrorEmbed(
         'Acceso Denegado',
-        'No tienes permisos para usar este comando.\nSolo los usuarios con roles autorizados (configurados con `/roles`) o administradores pueden enviar notificaciones.',
+        'No tienes permisos para usar este comando.\nSolo los usuarios con roles autorizados (configurados con `/setup`) o administradores pueden enviar notificaciones.',
       );
       return interaction.editReply({ embeds: [errorEmbed] });
     }

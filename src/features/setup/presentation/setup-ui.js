@@ -1,0 +1,168 @@
+const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelSelectMenuBuilder,
+  ChannelType,
+  EmbedBuilder,
+  PermissionFlagsBits,
+  RoleSelectMenuBuilder,
+} = require('discord.js');
+
+const componentId = (action, userId, guildId) => `setup:${action}:${userId}:${guildId}`;
+
+const parseComponentId = (customId) => {
+  const [prefix, action, userId, guildId, extra] = String(customId || '').split(':');
+  if (prefix !== 'setup' || !action || !userId || !guildId || extra !== undefined) return null;
+  return { action, userId, guildId };
+};
+
+const navigationRow = (userId, guildId) => new ActionRowBuilder().addComponents(
+  new ButtonBuilder()
+    .setCustomId(componentId('home', userId, guildId))
+    .setLabel('Volver al resumen')
+    .setEmoji('⬅️')
+    .setStyle(ButtonStyle.Secondary),
+);
+
+const buildDashboard = ({ status, userId, guildId }) => {
+  const baseStatus = status.baseReady ? '✅ Configurado' : '⚠️ Pendiente';
+  const economyStatus = status.economyReady ? '✅ Configurada' : '➖ Opcional';
+  const embed = new EmbedBuilder()
+    .setTitle('🧭 Configuración inicial del bot')
+    .setDescription('Completa la configuración básica desde este asistente. Los cambios se guardan al seleccionar cada opción.')
+    .setColor(status.baseReady ? 0x57f287 : 0xfee75c)
+    .addFields(
+      {
+        name: `${baseStatus} · Roles gestores`,
+        value: status.authorizedRoleIds.length > 0
+          ? status.authorizedRoleIds.map((id) => `<@&${id}>`).join(', ')
+          : 'Selecciona al menos un rol que pueda crear raids y plantillas.',
+      },
+      {
+        name: `${economyStatus} · Economía`,
+        value: [
+          `Canal: ${status.economyChannelId ? `<#${status.economyChannelId}>` : 'sin configurar'}`,
+          `Roles: ${status.economyRoleIds.length > 0 ? status.economyRoleIds.map((id) => `<@&${id}>`).join(', ') : 'sin configurar'}`,
+        ].join('\n'),
+      },
+    );
+
+  if (status.staleAuthorizedRoles || status.staleEconomyRoles) {
+    embed.addFields({
+      name: '🧹 Configuración obsoleta detectada',
+      value: 'Hay referencias a roles eliminados. Guarda nuevamente la sección correspondiente para limpiarlas.',
+    });
+  }
+
+  const mainRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(componentId('roles', userId, guildId)).setLabel('Roles gestores').setEmoji('🛡️').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(componentId('economy', userId, guildId)).setLabel('Economía').setEmoji('💰').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(componentId('check', userId, guildId)).setLabel('Verificar permisos').setEmoji('🔎').setStyle(ButtonStyle.Secondary),
+  );
+  const finishRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(componentId('finish', userId, guildId))
+      .setLabel(status.baseReady ? 'Finalizar configuración' : 'Falta un rol gestor')
+      .setEmoji(status.baseReady ? '✅' : '⚠️')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!status.baseReady),
+  );
+  return { embeds: [embed], components: [mainRow, finishRow] };
+};
+
+const buildRolesScreen = ({ status, userId, guildId }) => {
+  const select = new RoleSelectMenuBuilder()
+    .setCustomId(componentId('roles-save', userId, guildId))
+    .setPlaceholder('Selecciona hasta 25 roles gestores')
+    .setMinValues(1)
+    .setMaxValues(25);
+  if (status.authorizedRoleIds.length > 0) select.setDefaultRoles(...status.authorizedRoleIds.slice(0, 25));
+
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle('🛡️ Roles gestores')
+      .setDescription('Quienes tengan cualquiera de estos roles podrán crear y editar raids, plantillas y notificaciones. Los administradores siempre conservan acceso.')
+      .setColor(0x5865f2)],
+    components: [
+      new ActionRowBuilder().addComponents(select),
+      navigationRow(userId, guildId),
+    ],
+  };
+};
+
+const buildEconomyScreen = ({ status, userId, guildId }) => {
+  const roleSelect = new RoleSelectMenuBuilder()
+    .setCustomId(componentId('economy-roles-save', userId, guildId))
+    .setPlaceholder('Selecciona roles para gestionar economía')
+    .setMinValues(1)
+    .setMaxValues(25);
+  if (status.economyRoleIds.length > 0) roleSelect.setDefaultRoles(...status.economyRoleIds.slice(0, 25));
+
+  const channelSelect = new ChannelSelectMenuBuilder()
+    .setCustomId(componentId('economy-channel-save', userId, guildId))
+    .setPlaceholder('Selecciona el canal de auditoría')
+    .setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+    .setMinValues(1)
+    .setMaxValues(1);
+  if (status.economyChannelId) channelSelect.setDefaultChannels(status.economyChannelId);
+
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle('💰 Configuración de economía')
+      .setDescription('El canal guarda la auditoría pública de cada movimiento. Los roles seleccionados podrán operar el sistema; los administradores siempre conservan acceso.')
+      .setColor(0xf1c40f)],
+    components: [
+      new ActionRowBuilder().addComponents(roleSelect),
+      new ActionRowBuilder().addComponents(channelSelect),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(componentId('economy-clear', userId, guildId)).setLabel('Desactivar economía').setEmoji('🧹').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(componentId('home', userId, guildId)).setLabel('Volver al resumen').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
+};
+
+const permissionChecks = [
+  [PermissionFlagsBits.ViewChannel, 'Ver canales'],
+  [PermissionFlagsBits.SendMessages, 'Enviar mensajes'],
+  [PermissionFlagsBits.EmbedLinks, 'Insertar enlaces'],
+  [PermissionFlagsBits.AttachFiles, 'Adjuntar archivos'],
+  [PermissionFlagsBits.UseExternalEmojis, 'Usar emojis externos'],
+  [PermissionFlagsBits.CreatePrivateThreads, 'Crear hilos privados'],
+  [PermissionFlagsBits.SendMessagesInThreads, 'Escribir en hilos'],
+  [PermissionFlagsBits.ManageThreads, 'Gestionar hilos'],
+];
+
+const buildPermissionScreen = ({ permissions, userId, guildId }) => {
+  const lines = permissionChecks.map(([flag, label]) => `${permissions?.has(flag) ? '✅' : '❌'} ${label}`);
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle('🔎 Verificación de permisos')
+      .setDescription(lines.join('\n'))
+      .setColor(lines.some((line) => line.startsWith('❌')) ? 0xed4245 : 0x57f287)
+      .setFooter({ text: 'La comprobación corresponde al canal donde ejecutaste /setup.' })],
+    components: [navigationRow(userId, guildId)],
+  };
+};
+
+const buildEconomyClearConfirmation = ({ userId, guildId }) => ({
+  embeds: [new EmbedBuilder()
+    .setTitle('⚠️ Desactivar economía')
+    .setDescription('Se eliminarán el canal de auditoría y todos los roles autorizados de economía. Los balances y movimientos existentes no se borrarán.')
+    .setColor(0xed4245)],
+  components: [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(componentId('economy-clear-confirm', userId, guildId)).setLabel('Sí, desactivar').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(componentId('economy', userId, guildId)).setLabel('Cancelar').setStyle(ButtonStyle.Secondary),
+  )],
+});
+
+module.exports = {
+  buildDashboard,
+  buildEconomyClearConfirmation,
+  buildEconomyScreen,
+  buildPermissionScreen,
+  buildRolesScreen,
+  componentId,
+  parseComponentId,
+};

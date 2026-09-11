@@ -37,7 +37,7 @@ const limiter = require('../src/utils/notificationLimiter');
 
   assert.doesNotThrow(() => require('../src/services/authorizedUserService'));
   assert.doesNotThrow(() => require('../src/services/userCategoryService'));
-  assert.doesNotThrow(() => require('../src/middleware/templateInteractionMiddleware'));
+  assert.doesNotThrow(() => require('../src/features/templates/presentation/template-editor-controller'));
 
   limiter.resetForTests();
   assert.strictEqual(limiter.consumeNotificationPermit('g1', 'u1', 1_000_000).ok, true);

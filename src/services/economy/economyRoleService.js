@@ -42,6 +42,33 @@ const resetEconomyRoles = async ({ guildId }) => {
   return await EconomyRole.deleteMany({ guildId });
 };
 
+const syncEconomyRoles = async ({ guildId, roles, addedBy }) => {
+  const selected = Array.from(new Map(
+    (roles || []).map((role) => [String(role.id), role])
+  ).values());
+  const roleIds = selected.map((role) => String(role.id));
+
+  if (selected.length > 0) {
+    await EconomyRole.bulkWrite(selected.map((role) => ({
+      updateOne: {
+        filter: { guildId, roleId: String(role.id) },
+        update: {
+          $set: { roleName: role.name },
+          $setOnInsert: { guildId, roleId: String(role.id), addedBy, addedAt: new Date() },
+        },
+        upsert: true,
+      },
+    })));
+  }
+
+  await EconomyRole.deleteMany({
+    guildId,
+    ...(roleIds.length > 0 ? { roleId: { $nin: roleIds } } : {}),
+  });
+
+  return listEconomyRoles(guildId);
+};
+
 const canManageEconomyRoles = (member) => {
   return Boolean(member?.permissions?.has(PermissionFlagsBits.Administrator));
 };
@@ -52,5 +79,6 @@ module.exports = {
   addEconomyRole,
   removeEconomyRole,
   resetEconomyRoles,
+  syncEconomyRoles,
   canManageEconomyRoles,
 };

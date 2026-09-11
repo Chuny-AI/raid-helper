@@ -73,6 +73,10 @@ const addMoney = async ({ guildId, userId, executorId, amount, description = '' 
   });
 };
 
+const clearLogChannel = async (guildId) => {
+  return await EconomyLogChannel.findOneAndDelete({ guildId });
+};
+
 const removeMoney = async ({ guildId, userId, executorId, amount, description = '' }) => {
   ensurePositiveAmount(amount);
 
@@ -123,6 +127,7 @@ const getDebtors = async (guildId, limit = 10) => {
 module.exports = {
   getLogChannel,
   setLogChannel,
+  clearLogChannel,
   getBalance,
   getLeaderboard,
   getDebtors,

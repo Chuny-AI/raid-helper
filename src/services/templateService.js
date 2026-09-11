@@ -1,6 +1,14 @@
 const Template = require('../database/models/Template');
 const Server = require('../database/models/Server');
 
+const TEMPLATE_TITLE_COLLATION = { locale: 'es', strength: 2 };
+
+const duplicateTitleError = (title) => {
+  const error = new Error(`Ya existe una plantilla llamada "${String(title || '').trim()}" en este servidor.`);
+  error.code = 'TEMPLATE_NAME_CONFLICT';
+  return error;
+};
+
 /**
  * Obtiene todos los templates de un servidor
  */
@@ -21,7 +29,7 @@ const getTemplateByName = async (templateName, serverId) => {
     return await Template.findOne({
       title: templateName,
       serverId
-    });
+    }).collation(TEMPLATE_TITLE_COLLATION);
   } catch (error) {
     console.error('[ERROR] Error en getTemplateByName:', error);
     throw error;
@@ -72,6 +80,7 @@ const createTemplate = async (templateData, serverId) => {
     return savedTemplate;
   } catch (error) {
     console.error('[ERROR] Error en createTemplate:', error);
+    if (error?.code === 11000) throw duplicateTitleError(templateData?.title);
     throw error;
   }
 };
@@ -84,7 +93,7 @@ const createTemplate = async (templateData, serverId) => {
  * secas escribiría en el template de cualquier gremio. Que el filtro esté
  * aquí y no en cada llamada es lo que impide que se olvide en la siguiente.
  */
-const updateTemplate = async (templateId, updateData, serverId) => {
+const updateTemplate = async (templateId, updateData, serverId, expectedUpdatedAt = null) => {
   try {
     console.log(`[DEBUG] updateTemplate - Actualizando template ${templateId}`);
     console.log(`[DEBUG] updateTemplate - Datos recibidos:`, JSON.stringify(updateData, null, 2));
@@ -97,8 +106,10 @@ const updateTemplate = async (templateId, updateData, serverId) => {
       throw new Error('serverId es requerido para actualizar un template');
     }
     
+    const safeUpdate = { ...updateData, updatedAt: new Date() };
+
     // Validar estructura de weapons si está presente
-    if (updateData.weapons !== undefined) {
+    if (safeUpdate.weapons !== undefined) {
       console.log(`[DEBUG] updateTemplate - Validando estructura de weapons`);
       console.log(`[DEBUG] updateTemplate - weapons type:`, typeof updateData.weapons);
       console.log(`[DEBUG] updateTemplate - weapons isArray:`, Array.isArray(updateData.weapons));
@@ -118,17 +129,22 @@ const updateTemplate = async (templateId, updateData, serverId) => {
         return data;
       };
 
-      updateData.weapons = removeSendBuild(updateData.weapons);
+      safeUpdate.weapons = removeSendBuild(safeUpdate.weapons);
     }
-    
+
+    const filter = { _id: templateId, serverId };
+    if (expectedUpdatedAt) filter.updatedAt = new Date(expectedUpdatedAt);
+
     const result = await Template.findOneAndUpdate(
-      { _id: templateId, serverId },
-      updateData,
-      { new: true }
+      filter,
+      safeUpdate,
+      { new: true, runValidators: true }
     );
     
     if (!result) {
-      throw new Error(`Template con ID ${templateId} no encontrado en este servidor`);
+      throw new Error(expectedUpdatedAt
+        ? 'La plantilla cambió en otra sesión. Vuelve a abrir el editor para no sobrescribir esos cambios.'
+        : `Template con ID ${templateId} no encontrado en este servidor`);
     }
     
     console.log(`[DEBUG] updateTemplate - Template actualizado exitosamente`);
@@ -144,6 +160,7 @@ const updateTemplate = async (templateId, updateData, serverId) => {
     console.error('[ERROR] Error en updateTemplate:', error);
     console.error('[ERROR] Template ID:', templateId);
     console.error('[ERROR] Update data:', JSON.stringify(updateData, null, 2));
+    if (error?.code === 11000) throw duplicateTitleError(updateData?.title);
     throw error;
   }
 };
@@ -239,10 +256,7 @@ const migrateTemplatesFromFiles = async (serverId) => {
       const filePath = path.join(templatesPath, file);
       const templateData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-      const existingTemplate = await Template.findOne({
-        title: templateData.title,
-        serverId
-      });
+      const existingTemplate = await getTemplateByName(templateData.title, serverId);
 
       if (!existingTemplate) {
         if (!templateData.url) {
@@ -277,6 +291,7 @@ const migrateTemplatesFromFiles = async (serverId) => {
 };
 
 module.exports = {
+  TEMPLATE_TITLE_COLLATION,
   getTemplatesByServer,
   getTemplateByName,
   getTemplateById,

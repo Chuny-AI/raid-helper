@@ -5,16 +5,13 @@ const { evaluatePolicy, formatPolicyRequirement } = require('../middleware/permi
 const permissionsConfig = {
   raid: [['admin', 'authorizedroles']],
   template: { default: [['admin', 'authorizedroles']] },
-  roles: ['admin'],
+  setup: ['admin'],
   status: ['admin'],
   split: [['admin', 'authorizedroles']],
   notify: [['admin', 'authorizedroles']],
   show_all_weapons: [['admin', 'authorizedroles']],
   show_all_categories: [['admin', 'authorizedroles']]
 };
-
-// Comandos que gestionan sus propios permisos internamente (no requieren política en el filtro)
-const selfManagedCommands = new Set(['eco']);
 
 const filterCommand = async (interaction) => {
   let commandName = null;
@@ -36,9 +33,7 @@ const filterCommand = async (interaction) => {
     }
 
     if (!policy) {
-      if (!selfManagedCommands.has(commandName)) {
-        console.log(`[FILTER] Comando ${commandName} sin política definida, permitiendo ejecución`);
-      }
+      console.log(`[FILTER] Comando ${commandName} sin política definida, permitiendo ejecución`);
       return true;
     }
 
