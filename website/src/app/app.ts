@@ -1,4 +1,23 @@
-import { Component, HostListener, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideArrowRight,
+  lucideCalendarClock,
+  lucideCircleCheck,
+  lucideClock3,
+  lucideLayers3,
+  lucideMenu,
+  lucideSearch,
+  lucideShield,
+  lucideSwords,
+  lucideUsers,
+} from '@ng-icons/lucide';
+import { HlmBadgeImports } from '@spartan-ng/helm/badge';
+import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmCardImports } from '@spartan-ng/helm/card';
+import { HlmDialogImports } from '@spartan-ng/helm/dialog';
+import { HlmSeparatorImports } from '@spartan-ng/helm/separator';
+import { HlmTabsImports } from '@spartan-ng/helm/tabs';
 
 type EvidenceCategory = 'raids' | 'templates';
 
@@ -12,15 +31,37 @@ interface Evidence {
 
 @Component({
   selector: 'app-root',
-  imports: [],
+  imports: [
+    NgIcon,
+    HlmBadgeImports,
+    HlmButtonImports,
+    HlmCardImports,
+    HlmDialogImports,
+    HlmSeparatorImports,
+    HlmTabsImports,
+  ],
+  providers: [
+    provideIcons({
+      lucideArrowRight,
+      lucideCalendarClock,
+      lucideCircleCheck,
+      lucideClock3,
+      lucideLayers3,
+      lucideMenu,
+      lucideSearch,
+      lucideShield,
+      lucideSwords,
+      lucideUsers,
+    }),
+  ],
   templateUrl: './app.html',
   styleUrl: './app.css',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App {
   protected readonly currentYear = new Date().getFullYear();
   protected readonly activeCategory = signal<EvidenceCategory>('raids');
   protected readonly activeEvidenceIndex = signal(0);
-  protected readonly lightboxOpen = signal(false);
   protected readonly mobileMenuOpen = signal(false);
 
   protected readonly evidences: readonly Evidence[] = [
@@ -92,27 +133,11 @@ export class App {
     this.activeEvidenceIndex.set(index);
   }
 
-  protected openEvidence(index: number): void {
-    this.activeEvidenceIndex.set(index);
-    this.lightboxOpen.set(true);
-    document.body.classList.add('dialog-open');
-  }
-
-  protected closeEvidence(): void {
-    this.lightboxOpen.set(false);
-    document.body.classList.remove('dialog-open');
-  }
-
   protected toggleMobileMenu(): void {
     this.mobileMenuOpen.update((open) => !open);
   }
 
   protected closeMobileMenu(): void {
     this.mobileMenuOpen.set(false);
-  }
-
-  @HostListener('document:keydown.escape')
-  protected onEscape(): void {
-    if (this.lightboxOpen()) this.closeEvidence();
   }
 }

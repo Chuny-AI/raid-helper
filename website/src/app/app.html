@@ -1,244 +1,256 @@
 <header class="site-header">
-  <a class="brand" href="#inicio" aria-label="Albions, volver al inicio">
-    <span class="brand-mark" aria-hidden="true">A</span>
-    <span>Albions</span>
-  </a>
+  <div class="shell header-inner">
+    <a class="brand" href="#inicio" aria-label="Albions, volver al inicio">
+      <span class="brand-icon"><ng-icon name="lucideShield" /></span>
+      <span>Albions</span>
+    </a>
 
-  <button
-    class="menu-toggle"
-    type="button"
-    [attr.aria-label]="mobileMenuOpen() ? 'Cerrar navegación' : 'Abrir navegación'"
-    [attr.aria-expanded]="mobileMenuOpen()"
-    (click)="toggleMobileMenu()"
-  >
-    <span></span><span></span>
-  </button>
+    <nav [class.open]="mobileMenuOpen()" aria-label="Navegación principal">
+      <a href="#funciones" (click)="closeMobileMenu()">Funciones</a>
+      <a href="#espera" (click)="closeMobileMenu()">Lista de espera</a>
+      <a href="#evidencias" (click)="closeMobileMenu()">Evidencias</a>
+    </nav>
 
-  <nav [class.open]="mobileMenuOpen()" aria-label="Navegación principal">
-    <a href="#sistema" (click)="closeMobileMenu()">El sistema</a>
-    <a href="#espera" (click)="closeMobileMenu()">Lista de espera</a>
-    <a href="#evidencias" (click)="closeMobileMenu()">Evidencias</a>
-  </nav>
-
-  <a class="header-cta" href="#evidencias">Abrir el archivo</a>
+    <a hlmBtn variant="outline" class="header-action" href="#evidencias">Ver el bot</a>
+    <button
+      hlmBtn
+      variant="ghost"
+      size="icon"
+      class="menu-toggle"
+      type="button"
+      [attr.aria-label]="mobileMenuOpen() ? 'Cerrar navegación' : 'Abrir navegación'"
+      [attr.aria-expanded]="mobileMenuOpen()"
+      (click)="toggleMobileMenu()"
+    >
+      <ng-icon name="lucideMenu" />
+    </button>
+  </div>
 </header>
 
 <main>
-  <section class="hero" id="inicio">
+  <section class="hero shell" id="inicio">
     <div class="hero-copy">
-      <p class="hero-kicker">Organización de raids dentro de Discord</p>
-      <h1>El raid se organiza antes del ping.</h1>
-      <p class="hero-lead">
-        Albions convierte una composición en plazas reales. Cada jugador encuentra su arma,
-        la espera cubre las ausencias y el cierre conserva quién asistió.
+      <span hlmBadge variant="secondary" class="product-badge">
+        <span class="live-dot" aria-hidden="true"></span>
+        Bot para Albion Online
+      </span>
+      <h1>Raids claras.<br>Grupos listos.</h1>
+      <p>
+        Organiza composiciones, armas, suplencias y asistencia sin convertir el canal de Discord
+        en una lista interminable de mensajes.
       </p>
       <div class="hero-actions">
-        <a class="button button-light" href="#evidencias">Ver una raid completa</a>
-        <a class="text-link" href="#sistema">Entender el flujo <span aria-hidden="true">↓</span></a>
+        <a hlmBtn size="lg" href="#evidencias">
+          Ver raids reales
+          <ng-icon name="lucideArrowRight" data-icon="inline-end" />
+        </a>
+        <a hlmBtn size="lg" variant="outline" href="#funciones">Cómo funciona</a>
       </div>
-      <p class="hero-note">Hecho para Albion Online. Operado sin salir de Discord.</p>
-    </div>
-
-    <div class="hero-case" aria-label="Evidencia real de una raid gestionada con Albions">
-      <div class="case-heading">
-        <span>Parte de operaciones</span>
-        <strong>Raid finalizada</strong>
+      <div class="trust-row" aria-label="Características principales">
+        <span><ng-icon name="lucideCircleCheck" /> Setup interactivo</span>
+        <span><ng-icon name="lucideCircleCheck" /> Dentro de Discord</span>
+        <span><ng-icon name="lucideCircleCheck" /> Sin límites de selects</span>
       </div>
-      <figure class="case-screen">
-        <img src="evidencias/raid-avalon-03.png" alt="Raid gremial real gestionada por Albions" width="378" height="1185">
-      </figure>
-      <dl class="case-data">
-        <div><dt>Composición</dt><dd>por arma</dd></div>
-        <div><dt>Sustituciones</dt><dd>automáticas</dd></div>
-        <div><dt>Cierre</dt><dd>verificable</dd></div>
-      </dl>
-    </div>
-  </section>
-
-  <section class="operation-line" aria-label="Áreas que organiza Albions">
-    <p>Una sola fuente de verdad para el líder y el grupo.</p>
-    <ul>
-      <li>Plantilla</li>
-      <li>Composición</li>
-      <li>Espera</li>
-      <li>Asistencia</li>
-    </ul>
-  </section>
-
-  <section class="system section" id="sistema">
-    <div class="section-intro">
-      <p class="section-label">El sistema</p>
-      <h2>La estrategia deja de vivir entre mensajes sueltos.</h2>
-      <p>Albions ordena las decisiones que normalmente se pierden entre menciones, listas copiadas y cambios de último minuto.</p>
     </div>
 
-    <div class="briefing-list">
-      <article class="briefing briefing-composition">
-        <p class="briefing-index">01</p>
+    <section hlmCard class="raid-preview">
+      <div hlmCardHeader class="raid-preview-header">
+        <div class="bot-avatar">A</div>
         <div>
-          <h3>Publica una composición que se entiende sola.</h3>
-          <p>Grupos, armas, cupos y requisitos aparecen donde la gente ya está: el mensaje del raid.</p>
+          <h2 hlmCardTitle>Chuny BOT</h2>
+          <p hlmCardDescription>Raid #6E6QN · Finalizada</p>
         </div>
-        <div class="formation-board" aria-label="Ejemplo de composición de grupos">
-          <span><b>DPS 1</b><i>5 de 5</i></span>
-          <span><b>Support</b><i>2 de 2</i></span>
-          <span><b>Healer</b><i>1 de 1</i></span>
+        <span hlmBadge variant="outline" class="status-badge">Completada</span>
+      </div>
+      <div hlmCardContent class="raid-preview-content">
+        <div class="discord-shot">
+          <img src="evidencias/raid-avalon-03.png" alt="Raid real organizada con Albions" width="378" height="1185">
         </div>
-      </article>
+        <div class="raid-summary">
+          <div><span>Asistieron</span><strong>10</strong></div>
+          <div><span>En espera</span><strong>2</strong></div>
+          <div><span>Grupos</span><strong>5</strong></div>
+        </div>
+      </div>
+    </section>
+  </section>
 
-      <article class="briefing briefing-template">
-        <p class="briefing-index">02</p>
-        <div>
-          <h3>Edita plantillas sin memorizar comandos.</h3>
-          <p>Información, configuración, roles y armas se resuelven mediante un setup guiado que permite avanzar y volver sin romper el proceso.</p>
-        </div>
-        <figure class="briefing-image">
-          <img src="evidencias/plantilla-editor.png" alt="Panel visual para editar una plantilla de Albions" loading="lazy">
-        </figure>
-      </article>
+  <div class="shell"><div hlmSeparator></div></div>
 
-      <article class="briefing briefing-scale">
-        <p class="briefing-index">03</p>
-        <div>
-          <h3>Encuentra una plaza incluso en formaciones grandes.</h3>
-          <p>El navegador privado permite buscar y recorrer grupos y armas sin depender de un único selector de Discord.</p>
+  <section class="capability-strip shell" aria-label="Qué resuelve Albions">
+    <article>
+      <ng-icon name="lucideLayers3" />
+      <div><strong>Plantillas reutilizables</strong><span>Configura una vez, edita cuando quieras.</span></div>
+    </article>
+    <article>
+      <ng-icon name="lucideSearch" />
+      <div><strong>Búsqueda para raids grandes</strong><span>Encuentra grupo y arma sin pelear con Discord.</span></div>
+    </article>
+    <article>
+      <ng-icon name="lucideCalendarClock" />
+      <div><strong>Asistencia verificable</strong><span>El cierre conserva el roster definitivo.</span></div>
+    </article>
+  </section>
+
+  <section class="features shell section" id="funciones">
+    <div class="section-heading">
+      <span hlmBadge variant="outline">Un flujo completo</span>
+      <h2>Todo lo necesario para formar sin improvisar.</h2>
+      <p>Desde la plantilla hasta el cierre de asistencia, cada paso queda en el mismo sistema.</p>
+    </div>
+
+    <div class="feature-grid">
+      <section hlmCard class="feature-card feature-main">
+        <div hlmCardHeader>
+          <span class="icon-tile"><ng-icon name="lucideSwords" /></span>
+          <h3 hlmCardTitle>Composición por plazas reales</h3>
+          <p hlmCardDescription>Cada jugador ve el grupo, el arma y el cupo exacto al que puede unirse.</p>
         </div>
-        <div class="search-demo" aria-hidden="true">
-          <span>Buscar grupo o arma</span>
-          <strong>falce de cristal</strong>
-          <i>3 plazas compatibles</i>
+        <div hlmCardContent class="composition-ui">
+          <div class="composition-head"><span>Formación Avaloniana</span><span>8 / 10 listos</span></div>
+          <div class="group-row"><span class="role-icon red">D1</span><strong>DPS 1</strong><small>5 plazas</small><span hlmBadge variant="secondary">Completo</span></div>
+          <div class="group-row"><span class="role-icon blue">S</span><strong>Support</strong><small>2 plazas</small><span hlmBadge variant="outline">1 libre</span></div>
+          <div class="group-row"><span class="role-icon gold">H</span><strong>Healer</strong><small>1 plaza</small><span hlmBadge variant="secondary">Completo</span></div>
         </div>
-      </article>
+      </section>
+
+      <section hlmCard class="feature-card feature-template">
+        <div hlmCardHeader>
+          <span class="icon-tile"><ng-icon name="lucideLayers3" /></span>
+          <h3 hlmCardTitle>Setup visual de plantillas</h3>
+          <p hlmCardDescription>Edita información, roles y armas con botones y formularios.</p>
+        </div>
+        <div hlmCardContent>
+          <img src="evidencias/plantilla-editor.png" alt="Editor interactivo de plantillas de Albions" loading="lazy">
+        </div>
+      </section>
+
+      <section hlmCard class="feature-card feature-search">
+        <div hlmCardHeader>
+          <span class="icon-tile"><ng-icon name="lucideSearch" /></span>
+          <h3 hlmCardTitle>Preparado para formaciones grandes</h3>
+          <p hlmCardDescription>Un buscador privado reemplaza los selectores que se quedan cortos.</p>
+        </div>
+        <div hlmCardContent class="search-panel">
+          <div class="search-box"><ng-icon name="lucideSearch" /><span>Falce de cristal</span></div>
+          <div class="search-result"><span><strong>DPS 1</strong><small>Falce de cristal</small></span><span hlmBadge>Disponible</span></div>
+          <div class="search-result"><span><strong>DPS 3</strong><small>Falce de cristal</small></span><span hlmBadge variant="outline">En espera</span></div>
+        </div>
+      </section>
     </div>
   </section>
 
-  <section class="waitlist" id="espera">
-    <div class="waitlist-copy">
-      <p class="section-label">Lista de espera inteligente</p>
-      <h2>Una misma arma. Una sola elección.</h2>
-      <p>
-        Si Falce de cristal aparece en varios grupos, el jugador no ve opciones duplicadas.
-        Elige el arma una vez y Albions conserva todas las plazas compatibles para promoverlo cuando alguna se libere.
-      </p>
-    </div>
+  <section class="waitlist-section" id="espera">
+    <div class="shell waitlist-grid">
+      <div class="waitlist-copy">
+        <span hlmBadge variant="secondary"><ng-icon name="lucideClock3" /> Lista de espera inteligente</span>
+        <h2>El jugador elige el arma una vez.</h2>
+        <p>
+          Si una Falce de cristal aparece en varios grupos, Albions muestra una sola opción.
+          Por debajo conserva todas las plazas compatibles y promueve automáticamente al siguiente jugador.
+        </p>
+        <ul>
+          <li><ng-icon name="lucideCircleCheck" /> Sin armas duplicadas</li>
+          <li><ng-icon name="lucideCircleCheck" /> Promoción al cupo compatible</li>
+          <li><ng-icon name="lucideCircleCheck" /> Aviso directo al jugador</li>
+        </ul>
+      </div>
 
-    <div class="waitlist-diagram" aria-label="Tres plazas de Falce de cristal se agrupan en una sola opción de espera">
-      <div class="slot-list">
-        <span><small>DPS 1</small><strong>Falce de cristal</strong></span>
-        <span><small>DPS 2</small><strong>Falce de cristal</strong></span>
-        <span><small>DPS 3</small><strong>Falce de cristal</strong></span>
-      </div>
-      <div class="merge-line" aria-hidden="true"><span></span></div>
-      <div class="unique-choice">
-        <small>Opción para el jugador</small>
-        <strong>Falce de cristal</strong>
-        <span>1 elección · 3 plazas compatibles</span>
-      </div>
+      <section hlmCard class="waitlist-card">
+        <div hlmCardHeader>
+          <div>
+            <h3 hlmCardTitle>Elegir arma para esperar</h3>
+            <p hlmCardDescription>Albions agrupó 3 plazas compatibles.</p>
+          </div>
+          <span hlmBadge variant="outline">3 grupos</span>
+        </div>
+        <div hlmCardContent class="waitlist-options">
+          <div class="weapon-choice selected">
+            <span class="weapon-mark">F</span>
+            <span><strong>Falce de cristal</strong><small>DPS 1, DPS 2 y DPS 3</small></span>
+            <span class="check"><ng-icon name="lucideCircleCheck" /></span>
+          </div>
+          <div class="weapon-choice muted-choice">
+            <span class="weapon-mark">B</span>
+            <span><strong>Bastón de raíz férrea</strong><small>Support · 1 plaza compatible</small></span>
+          </div>
+        </div>
+        <div hlmCardFooter>
+          <button hlmBtn class="full-button">Entrar en lista de espera</button>
+        </div>
+      </section>
     </div>
   </section>
 
-  <section class="evidence section" id="evidencias">
-    <div class="evidence-head">
-      <div>
-        <p class="section-label">Archivo de campo</p>
-        <h2>Lo que ocurre en Discord queda a la vista.</h2>
-      </div>
-      <p>Estas son capturas reales del bot: raids publicadas, sustituciones, cierres y el editor de plantillas.</p>
+  <section class="evidence shell section" id="evidencias">
+    <div class="section-heading evidence-heading">
+      <span hlmBadge variant="outline">Evidencias reales</span>
+      <h2>Albions funcionando en Discord.</h2>
+      <p>Raids gestionadas, cierres de asistencia y edición de plantillas sin capturas de producto inventadas.</p>
     </div>
 
-    <div class="evidence-tabs" role="tablist" aria-label="Tipos de evidencia">
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="activeCategory() === 'raids'"
-        [class.active]="activeCategory() === 'raids'"
-        (click)="setCategory('raids')"
-      >Raids gestionadas <span>4</span></button>
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="activeCategory() === 'templates'"
-        [class.active]="activeCategory() === 'templates'"
-        (click)="setCategory('templates')"
-      >Editor de plantillas <span>3</span></button>
-    </div>
+    <hlm-tabs [tab]="activeCategory()" class="evidence-tabs">
+      <hlm-tabs-list variant="line" aria-label="Tipos de evidencia">
+        <button hlmTabsTrigger="raids" (click)="setCategory('raids')">Raids gestionadas</button>
+        <button hlmTabsTrigger="templates" (click)="setCategory('templates')">Editor de plantillas</button>
+      </hlm-tabs-list>
 
-    <div class="evidence-stage">
-      <button
-        class="evidence-main"
-        type="button"
-        (click)="openEvidence(activeEvidenceIndex())"
-        [attr.aria-label]="'Ampliar evidencia: ' + activeEvidence().title"
-      >
-        <span class="image-frame">
-          <img [src]="activeEvidence().src" [alt]="activeEvidence().alt">
-        </span>
-        <span class="zoom-label">Ver captura completa</span>
-      </button>
-
-      <div class="evidence-list" role="tablist" aria-label="Capturas disponibles">
-        @for (evidence of visibleEvidences(); track evidence.src; let index = $index) {
+      <div class="gallery-layout">
+        <hlm-dialog>
           <button
+            hlmDialogTrigger
+            class="gallery-main"
             type="button"
-            role="tab"
-            [class.active]="activeEvidenceIndex() === index"
-            [attr.aria-selected]="activeEvidenceIndex() === index"
-            (click)="selectEvidence(index)"
+            [attr.aria-label]="'Ampliar evidencia: ' + activeEvidence().title"
           >
-            <span class="thumb"><img [src]="evidence.src" alt=""></span>
-            <span class="evidence-meta">
-              <small>{{ index + 1 }}</small>
-              <strong>{{ evidence.title }}</strong>
-              <span>{{ evidence.detail }}</span>
-            </span>
+            <img [src]="activeEvidence().src" [alt]="activeEvidence().alt">
+            <span hlmBadge variant="secondary">Abrir captura</span>
           </button>
-        }
+          <hlm-dialog-content *hlmDialogPortal="let ctx" class="evidence-dialog">
+            <hlm-dialog-header>
+              <h3 hlmDialogTitle>{{ activeEvidence().title }}</h3>
+              <p hlmDialogDescription>{{ activeEvidence().detail }}</p>
+            </hlm-dialog-header>
+            <img class="dialog-image" [src]="activeEvidence().src" [alt]="activeEvidence().alt">
+          </hlm-dialog-content>
+        </hlm-dialog>
+
+        <div class="gallery-list" aria-label="Capturas disponibles">
+          @for (evidence of visibleEvidences(); track evidence.src; let index = $index) {
+            <button
+              hlmBtn
+              variant="ghost"
+              type="button"
+              [class.active]="activeEvidenceIndex() === index"
+              [attr.aria-pressed]="activeEvidenceIndex() === index"
+              (click)="selectEvidence(index)"
+            >
+              <span class="gallery-thumb"><img [src]="evidence.src" alt=""></span>
+              <span><strong>{{ evidence.title }}</strong><small>{{ evidence.detail }}</small></span>
+            </button>
+          }
+        </div>
       </div>
-    </div>
+    </hlm-tabs>
   </section>
 
-  <section class="workflow section" id="flujo">
-    <div class="workflow-heading">
-      <p class="section-label">La jornada</p>
-      <h2>Tres momentos, el mismo registro.</h2>
-    </div>
-    <ol class="workflow-list">
-      <li>
-        <span>1</span>
-        <div><strong>Antes</strong><p>Elige la plantilla, ajusta grupos y publica el raid.</p></div>
-      </li>
-      <li>
-        <span>2</span>
-        <div><strong>Durante</strong><p>Gestiona plazas, espera, bajas y promociones.</p></div>
-      </li>
-      <li>
-        <span>3</span>
-        <div><strong>Después</strong><p>Cierra asistencia y conserva la composición final.</p></div>
-      </li>
-    </ol>
-  </section>
-
-  <section class="closing section">
-    <p>Albions no cambia cómo juega tu gremio.</p>
-    <h2>Le da un sistema para llegar listo.</h2>
-    <a class="button button-dark" href="#evidencias">Revisar las evidencias</a>
+  <section class="final-section shell">
+    <section hlmCard class="final-card">
+      <div>
+        <span hlmBadge variant="secondary">Albions</span>
+        <h2>La estrategia ya existe.<br>Solo faltaba ordenarla.</h2>
+      </div>
+      <a hlmBtn size="lg" href="#evidencias">Revisar evidencias <ng-icon name="lucideArrowRight" /></a>
+    </section>
   </section>
 </main>
 
 <footer>
-  <a class="brand" href="#inicio" aria-label="Albions, volver al inicio">
-    <span class="brand-mark" aria-hidden="true">A</span><span>Albions</span>
-  </a>
-  <p>Organización de raids para comunidades de Albion Online.</p>
-  <span>© {{ currentYear }} Albions</span>
-</footer>
-
-@if (lightboxOpen()) {
-  <div class="lightbox" role="dialog" aria-modal="true" [attr.aria-label]="activeEvidence().title" (click)="closeEvidence()">
-    <button type="button" class="lightbox-close" aria-label="Cerrar imagen" (click)="closeEvidence()">×</button>
-    <figure (click)="$event.stopPropagation()">
-      <img [src]="activeEvidence().src" [alt]="activeEvidence().alt">
-      <figcaption><strong>{{ activeEvidence().title }}</strong><span>{{ activeEvidence().detail }}</span></figcaption>
-    </figure>
+  <div class="shell footer-inner">
+    <a class="brand" href="#inicio" aria-label="Albions, volver al inicio">
+      <span class="brand-icon"><ng-icon name="lucideShield" /></span><span>Albions</span>
+    </a>
+    <p>Organización de raids para comunidades de Albion Online.</p>
+    <span>© {{ currentYear }} Albions</span>
   </div>
-}
+</footer>

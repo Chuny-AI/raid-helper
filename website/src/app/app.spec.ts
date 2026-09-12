@@ -9,7 +9,9 @@ describe('App', () => {
   it('renders the Albions landing page', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('El raid');
-    expect(fixture.nativeElement.querySelectorAll('.evidence-list button').length).toBe(4);
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Raids claras');
+    expect(fixture.nativeElement.querySelectorAll('.gallery-list button').length).toBe(4);
+    expect(fixture.nativeElement.querySelector('hlm-tabs')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[hlmcard]')).toBeTruthy();
   });
 });

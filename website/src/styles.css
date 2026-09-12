@@ -1,14 +1,63 @@
-*, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; background: #e9ece7; }
-body {
-  margin: 0;
-  min-width: 320px;
-  background: #e9ece7;
-  font-family: Arial, Helvetica, sans-serif;
-  text-rendering: optimizeLegibility;
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css';
+@import '@spartan-ng/brain/hlm-tailwind-preset.css';
+@source './app/**/*.{html,ts}';
+
+:root,
+:root.dark {
+  color-scheme: dark;
+  --font-sans: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --radius: 0.75rem;
+  --background: oklch(0.125 0.012 255);
+  --foreground: oklch(0.965 0.008 85);
+  --card: oklch(0.165 0.014 255);
+  --card-foreground: oklch(0.965 0.008 85);
+  --popover: oklch(0.17 0.014 255);
+  --popover-foreground: oklch(0.965 0.008 85);
+  --primary: oklch(0.78 0.15 78);
+  --primary-foreground: oklch(0.16 0.025 75);
+  --secondary: oklch(0.225 0.018 255);
+  --secondary-foreground: oklch(0.93 0.01 85);
+  --muted: oklch(0.205 0.014 255);
+  --muted-foreground: oklch(0.69 0.018 255);
+  --accent: oklch(0.25 0.025 255);
+  --accent-foreground: oklch(0.965 0.008 85);
+  --destructive: oklch(0.62 0.2 27);
+  --border: oklch(0.285 0.018 255);
+  --input: oklch(0.285 0.018 255);
+  --ring: oklch(0.78 0.15 78);
+  --chart-1: oklch(0.78 0.15 78);
+  --chart-2: oklch(0.65 0.12 185);
+  --chart-3: oklch(0.62 0.2 27);
+  --chart-4: oklch(0.7 0.13 145);
+  --chart-5: oklch(0.65 0.12 300);
+  --sidebar: oklch(0.15 0.014 255);
+  --sidebar-foreground: oklch(0.965 0.008 85);
+  --sidebar-primary: oklch(0.78 0.15 78);
+  --sidebar-primary-foreground: oklch(0.16 0.025 75);
+  --sidebar-accent: oklch(0.225 0.018 255);
+  --sidebar-accent-foreground: oklch(0.965 0.008 85);
+  --sidebar-border: oklch(0.285 0.018 255);
+  --sidebar-ring: oklch(0.78 0.15 78);
 }
-body.dialog-open { overflow: hidden; }
-button, a { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible { outline: 3px solid #c69a4b; outline-offset: 4px; }
-img { max-width: 100%; }
-::selection { color: #f7f8f3; background: #963747; }
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { scroll-behavior: smooth; background: var(--background); }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    min-width: 320px;
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+  button, a { -webkit-tap-highlight-color: transparent; }
+  img { max-width: 100%; }
+}
+
+::selection {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
