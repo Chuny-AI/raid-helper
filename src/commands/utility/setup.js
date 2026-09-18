@@ -20,11 +20,12 @@ const editPanel = async (interaction, payload) => {
 };
 
 const dashboard = async (interaction) => {
-  const status = await setupService.getSetupStatus(interaction.guild);
+  const status = await setupService.getSetupStatus(interaction.guild, interaction.channelId);
   return editPanel(interaction, setupUi.buildDashboard({
     status,
     userId: interaction.user.id,
     guildId: interaction.guild.id,
+    sourceChannelId: interaction.channelId,
   }));
 };
 
@@ -64,35 +65,37 @@ module.exports = {
       if (route.action === 'home') {
         await dashboard(interaction);
       } else if (route.action === 'roles') {
-        const status = await setupService.getSetupStatus(interaction.guild);
+        const status = await setupService.getSetupStatus(interaction.guild, interaction.channelId);
         await editPanel(interaction, setupUi.buildRolesScreen({ status, userId: route.userId, guildId: route.guildId }));
       } else if (route.action === 'roles-save' && interaction.isRoleSelectMenu?.()) {
         await setupService.saveAuthorizedRoles({ guild: interaction.guild, roleIds: interaction.values, userId: interaction.user.id });
         await dashboard(interaction);
       } else if (route.action === 'economy') {
-        const status = await setupService.getSetupStatus(interaction.guild);
-        await editPanel(interaction, setupUi.buildEconomyScreen({ status, userId: route.userId, guildId: route.guildId }));
+        const status = await setupService.getSetupStatus(interaction.guild, interaction.channelId);
+        await editPanel(interaction, setupUi.buildEconomyScreen({ status, userId: route.userId, guildId: route.guildId, sourceChannelId: interaction.channelId }));
       } else if (route.action === 'economy-roles-save' && interaction.isRoleSelectMenu?.()) {
         await setupService.saveEconomyRoles({ guild: interaction.guild, roleIds: interaction.values, userId: interaction.user.id });
-        const status = await setupService.getSetupStatus(interaction.guild);
-        await editPanel(interaction, setupUi.buildEconomyScreen({ status, userId: route.userId, guildId: route.guildId }));
+        const status = await setupService.getSetupStatus(interaction.guild, interaction.channelId);
+        await editPanel(interaction, setupUi.buildEconomyScreen({ status, userId: route.userId, guildId: route.guildId, sourceChannelId: interaction.channelId }));
       } else if (route.action === 'economy-channel-save' && interaction.isChannelSelectMenu?.()) {
-        await setupService.saveEconomyChannel({ guild: interaction.guild, channelId: interaction.values[0], userId: interaction.user.id });
-        const status = await setupService.getSetupStatus(interaction.guild);
-        await editPanel(interaction, setupUi.buildEconomyScreen({ status, userId: route.userId, guildId: route.guildId }));
+        await setupService.saveEconomyChannel({ guild: interaction.guild, sourceChannelId: interaction.channelId, channelId: interaction.values[0], userId: interaction.user.id });
+        const status = await setupService.getSetupStatus(interaction.guild, interaction.channelId);
+        await editPanel(interaction, setupUi.buildEconomyScreen({ status, userId: route.userId, guildId: route.guildId, sourceChannelId: interaction.channelId }));
       } else if (route.action === 'economy-clear' && interaction.isButton?.()) {
-        await editPanel(interaction, setupUi.buildEconomyClearConfirmation({ userId: route.userId, guildId: route.guildId }));
+        await editPanel(interaction, setupUi.buildEconomyClearConfirmation({ userId: route.userId, guildId: route.guildId, sourceChannelId: interaction.channelId }));
       } else if (route.action === 'economy-clear-confirm' && interaction.isButton?.()) {
-        await Promise.all([
-          setupService.saveEconomyRoles({ guild: interaction.guild, roleIds: [], userId: interaction.user.id }),
-          setupService.clearLogChannel(interaction.guild.id),
-        ]);
+        await setupService.clearLogChannel(interaction.guild.id, interaction.channelId);
+        await dashboard(interaction);
+      } else if (route.action === 'economy-roles-clear' && interaction.isButton?.()) {
+        await editPanel(interaction, setupUi.buildEconomyRolesClearConfirmation({ userId: route.userId, guildId: route.guildId }));
+      } else if (route.action === 'economy-roles-clear-confirm' && interaction.isButton?.()) {
+        await setupService.saveEconomyRoles({ guild: interaction.guild, roleIds: [], userId: interaction.user.id });
         await dashboard(interaction);
       } else if (route.action === 'check') {
         const permissions = interaction.channel?.permissionsFor?.(interaction.guild.members.me);
         await editPanel(interaction, setupUi.buildPermissionScreen({ permissions, userId: route.userId, guildId: route.guildId }));
       } else if (route.action === 'finish') {
-        const status = await setupService.getSetupStatus(interaction.guild);
+        const status = await setupService.getSetupStatus(interaction.guild, interaction.channelId);
         if (!status.baseReady) return dashboard(interaction);
         await editPanel(interaction, {
           embeds: [createSuccessEmbed(

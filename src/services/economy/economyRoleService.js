@@ -7,13 +7,15 @@ const listEconomyRoles = async (guildId) => {
 };
 
 const hasConfiguredEconomyRole = async (member, guildId) => {
-  if (!member?.roles?.cache) return false;
+  if (!member?.roles) return false;
 
   const configuredRoles = await listEconomyRoles(guildId);
   if (configuredRoles.length === 0) return false;
 
   const configuredRoleIds = configuredRoles.map((role) => role.roleId);
-  return member.roles.cache.some((role) => configuredRoleIds.includes(role.id));
+  if (member.roles.cache) return member.roles.cache.some((role) => configuredRoleIds.includes(role.id));
+  if (Array.isArray(member.roles)) return member.roles.some((id) => configuredRoleIds.includes(id));
+  return false;
 };
 
 const addEconomyRole = async ({ guildId, roleId, roleName, addedBy }) => {

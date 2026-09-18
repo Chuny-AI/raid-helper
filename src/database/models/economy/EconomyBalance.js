@@ -11,6 +11,8 @@ const economyBalanceSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  channelId: { type: String, required: true },
+  contextId: { type: String, required: true, default: 'general' },
   balance: {
     type: Number,
     required: true,
@@ -22,7 +24,7 @@ const economyBalanceSchema = new mongoose.Schema({
   },
 });
 
-economyBalanceSchema.index({ guildId: 1, userId: 1 }, { unique: true });
+economyBalanceSchema.index({ guildId: 1, channelId: 1, contextId: 1, userId: 1 }, { unique: true });
 
 economyBalanceSchema.pre('save', function(next) {
   this.updatedAt = Date.now();

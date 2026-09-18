@@ -1,5 +1,6 @@
 const { shouldShowAdminCommand } = require('./commandVisibility');
 const { checkAuthorizedRole } = require('./roleCheck');
+const { hasConfiguredEconomyRole } = require('../services/economy/economyRoleService');
 
 // Checkers por política estándar
 const policyCheckers = {
@@ -8,6 +9,9 @@ const policyCheckers = {
   },
   authorizedroles: async (interaction) => {
     try { return await checkAuthorizedRole(interaction); } catch (_) { return false; }
+  },
+  balancerole: async (interaction) => {
+    try { return await hasConfiguredEconomyRole(interaction.member, interaction.guildId); } catch (_) { return false; }
   },
   all: async () => true,
 };
@@ -45,6 +49,7 @@ const evaluatePolicy = async (interaction, policyDef) => {
 const labels = {
   admin: 'Administradores del servidor',
   authorizedroles: 'Creadores de contenido',
+  balancerole: 'Rol de balance configurado en /setup',
   all: 'Permisos para todo el mundo',
 };
 

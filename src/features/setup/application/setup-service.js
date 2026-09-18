@@ -14,12 +14,12 @@ const {
 } = require('../../../services/economy/economyService');
 const { PermissionFlagsBits } = require('discord.js');
 
-const getSetupStatus = async (guild) => {
+const getSetupStatus = async (guild, sourceChannelId) => {
   await getOrCreateServer(guild.id, guild.name);
   const [authorizedRoles, economyRoles, economyChannelId] = await Promise.all([
     getAuthorizedRoles(guild.id),
     listEconomyRoles(guild.id),
-    getLogChannel(guild.id),
+    getLogChannel(guild.id, sourceChannelId),
   ]);
 
   const liveAuthorizedRoles = authorizedRoles.filter((role) => guild.roles.cache.has(role.roleId));
@@ -54,7 +54,8 @@ const saveEconomyRoles = async ({ guild, roleIds, userId }) => {
   return syncEconomyRoles({ guildId: guild.id, roles, addedBy: userId });
 };
 
-const saveEconomyChannel = async ({ guild, channelId, userId }) => {
+const saveEconomyChannel = async ({ guild, sourceChannelId, channelId, userId }) => {
+  if (!sourceChannelId) throw new Error('Abre `/setup` dentro del canal que quieres configurar.');
   const channel = guild.channels.cache.get(channelId);
   if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
     throw new Error('Selecciona un canal de texto válido.');
@@ -67,7 +68,7 @@ const saveEconomyChannel = async ({ guild, channelId, userId }) => {
   ])) {
     throw new Error('El bot necesita ver el canal, enviar mensajes e insertar enlaces allí.');
   }
-  return setLogChannel({ guildId: guild.id, channelId, setBy: userId });
+  return setLogChannel({ guildId: guild.id, sourceChannelId, channelId, setBy: userId });
 };
 
 module.exports = {

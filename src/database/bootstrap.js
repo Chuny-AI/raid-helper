@@ -8,6 +8,7 @@ const EconomyBalance = require('../database/models/economy/EconomyBalance');
 const EconomyTransaction = require('../database/models/economy/EconomyTransaction');
 const EconomyRole = require('../database/models/economy/EconomyRole');
 const EconomyLogChannel = require('../database/models/economy/EconomyLogChannel');
+const EconomyContext = require('../database/models/economy/EconomyContext');
 const AuthorizedUser = require('../database/models/AuthorizedUser');
 const UserCategory = require('../database/models/UserCategory');
 
@@ -27,6 +28,7 @@ const ensureCollections = async () => {
     EconomyTransaction,
     EconomyRole,
     EconomyLogChannel,
+    EconomyContext,
     AuthorizedUser,
     UserCategory,
   ];
@@ -43,6 +45,28 @@ const ensureCollections = async () => {
       }
     }
   }
+
+  // Las entradas antiguas no incluyen canal y no se pueden asignar con
+  // seguridad a uno. Se conservan en MongoDB, pero las consultas nuevas siempre
+  // exigen channelId. Retirar índices globales permite el mismo usuario o
+  // contexto en varios canales sin colisiones.
+  const legacyIndexes = [
+    [EconomyBalance, [['guildId', 'userId'], ['guildId', 'contextId', 'userId']]],
+    [EconomyContext, [['guildId', 'slug']]],
+    [EconomyLogChannel, [['guildId']]],
+  ];
+  for (const [model, legacyKeySets] of legacyIndexes) {
+    for (const index of await model.collection.indexes()) {
+      if (!index.unique) continue;
+      if (legacyKeySets.some((keys) => JSON.stringify(Object.keys(index.key)) === JSON.stringify(keys))) {
+        await model.collection.dropIndex(index.name);
+      }
+    }
+  }
+  await EconomyBalance.createIndexes();
+  await EconomyTransaction.createIndexes();
+  await EconomyContext.createIndexes();
+  await EconomyLogChannel.createIndexes();
 };
 
 module.exports = { ensureCollections };

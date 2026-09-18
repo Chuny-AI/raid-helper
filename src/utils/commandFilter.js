@@ -6,6 +6,7 @@ const permissionsConfig = {
   raid: [['admin', 'authorizedroles']],
   template: { default: [['admin', 'authorizedroles']] },
   setup: ['admin'],
+  balance: ['balancerole'],
   status: ['admin'],
   split: [['admin', 'authorizedroles']],
   notify: [['admin', 'authorizedroles']],

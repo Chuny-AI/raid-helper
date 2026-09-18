@@ -6,6 +6,8 @@ const economyTransactionSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  channelId: { type: String, required: true },
+  contextId: { type: String, required: true, default: 'general' },
   type: {
     type: String,
     enum: ['add', 'remove', 'reset'],
@@ -47,6 +49,6 @@ const economyTransactionSchema = new mongoose.Schema({
   },
 });
 
-economyTransactionSchema.index({ guildId: 1, affectedUserIds: 1, createdAt: -1 });
+economyTransactionSchema.index({ guildId: 1, channelId: 1, contextId: 1, affectedUserIds: 1, createdAt: -1 });
 
 module.exports = mongoose.model('EconomyTransaction', economyTransactionSchema);

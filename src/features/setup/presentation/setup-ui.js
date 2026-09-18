@@ -25,7 +25,7 @@ const navigationRow = (userId, guildId) => new ActionRowBuilder().addComponents(
     .setStyle(ButtonStyle.Secondary),
 );
 
-const buildDashboard = ({ status, userId, guildId }) => {
+const buildDashboard = ({ status, userId, guildId, sourceChannelId }) => {
   const baseStatus = status.baseReady ? '✅ Configurado' : '⚠️ Pendiente';
   const economyStatus = status.economyReady ? '✅ Configurada' : '➖ Opcional';
   const embed = new EmbedBuilder()
@@ -40,7 +40,7 @@ const buildDashboard = ({ status, userId, guildId }) => {
           : 'Selecciona al menos un rol que pueda crear raids y plantillas.',
       },
       {
-        name: `${economyStatus} · Economía`,
+        name: `${economyStatus} · Economía${sourceChannelId ? ` en <#${sourceChannelId}>` : ''}`,
         value: [
           `Canal: ${status.economyChannelId ? `<#${status.economyChannelId}>` : 'sin configurar'}`,
           `Roles: ${status.economyRoleIds.length > 0 ? status.economyRoleIds.map((id) => `<@&${id}>`).join(', ') : 'sin configurar'}`,
@@ -91,10 +91,10 @@ const buildRolesScreen = ({ status, userId, guildId }) => {
   };
 };
 
-const buildEconomyScreen = ({ status, userId, guildId }) => {
+const buildEconomyScreen = ({ status, userId, guildId, sourceChannelId }) => {
   const roleSelect = new RoleSelectMenuBuilder()
     .setCustomId(componentId('economy-roles-save', userId, guildId))
-    .setPlaceholder('Selecciona roles para gestionar economía')
+    .setPlaceholder('Selecciona roles de balance')
     .setMinValues(1)
     .setMaxValues(25);
   if (status.economyRoleIds.length > 0) roleSelect.setDefaultRoles(...status.economyRoleIds.slice(0, 25));
@@ -110,13 +110,14 @@ const buildEconomyScreen = ({ status, userId, guildId }) => {
   return {
     embeds: [new EmbedBuilder()
       .setTitle('💰 Configuración de economía')
-      .setDescription('El canal guarda la auditoría pública de cada movimiento. Los roles seleccionados podrán operar el sistema; los administradores siempre conservan acceso.')
+      .setDescription(`Esta configuración de auditoría corresponde ${sourceChannelId ? `a <#${sourceChannelId}>` : 'al canal actual'}. Los roles de balance se aplican en todo el servidor; los contextos, saldos y movimientos pertenecen solo a este canal.`)
       .setColor(0xf1c40f)],
     components: [
       new ActionRowBuilder().addComponents(roleSelect),
       new ActionRowBuilder().addComponents(channelSelect),
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(componentId('economy-clear', userId, guildId)).setLabel('Desactivar economía').setEmoji('🧹').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(componentId('economy-clear', userId, guildId)).setLabel('Quitar auditoría de este canal').setEmoji('🧹').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(componentId('economy-roles-clear', userId, guildId)).setLabel('Quitar roles de balance').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId(componentId('home', userId, guildId)).setLabel('Volver al resumen').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
       ),
     ],
@@ -146,10 +147,10 @@ const buildPermissionScreen = ({ permissions, userId, guildId }) => {
   };
 };
 
-const buildEconomyClearConfirmation = ({ userId, guildId }) => ({
+const buildEconomyClearConfirmation = ({ userId, guildId, sourceChannelId }) => ({
   embeds: [new EmbedBuilder()
-    .setTitle('⚠️ Desactivar economía')
-    .setDescription('Se eliminarán el canal de auditoría y todos los roles autorizados de economía. Los balances y movimientos existentes no se borrarán.')
+    .setTitle('⚠️ Quitar auditoría de este canal')
+    .setDescription(`Se quitará la configuración de auditoría ${sourceChannelId ? `de <#${sourceChannelId}>` : 'del canal actual'}. Los roles, balances y movimientos existentes no se borrarán.`)
     .setColor(0xed4245)],
   components: [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(componentId('economy-clear-confirm', userId, guildId)).setLabel('Sí, desactivar').setStyle(ButtonStyle.Danger),
@@ -157,9 +158,21 @@ const buildEconomyClearConfirmation = ({ userId, guildId }) => ({
   )],
 });
 
+const buildEconomyRolesClearConfirmation = ({ userId, guildId }) => ({
+  embeds: [new EmbedBuilder()
+    .setTitle('⚠️ Quitar roles de balance')
+    .setDescription('Se revocará el acceso a `/balance` en todos los canales del servidor. Los contextos, saldos, movimientos y canales de auditoría configurados se conservarán.')
+    .setColor(0xed4245)],
+  components: [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(componentId('economy-roles-clear-confirm', userId, guildId)).setLabel('Sí, quitar roles').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(componentId('economy', userId, guildId)).setLabel('Cancelar').setStyle(ButtonStyle.Secondary),
+  )],
+});
+
 module.exports = {
   buildDashboard,
   buildEconomyClearConfirmation,
+  buildEconomyRolesClearConfirmation,
   buildEconomyScreen,
   buildPermissionScreen,
   buildRolesScreen,
