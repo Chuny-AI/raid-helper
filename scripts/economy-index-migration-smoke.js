@@ -15,6 +15,8 @@ const models = [
   '../src/database/models/economy/EconomyRole',
   '../src/database/models/AuthorizedUser',
   '../src/database/models/UserCategory',
+  '../src/database/models/MemberLogConfig',
+  '../src/database/models/MemberIdentity',
 ].map((path) => require(path)).concat([
   EconomyBalance, EconomyContext, EconomyLogChannel, EconomyTransaction,
 ]);
@@ -58,7 +60,14 @@ const saved = models.map((model) => ({
     'drop:EconomyContext:guildId_1_slug_1',
     'drop:EconomyLogChannel:guildId_1',
   ]);
-  assert.equal(events.filter((event) => event.startsWith('create:')).length, 4);
+  assert.deepEqual(events.filter((event) => event.startsWith('create:')), [
+    'create:EconomyBalance',
+    'create:EconomyTransaction',
+    'create:EconomyContext',
+    'create:EconomyLogChannel',
+    'create:MemberLogConfig',
+    'create:MemberIdentity',
+  ]);
   assert(events.indexOf('create:EconomyBalance') > events.indexOf('drop:EconomyLogChannel:guildId_1'));
   console.log('✅ Migración de índices de economía verificada');
 })().catch((error) => {

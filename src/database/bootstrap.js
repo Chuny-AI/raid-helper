@@ -11,6 +11,8 @@ const EconomyLogChannel = require('../database/models/economy/EconomyLogChannel'
 const EconomyContext = require('../database/models/economy/EconomyContext');
 const AuthorizedUser = require('../database/models/AuthorizedUser');
 const UserCategory = require('../database/models/UserCategory');
+const MemberLogConfig = require('../database/models/MemberLogConfig');
+const MemberIdentity = require('../database/models/MemberIdentity');
 
 /**
  * Crea las colecciones en MongoDB si no existen.
@@ -31,6 +33,8 @@ const ensureCollections = async () => {
     EconomyContext,
     AuthorizedUser,
     UserCategory,
+    MemberLogConfig,
+    MemberIdentity,
   ];
 
   for (const model of models) {
@@ -67,6 +71,8 @@ const ensureCollections = async () => {
   await EconomyTransaction.createIndexes();
   await EconomyContext.createIndexes();
   await EconomyLogChannel.createIndexes();
+  await MemberLogConfig.createIndexes();
+  await MemberIdentity.createIndexes();
 };
 
 module.exports = { ensureCollections };

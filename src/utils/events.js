@@ -13,6 +13,12 @@ const raidRegistry = require('../services/raidRegistry');
 const raidInteractions = require('./raidInteractions');
 const { migrateFromSnapshot } = require('../services/raidStateMigration');
 const { renderRaidEmbed, renderRaidComponents } = require('./raidRender');
+const {
+  handleMemberJoin,
+  handleMemberLeave,
+  handleMemberUpdate,
+  syncConfiguredGuildMembers,
+} = require('../services/memberLogService');
 
 // Import template command
 const templateCommand = require("../commands/utility/template");
@@ -227,6 +233,17 @@ const getEvents = () => {
       }
     }, 30 * 60 * 1000);
 
+    // Se ejecuta después de recuperar raids y recordatorios para que una
+    // sincronización grande de miembros no retrase funciones ya activas.
+    try {
+      const syncedMembers = await syncConfiguredGuildMembers(readyClient);
+      if (syncedMembers > 0) {
+        console.log(`[INFO] ${syncedMembers} identidad(es) de miembros sincronizadas para bienvenida y despedida.`);
+      }
+    } catch (error) {
+      console.error('[ERROR] No se pudieron sincronizar las identidades de miembros:', error);
+    }
+
   });
 
   client.on(Events.GuildCreate, async (guild) => {
@@ -235,6 +252,30 @@ const getEvents = () => {
       console.log(`[INFO] Bot añadido al servidor: ${guild.name} (${guild.id})`);
     } catch (error) {
       console.error('[ERROR] Error al procesar nuevo servidor:', error);
+    }
+  });
+
+  client.on(Events.GuildMemberAdd, async (member) => {
+    try {
+      await handleMemberJoin(member, client.user);
+    } catch (error) {
+      console.error(`[ERROR] No se pudo registrar la entrada de ${member.id}:`, error);
+    }
+  });
+
+  client.on(Events.GuildMemberUpdate, async (_oldMember, newMember) => {
+    try {
+      await handleMemberUpdate(newMember);
+    } catch (error) {
+      console.error(`[ERROR] No se pudo actualizar el nombre de ${newMember.id}:`, error);
+    }
+  });
+
+  client.on(Events.GuildMemberRemove, async (member) => {
+    try {
+      await handleMemberLeave(member, client.user);
+    } catch (error) {
+      console.error(`[ERROR] No se pudo registrar la salida de ${member.id}:`, error);
     }
   });
 
