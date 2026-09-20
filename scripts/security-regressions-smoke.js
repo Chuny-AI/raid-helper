@@ -32,6 +32,7 @@ const limiter = require('../src/utils/notificationLimiter');
   assert.ok(enabled.has(GatewayIntentBits.Guilds));
   assert.ok(enabled.has(GatewayIntentBits.GuildMembers));
   assert.ok(enabled.has(GatewayIntentBits.GuildMessages));
+  assert.ok(enabled.has(GatewayIntentBits.GuildVoiceStates));
   assert.ok(enabled.has(GatewayIntentBits.MessageContent));
   assert.ok(!enabled.has(GatewayIntentBits.GuildPresences));
 

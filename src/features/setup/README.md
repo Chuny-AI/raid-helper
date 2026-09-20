@@ -8,8 +8,17 @@ El flujo permite:
 
 - seleccionar los roles gestores de raids, plantillas y notificaciones;
 - configurar opcionalmente roles y canal de auditoría de economía;
+- seleccionar uno o varios canales generadores de salas de voz temporales;
 - comprobar los permisos del bot en el canal actual;
 - volver al resumen después de cada cambio sin perder el panel.
+
+La sección «Salas temporales» admite hasta 25 canales de voz generadores. Cada
+generador debe estar dentro de una categoría donde el bot tenga permisos para
+ver y gestionar canales, conectarse y mover miembros. Al entrar una persona se
+crea una sala en esa categoría, sincronizada con sus permisos, y se traslada a
+la persona. La sala se conserva mientras tenga participantes y se elimina al
+quedar vacía. Los canales creados se registran para poder limpiarlos después de
+un reinicio del bot.
 
 La sección de economía define los roles de balance para el servidor y el canal
 de auditoría para el canal donde se ejecuta `/setup`. Solo quienes tengan uno

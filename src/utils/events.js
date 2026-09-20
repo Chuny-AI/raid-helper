@@ -19,6 +19,11 @@ const {
   handleMemberUpdate,
   syncConfiguredGuildMembers,
 } = require('../services/memberLogService');
+const {
+  handleChannelDelete,
+  handleVoiceStateUpdate,
+  recoverTemporaryVoiceChannels,
+} = require('../services/temporaryVoiceService');
 
 // Import template command
 const templateCommand = require("../commands/utility/template");
@@ -244,6 +249,15 @@ const getEvents = () => {
       console.error('[ERROR] No se pudieron sincronizar las identidades de miembros:', error);
     }
 
+    try {
+      const removedChannels = await recoverTemporaryVoiceChannels(readyClient);
+      if (removedChannels > 0) {
+        console.log(`[INFO] ${removedChannels} canal(es) de voz temporales vacíos eliminados al iniciar.`);
+      }
+    } catch (error) {
+      console.error('[ERROR] No se pudieron recuperar los canales de voz temporales:', error);
+    }
+
   });
 
   client.on(Events.GuildCreate, async (guild) => {
@@ -276,6 +290,22 @@ const getEvents = () => {
       await handleMemberLeave(member, client.user);
     } catch (error) {
       console.error(`[ERROR] No se pudo registrar la salida de ${member.id}:`, error);
+    }
+  });
+
+  client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+    try {
+      await handleVoiceStateUpdate(oldState, newState);
+    } catch (error) {
+      console.error(`[ERROR] No se pudo procesar el cambio de voz de ${newState.id || oldState.id}:`, error);
+    }
+  });
+
+  client.on(Events.ChannelDelete, async (channel) => {
+    try {
+      await handleChannelDelete(channel);
+    } catch (error) {
+      console.error(`[ERROR] No se pudo limpiar el registro del canal ${channel.id}:`, error);
     }
   });
 

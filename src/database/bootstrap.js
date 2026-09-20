@@ -13,6 +13,8 @@ const AuthorizedUser = require('../database/models/AuthorizedUser');
 const UserCategory = require('../database/models/UserCategory');
 const MemberLogConfig = require('../database/models/MemberLogConfig');
 const MemberIdentity = require('../database/models/MemberIdentity');
+const TemporaryVoiceConfig = require('../database/models/TemporaryVoiceConfig');
+const TemporaryVoiceChannel = require('../database/models/TemporaryVoiceChannel');
 
 /**
  * Crea las colecciones en MongoDB si no existen.
@@ -35,6 +37,8 @@ const ensureCollections = async () => {
     UserCategory,
     MemberLogConfig,
     MemberIdentity,
+    TemporaryVoiceConfig,
+    TemporaryVoiceChannel,
   ];
 
   for (const model of models) {
@@ -73,6 +77,8 @@ const ensureCollections = async () => {
   await EconomyLogChannel.createIndexes();
   await MemberLogConfig.createIndexes();
   await MemberIdentity.createIndexes();
+  await TemporaryVoiceConfig.createIndexes();
+  await TemporaryVoiceChannel.createIndexes();
 };
 
 module.exports = { ensureCollections };

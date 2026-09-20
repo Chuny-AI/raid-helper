@@ -91,6 +91,19 @@ module.exports = {
       } else if (route.action === 'economy-roles-clear-confirm' && interaction.isButton?.()) {
         await setupService.saveEconomyRoles({ guild: interaction.guild, roleIds: [], userId: interaction.user.id });
         await dashboard(interaction);
+      } else if (route.action === 'voice') {
+        const status = await setupService.getSetupStatus(interaction.guild, interaction.channelId);
+        await editPanel(interaction, setupUi.buildTemporaryVoiceScreen({ status, userId: route.userId, guildId: route.guildId }));
+      } else if (route.action === 'voice-save' && interaction.isChannelSelectMenu?.()) {
+        await setupService.setTemporaryVoiceGenerators({
+          guild: interaction.guild,
+          channelIds: interaction.values,
+          updatedBy: interaction.user.id,
+        });
+        await dashboard(interaction);
+      } else if (route.action === 'voice-clear' && interaction.isButton?.()) {
+        await setupService.clearTemporaryVoiceGenerators(interaction.guild.id);
+        await dashboard(interaction);
       } else if (route.action === 'check') {
         const permissions = interaction.channel?.permissionsFor?.(interaction.guild.members.me);
         await editPanel(interaction, setupUi.buildPermissionScreen({ permissions, userId: route.userId, guildId: route.guildId }));

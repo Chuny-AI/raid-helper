@@ -17,6 +17,8 @@ const models = [
   '../src/database/models/UserCategory',
   '../src/database/models/MemberLogConfig',
   '../src/database/models/MemberIdentity',
+  '../src/database/models/TemporaryVoiceConfig',
+  '../src/database/models/TemporaryVoiceChannel',
 ].map((path) => require(path)).concat([
   EconomyBalance, EconomyContext, EconomyLogChannel, EconomyTransaction,
 ]);
@@ -67,6 +69,8 @@ const saved = models.map((model) => ({
     'create:EconomyLogChannel',
     'create:MemberLogConfig',
     'create:MemberIdentity',
+    'create:TemporaryVoiceConfig',
+    'create:TemporaryVoiceChannel',
   ]);
   assert(events.indexOf('create:EconomyBalance') > events.indexOf('drop:EconomyLogChannel:guildId_1'));
   console.log('✅ Migración de índices de economía verificada');

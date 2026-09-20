@@ -13,13 +13,19 @@ const {
   setLogChannel,
 } = require('../../../services/economy/economyService');
 const { PermissionFlagsBits } = require('discord.js');
+const {
+  clearTemporaryVoiceGenerators,
+  getTemporaryVoiceStatus,
+  setTemporaryVoiceGenerators,
+} = require('../../../services/temporaryVoiceService');
 
 const getSetupStatus = async (guild, sourceChannelId) => {
   await getOrCreateServer(guild.id, guild.name);
-  const [authorizedRoles, economyRoles, economyChannelId] = await Promise.all([
+  const [authorizedRoles, economyRoles, economyChannelId, temporaryVoiceStatus] = await Promise.all([
     getAuthorizedRoles(guild.id),
     listEconomyRoles(guild.id),
     getLogChannel(guild.id, sourceChannelId),
+    getTemporaryVoiceStatus(guild),
   ]);
 
   const liveAuthorizedRoles = authorizedRoles.filter((role) => guild.roles.cache.has(role.roleId));
@@ -36,6 +42,7 @@ const getSetupStatus = async (guild, sourceChannelId) => {
     staleEconomyRoles: economyRoles.length - liveEconomyRoles.length,
     baseReady: liveAuthorizedRoles.length > 0,
     economyReady: liveEconomyRoles.length > 0 && Boolean(economyChannel),
+    ...temporaryVoiceStatus,
   };
 };
 
@@ -73,9 +80,11 @@ const saveEconomyChannel = async ({ guild, sourceChannelId, channelId, userId })
 
 module.exports = {
   clearLogChannel,
+  clearTemporaryVoiceGenerators,
   getSetupStatus,
   resolveSelectableRoles,
   saveAuthorizedRoles,
   saveEconomyChannel,
   saveEconomyRoles,
+  setTemporaryVoiceGenerators,
 };

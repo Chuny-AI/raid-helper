@@ -24,6 +24,9 @@ const status = {
   staleEconomyRoles: 0,
   baseReady: true,
   economyReady: true,
+  temporaryVoiceGeneratorIds: ['444444444444444'],
+  staleTemporaryVoiceGenerators: 0,
+  temporaryVoiceReady: true,
 };
 const dashboard = ui.buildDashboard({ status, userId: 'user-1', guildId: 'guild-1', sourceChannelId: 'source-1' });
 assert.equal(dashboard.components.length, 2);
@@ -39,6 +42,10 @@ assert.equal(economy.components.length, 3);
 assert.equal(economy.components[1].components[0].data.type, ComponentType.ChannelSelect);
 assert.match(economy.embeds[0].data.description, /source-1/);
 assert(economy.components[2].components.some((button) => button.data.custom_id.includes('roles-clear')));
+const temporaryVoice = ui.buildTemporaryVoiceScreen({ status, userId: 'user-1', guildId: 'guild-1' });
+assert.equal(temporaryVoice.components[0].components[0].data.type, ComponentType.ChannelSelect);
+assert.equal(temporaryVoice.components[0].components[0].data.max_values, 25);
+assert.deepEqual(temporaryVoice.components[0].components[0].data.default_values.map((value) => value.id), ['444444444444444']);
 const clearConfirmation = ui.buildEconomyClearConfirmation({ userId: 'user-1', guildId: 'guild-1', sourceChannelId: 'source-1' });
 assert.match(clearConfirmation.embeds[0].data.description, /balances y movimientos existentes no se borrarán/);
 assert(clearConfirmation.components[0].components.some((button) => button.data.custom_id.includes('clear-confirm')));
@@ -68,12 +75,16 @@ assert.equal(setup.isAdministrator({ guild: null }), false);
 const originalStatus = setupService.getSetupStatus;
 const originalSaveRoles = setupService.saveEconomyRoles;
 const originalClearLog = setupService.clearLogChannel;
+const originalSetTemporaryVoice = setupService.setTemporaryVoiceGenerators;
+const originalClearTemporaryVoice = setupService.clearTemporaryVoiceGenerators;
 (async () => {
   const calls = [];
   setupService.getSetupStatus = async () => status;
   setupService.saveEconomyRoles = async (args) => calls.push(['roles', args]);
   setupService.clearLogChannel = async (...args) => calls.push(['log', args]);
-  const interact = async (action) => {
+  setupService.setTemporaryVoiceGenerators = async (args) => calls.push(['voice-save', args]);
+  setupService.clearTemporaryVoiceGenerators = async (...args) => calls.push(['voice-clear', args]);
+  const interact = async (action, overrides = {}) => {
     const interaction = {
       customId: ui.componentId(action, 'user-1', 'guild-1'),
       guild: { id: 'guild-1' }, channelId: 'source-1',
@@ -81,6 +92,7 @@ const originalClearLog = setupService.clearLogChannel;
       user: { id: 'user-1' },
       isButton: () => true, isMessageComponent: () => true,
       update: async () => {},
+      ...overrides,
     };
     assert.equal(await setup.handleInteraction(interaction), true);
   };
@@ -92,6 +104,17 @@ const originalClearLog = setupService.clearLogChannel;
   assert.equal(calls[0][0], 'roles');
   assert.deepEqual(calls[0][1].roleIds, []);
   assert.equal(calls[0][1].guild.id, 'guild-1');
+  calls.length = 0;
+  await interact('voice-save', {
+    values: ['voice-1', 'voice-2'],
+    isButton: () => false,
+    isChannelSelectMenu: () => true,
+  });
+  assert.equal(calls[0][0], 'voice-save');
+  assert.deepEqual(calls[0][1].channelIds, ['voice-1', 'voice-2']);
+  calls.length = 0;
+  await interact('voice-clear');
+  assert.deepEqual(calls, [['voice-clear', ['guild-1']]]);
   console.log('Interactive setup smoke tests passed.');
 })().catch((error) => {
   console.error(error);
@@ -100,4 +123,6 @@ const originalClearLog = setupService.clearLogChannel;
   setupService.getSetupStatus = originalStatus;
   setupService.saveEconomyRoles = originalSaveRoles;
   setupService.clearLogChannel = originalClearLog;
+  setupService.setTemporaryVoiceGenerators = originalSetTemporaryVoice;
+  setupService.clearTemporaryVoiceGenerators = originalClearTemporaryVoice;
 });

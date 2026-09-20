@@ -28,6 +28,7 @@ const navigationRow = (userId, guildId) => new ActionRowBuilder().addComponents(
 const buildDashboard = ({ status, userId, guildId, sourceChannelId }) => {
   const baseStatus = status.baseReady ? '✅ Configurado' : '⚠️ Pendiente';
   const economyStatus = status.economyReady ? '✅ Configurada' : '➖ Opcional';
+  const voiceStatus = status.temporaryVoiceReady ? '✅ Configurados' : '➖ Opcional';
   const embed = new EmbedBuilder()
     .setTitle('🧭 Configuración inicial del bot')
     .setDescription('Completa la configuración básica desde este asistente. Los cambios se guardan al seleccionar cada opción.')
@@ -46,18 +47,25 @@ const buildDashboard = ({ status, userId, guildId, sourceChannelId }) => {
           `Roles: ${status.economyRoleIds.length > 0 ? status.economyRoleIds.map((id) => `<@&${id}>`).join(', ') : 'sin configurar'}`,
         ].join('\n'),
       },
+      {
+        name: `${voiceStatus} · Canales de voz temporales`,
+        value: status.temporaryVoiceGeneratorIds?.length > 0
+          ? status.temporaryVoiceGeneratorIds.map((id) => `<#${id}>`).join(', ')
+          : 'Sin canales generadores configurados.',
+      },
     );
 
-  if (status.staleAuthorizedRoles || status.staleEconomyRoles) {
+  if (status.staleAuthorizedRoles || status.staleEconomyRoles || status.staleTemporaryVoiceGenerators) {
     embed.addFields({
       name: '🧹 Configuración obsoleta detectada',
-      value: 'Hay referencias a roles eliminados. Guarda nuevamente la sección correspondiente para limpiarlas.',
+      value: 'Hay referencias a roles o canales eliminados. Guarda nuevamente la sección correspondiente para limpiarlas.',
     });
   }
 
   const mainRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(componentId('roles', userId, guildId)).setLabel('Roles gestores').setEmoji('🛡️').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(componentId('economy', userId, guildId)).setLabel('Economía').setEmoji('💰').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(componentId('voice', userId, guildId)).setLabel('Salas temporales').setEmoji('🔊').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(componentId('check', userId, guildId)).setLabel('Verificar permisos').setEmoji('🔎').setStyle(ButtonStyle.Secondary),
   );
   const finishRow = new ActionRowBuilder().addComponents(
@@ -69,6 +77,36 @@ const buildDashboard = ({ status, userId, guildId, sourceChannelId }) => {
       .setDisabled(!status.baseReady),
   );
   return { embeds: [embed], components: [mainRow, finishRow] };
+};
+
+const buildTemporaryVoiceScreen = ({ status, userId, guildId }) => {
+  const channelSelect = new ChannelSelectMenuBuilder()
+    .setCustomId(componentId('voice-save', userId, guildId))
+    .setPlaceholder('Selecciona hasta 25 canales generadores')
+    .setChannelTypes(ChannelType.GuildVoice)
+    .setMinValues(1)
+    .setMaxValues(25);
+  if (status.temporaryVoiceGeneratorIds?.length > 0) {
+    channelSelect.setDefaultChannels(...status.temporaryVoiceGeneratorIds.slice(0, 25));
+  }
+
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle('🔊 Canales de voz temporales')
+      .setDescription([
+        'Selecciona uno o varios canales de voz que funcionarán como generadores.',
+        'Cuando una persona entre, el bot creará una sala dentro de la misma categoría, copiará sus permisos y moverá allí a la persona.',
+        'La sala se eliminará automáticamente cuando quede vacía.',
+      ].join('\n\n'))
+      .setColor(0x5865f2)],
+    components: [
+      new ActionRowBuilder().addComponents(channelSelect),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(componentId('voice-clear', userId, guildId)).setLabel('Desactivar salas temporales').setEmoji('🧹').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(componentId('home', userId, guildId)).setLabel('Volver al resumen').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
 };
 
 const buildRolesScreen = ({ status, userId, guildId }) => {
@@ -176,6 +214,7 @@ module.exports = {
   buildEconomyScreen,
   buildPermissionScreen,
   buildRolesScreen,
+  buildTemporaryVoiceScreen,
   componentId,
   parseComponentId,
 };
