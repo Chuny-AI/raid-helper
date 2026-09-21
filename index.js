@@ -128,12 +128,44 @@ async function registerGuildCommands() {
  * Si existe GUILD_ID se registran solo en ese servidor, si no, globalmente.
  */
 async function registerCommands() {
+  let registered;
   if (process.env.GUILD_ID) {
     console.log(`[INFO] GUILD_ID detectado: registrando comandos en servidor ${process.env.GUILD_ID}`);
-    return await registerGuildCommands();
+    registered = await registerGuildCommands();
   } else {
     console.log('[INFO] Sin GUILD_ID: registrando comandos globalmente');
-    return await registerGlobalCommands();
+    registered = await registerGlobalCommands();
+  }
+  if (!registered) return false;
+
+  // Los comandos globales pueden tardar en aparecer en un servidor. Publicar
+  // los dos paneles también en los servidores indicados hace que estén
+  // disponibles allí de inmediato y los mantiene actualizados en cada inicio.
+  const targetGuildIds = [...new Set(String(process.env.REGISTRATION_COMMAND_GUILD_IDS || '')
+    .split(',').map((id) => id.trim()).filter(Boolean))];
+  if (!targetGuildIds.length) return true;
+  if (targetGuildIds.some((id) => !/^\d{17,22}$/.test(id))) {
+    console.error('[ERROR] REGISTRATION_COMMAND_GUILD_IDS contiene un ID de servidor inválido.');
+    return false;
+  }
+  try {
+    const commands = loadCommands().filter((command) => ['setup-registro', 'registro-panel'].includes(command.name));
+    if (commands.length !== 2) throw new Error('Falta uno de los comandos de registro.');
+    const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
+    const rest = new REST().setToken(token);
+    for (const guildId of targetGuildIds) {
+      for (const command of commands) {
+        const guildCommand = { ...command };
+        delete guildCommand.contexts;
+        delete guildCommand.integration_types;
+        await rest.post(Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId), { body: guildCommand });
+      }
+      console.log(`[SUCCESS] Paneles de registro publicados para el servidor ${guildId}.`);
+    }
+    return true;
+  } catch (error) {
+    console.error('[ERROR] No se pudieron publicar los paneles de registro en servidores específicos:', error);
+    return false;
   }
 }
 
