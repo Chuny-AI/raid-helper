@@ -18,18 +18,46 @@ const normalizeRegion = (region) => (
 );
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const inFlight = new Map();
+const cache = new Map();
+const queue = [];
+let activeRequests = 0;
+let nextRequestAt = 0;
+const MAX_CONCURRENT = 2;
+const cacheTtl = (path) => path.startsWith('/players/') ? 30_000 : path.startsWith('/guilds/') ? 600_000 : 120_000;
 
-const requestJson = async (region, path, { timeoutMs = 12_000, retries = 1 } = {}) => {
+const runQueued = async (work) => {
+  if (activeRequests >= MAX_CONCURRENT) {
+    if (queue.length >= 20) throw new AlbionApiError('Albion está ocupado. Inténtalo en unos minutos.', 'busy');
+    await new Promise((resolve) => queue.push(resolve));
+  }
+  else activeRequests += 1;
+  try {
+    const delay = Math.max(0, nextRequestAt - Date.now());
+    nextRequestAt = Math.max(Date.now(), nextRequestAt) + 250;
+    if (delay) await wait(delay);
+    return await work();
+  } finally {
+    if (queue.length) queue.shift()();
+    else activeRequests -= 1;
+  }
+};
+
+const fetchJson = async (region, path, { timeoutMs = 10_000, retries = 1 } = {}) => {
   const baseUrl = REGION_BASE_URLS[normalizeRegion(region)];
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
+    let retryDelay = 400 * (attempt + 1);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    timer.unref?.();
+    let timer;
     try {
-      const response = await fetch(`${baseUrl}${path}`, {
-        headers: { Accept: 'application/json', 'User-Agent': 'Chuny-Discord-Bot/1.0' },
-        signal: controller.signal,
+      const response = await runQueued(() => {
+        timer = setTimeout(() => controller.abort(), timeoutMs);
+        timer.unref?.();
+        return fetch(`${baseUrl}${path}`, {
+          headers: { Accept: 'application/json', 'User-Agent': 'Chuny-Discord-Bot/1.0' },
+          signal: controller.signal,
+        });
       });
       if (!response.ok) {
         const error = new AlbionApiError(
@@ -38,6 +66,11 @@ const requestJson = async (region, path, { timeoutMs = 12_000, retries = 1 } = {
           response.status,
         );
         if (response.status !== 429 && response.status < 500) throw error;
+        if (response.status === 429) {
+          const header = Number(response.headers?.get?.('retry-after'));
+          retryDelay = Number.isFinite(header) && header > 0
+            ? Math.min(header * 1000, 10_000) : 1_500 * (attempt + 1);
+        }
         lastError = error;
       } else {
         const payload = await response.json().catch(() => null);
@@ -47,17 +80,32 @@ const requestJson = async (region, path, { timeoutMs = 12_000, retries = 1 } = {
         return payload;
       }
     } catch (error) {
-      if (error instanceof AlbionApiError && error.status && error.status < 500 && error.status !== 429) throw error;
+      if (error instanceof AlbionApiError && (error.code === 'busy'
+        || (error.status && error.status < 500 && error.status !== 429))) throw error;
       lastError = error?.name === 'AbortError'
         ? new AlbionApiError('Albion tardó demasiado en responder.', 'timeout')
         : error;
     } finally {
       clearTimeout(timer);
     }
-    if (attempt < retries) await wait(400 * (attempt + 1));
+    if (attempt < retries) await wait(retryDelay);
   }
   if (lastError instanceof AlbionApiError) throw lastError;
   throw new AlbionApiError(lastError?.message || 'No se pudo contactar la API de Albion.', 'network_error');
+};
+
+const requestJson = async (region, path, options = {}) => {
+  const key = `${normalizeRegion(region)}:${path}`;
+  const existing = cache.get(key);
+  if (existing && existing.expiresAt > Date.now()) return existing.payload;
+  if (inFlight.has(key)) return inFlight.get(key);
+  const promise = fetchJson(region, path, options).then((payload) => {
+    if (cache.size > 500) cache.clear();
+    cache.set(key, { payload, expiresAt: Date.now() + cacheTtl(path) });
+    return payload;
+  }).finally(() => inFlight.delete(key));
+  inFlight.set(key, promise);
+  return promise;
 };
 
 const value = (object, ...keys) => {
@@ -83,8 +131,7 @@ const getPlayer = async (region, playerId) => {
   const raw = await requestJson(region, `/players/${encodeURIComponent(playerId)}`);
   const player = normalizePlayer(raw);
   if (!player.id || player.id !== String(playerId) || !player.name
-    || !['GuildId', 'guildId'].some((key) => Object.hasOwn(raw, key))
-    || !['AllianceId', 'allianceId'].some((key) => Object.hasOwn(raw, key))) {
+    || !['GuildId', 'guildId'].some((key) => Object.hasOwn(raw, key))) {
     throw new AlbionApiError('La ficha del personaje está incompleta.', 'invalid_response');
   }
   return player;

@@ -1,23 +1,36 @@
-# Registro de Albion
+# Registro de gremios de Albion
 
-## Configuración
+## Preparación
 
-1. Concede al bot **Gestionar roles** y coloca su rol por encima de todos los roles que asignará.
-2. Ejecuta `/register-setup configurar region:<Americas|Europe|Asia> auditoria:#canal`. La aprobación manual es el valor predeterminado; puedes seleccionar la opción **Automática sin comprobar identidad** si aceptas que la API no comprueba quién es dueño del personaje.
-3. Añade una o varias reglas:
-   - `/register-setup gremio nombre:<nombre exacto> roles:<@Rol1> <@Rol2>`
-   - `/register-setup alianza jugador:<personaje de la alianza> roles:<@Rol3> <@Rol4>`
-4. Revisa las reglas y sus IDs con `/register-setup reglas`.
-5. En el canal donde quieras publicar el formulario, ejecuta `/panel`. El mensaje tendrá un botón permanente para abrir el formulario.
+El bot necesita los permisos **Gestionar roles**, **Gestionar apodos**, **Ver canal**, **Enviar mensajes** e **Insertar enlaces**. Sitúa su rol por encima de los roles de gremio y de los miembros cuyo apodo deba cambiar. Activa el intent de miembros del servidor en el portal de Discord.
 
-Cada usuario puede usar `/register jugador:<nombre exacto>` o el botón del panel. La región y las reglas pertenecen únicamente a ese servidor de Discord. Un personaje solo puede vincularse a una cuenta de Discord dentro del mismo servidor.
+1. Ejecuta `/setup-registro` como administrador. El panel es privado para quien abrió el comando.
+2. Selecciona el servidor de Albion: Americas, Europe o Asia.
+3. Selecciona el canal de auditoría para los cambios de roles.
+4. Pulsa **Añadir gremio**, escribe el nombre exacto del gremio en Albion y una etiqueta de 1 a 12 letras o números. La búsqueda de Albion confirma el gremio. Selecciona el rol principal para guardarlo.
+5. En **Editar un gremio** puedes cambiar el rol principal, añadir hasta 24 roles adicionales, editar la etiqueta o eliminar el gremio. El panel siempre muestra todos los gremios y sus roles en embeds.
+6. Ejecuta `/registro-panel` en el canal donde quieres publicar el formulario. El bot publica un embed con el botón **Registrar personaje**.
 
-Con aprobación manual, el bot consulta Albion y publica una solicitud en el canal de auditoría. Un administrador comprueba la identidad dentro del juego y pulsa **Aprobar** o **Rechazar**. Al aprobar se consulta nuevamente el personaje y se asignan los roles actuales. En modo automático se asignan al registrar.
+Ejemplo de configuración:
 
-`/register-setup quitar tipo:<gremio|alianza> id:<ID>` retira una regla. `/register-setup desvincular usuario:@persona` retira los roles asignados por este sistema y libera su personaje para otro registro.
+| Gremio | Rol principal | Tag | Roles adicionales |
+| --- | --- | --- | --- |
+| Bon Bon Bum | BBB | BBB | Ninguno |
+| MONASTERIO | Monasterio | MONS | GUERRA DEL NORTE |
 
-## Sincronización
+Los gremios se configuran individualmente. La pertenencia a una alianza no concede roles. Puedes asignar cualquier rol adicional a varios gremios si quieres darles el mismo acceso.
+Las reglas de alianza creadas con comandos antiguos dejan de aplicarse; sus roles previamente concedidos se retiran tras la verificación confirmada.
 
-El bot revisa personajes cada seis horas en lotes pequeños. Si detecta una salida del gremio o alianza, programa otra comprobación 30 minutos después. Dos respuestas válidas que confirman la pérdida retiran los roles correspondientes. Si la API falla o devuelve datos incompletos, conserva los roles y reintenta. Cuando un usuario vuelve al Discord, valida su personaje de nuevo.
+## Uso por jugadores
 
-La API `gameinfo` de Albion puede responder con retraso y no autentica que quien introduce un nombre sea el dueño del personaje. En modo automático, los administradores deben supervisar el canal de auditoría para detectar registros indebidos. Un personaje no se puede usar por dos usuarios del mismo Discord.
+El jugador pulsa **Registrar personaje** y escribe su nombre exacto en el modal. El bot consulta su ficha de Albion, identifica el gremio configurado y asigna el rol principal y los adicionales. Cambia el apodo a `[TAG] NombreDelPersonaje`, respetando el límite de 32 caracteres de Discord. El personaje queda vinculado a una sola cuenta de Discord en ese servidor.
+
+La API pública de Albion muestra el gremio de un personaje, pero no demuestra que la persona de Discord sea su propietaria. El registro automático concede roles basándose en el nombre proporcionado. Un administrador puede pulsar **Desvincular usuario** en `/setup-registro` para liberar un personaje y retirar los roles gestionados.
+
+## Sincronización automática
+
+El bot revisa los registros cada seis horas, en lotes pequeños. Si detecta que un personaje dejó su gremio o pasó a otro configurado, exige una segunda lectura válida de Albion al menos 30 minutos después antes de retirar los roles anteriores. Los errores o respuestas incompletas de la API no retiran roles. Tras confirmar el cambio, asigna los roles del nuevo gremio y actualiza el apodo. Si ya no pertenece a un gremio configurado, restaura el apodo anterior siempre que nadie lo haya editado manualmente mientras tanto.
+
+Las consultas iguales que coinciden en el tiempo se comparten. Las búsquedas se guardan brevemente en caché, y las fichas de personajes solo 30 segundos. Las solicitudes simultáneas a Albion se limitan a dos para reducir las demoras y los picos de tráfico.
+
+La configuración, los registros y la propiedad de los roles se separan por servidor de Discord. Los roles concedidos manualmente y ajenos a este sistema no se retiran.

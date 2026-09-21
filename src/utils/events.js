@@ -371,11 +371,13 @@ const getEvents = () => {
     // ir, looters, finalizar evento) antes que cualquier otro manejador. Cubre
     // tanto el esquema de customId nuevo ("raid:*") como el legacy pre-refactor.
     if (interaction.customId) {
-      if (interaction.customId.startsWith('albion-register:')
-        || interaction.customId.startsWith('albion-approve:')
-        || interaction.customId.startsWith('albion-reject:')) {
-        const panelCommand = interaction.client.commands?.get('panel');
+      if (interaction.customId.startsWith('albion-register:')) {
+        const panelCommand = interaction.client.commands?.get('registro-panel');
         if (panelCommand?.handleInteraction && await panelCommand.handleInteraction(interaction)) return;
+      }
+      if (interaction.customId.startsWith('regcfg:')) {
+        const setupRegistration = interaction.client.commands?.get('setup-registro');
+        if (setupRegistration?.handleInteraction && await setupRegistration.handleInteraction(interaction)) return;
       }
       const handled = await raidInteractions.routeRaidInteraction(interaction);
       if (handled) return;

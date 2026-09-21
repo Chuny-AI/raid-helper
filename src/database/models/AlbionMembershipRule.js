@@ -6,6 +6,8 @@ const albionMembershipRuleSchema = new mongoose.Schema({
   entityId: { type: String, required: true },
   entityName: { type: String, required: true, maxlength: 100 },
   entityTag: { type: String, default: '', maxlength: 40 },
+  primaryRoleId: { type: String, default: null },
+  additionalRoleIds: { type: [String], default: [] },
   roleIds: {
     type: [String],
     required: true,

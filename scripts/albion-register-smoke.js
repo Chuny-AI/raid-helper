@@ -3,221 +3,150 @@ const { PermissionFlagsBits } = require('discord.js');
 const Registration = require('../src/database/models/AlbionRegistration');
 const Config = require('../src/database/models/AlbionRegistrationConfig');
 const Rule = require('../src/database/models/AlbionMembershipRule');
-const albionApi = require('../src/services/albionApiService');
+const api = require('../src/services/albionApiService');
 const service = require('../src/services/albionRegistrationService');
-const panel = require('../src/commands/utility/panel');
-const register = require('../src/commands/utility/register');
-const setup = require('../src/commands/utility/register_setup');
+const panel = require('../src/commands/utility/registro_panel');
+const setup = require('../src/commands/utility/setup_registro');
 
-const saved = {
-  configFindOne: Config.findOne,
-  ruleFind: Rule.find,
-  registrationFindOne: Registration.findOne,
-  registrationSave: Registration.prototype.save,
-  registrationDelete: Registration.deleteOne,
-  findPlayerByName: albionApi.findPlayerByName,
-  getPlayer: albionApi.getPlayer,
-  registerName: register.registerName,
+const original = {
+  configFind: Config.findOne, ruleFind: Rule.find, ruleFindOne: Rule.findOne,
+  ruleCount: Rule.countDocuments, ruleUpdate: Rule.findOneAndUpdate,
+  registrationFind: Registration.findOne, registrationSave: Registration.prototype.save,
+  registrationUpdate: Registration.updateMany, apiFind: api.findPlayerByName,
+  apiGet: api.getPlayer, fetch: global.fetch,
 };
 
 (async () => {
-  assert.equal(register.data.toJSON().name, 'register');
-  assert.equal(panel.data.toJSON().name, 'panel');
-  assert.equal(setup.data.toJSON().name, 'register-setup');
-  assert.deepEqual(setup.parseRoleIds('<@&123456789012345678> 234567890123456789'), [
-    '123456789012345678', '234567890123456789',
-  ]);
-  assert.throws(() => setup.parseRoleIds('@everyone'), /únicamente menciones/);
+  assert.equal(panel.data.toJSON().name, 'registro-panel');
+  assert.equal(setup.data.toJSON().name, 'setup-registro');
   assert.equal(panel.panelPayload({ region: 'americas' }).components[0].components[0].data.custom_id, 'albion-register:open');
+  assert.equal(setup.parseId('regcfg:home:111111111111111111:222222222222222222').action, 'home');
 
-  const roles = new Map([
-    ['guild-role', { id: 'guild-role', name: 'Gremio', position: 1 }],
-    ['alliance-role', { id: 'alliance-role', name: 'Alianza', position: 1 }],
-    ['manual-role', { id: 'manual-role', name: 'Manual', position: 1 }],
-  ]);
-  const roleCache = new Map(roles);
-  roleCache.delete('guild-role');
-  roleCache.delete('alliance-role');
+  const config = { region: 'americas', enabled: true, checkIntervalMinutes: 360, auditChannelId: null };
+  const guildId = '222222222222222222';
+  const userId = '111111111111111111';
+  const primary1 = '333333333333333333';
+  const extra1 = '444444444444444444';
+  const primary2 = '555555555555555555';
+  const manual = '666666666666666666';
+  const roles = new Map([primary1, extra1, primary2, manual].map((id) => [id, { id, name: id, position: 1 }]));
+  const memberRoles = new Map([[manual, roles.get(manual)]]);
   const changes = [];
-  const guild = {
-    id: 'guild-1',
-    members: {
-      me: { permissions: { has: (permission) => permission === PermissionFlagsBits.ManageRoles }, roles: { highest: { position: 10 } } },
-      fetch: async () => member,
-    },
-    roles: { cache: roles },
-    channels: { fetch: async () => null },
-  };
-  const member = {
-    id: 'discord-1', guild,
-    roles: {
-      cache: roleCache,
-      add: async (ids) => { ids.forEach((id) => roleCache.set(id, roles.get(id))); changes.push(['add', ids]); },
-      remove: async (ids) => { ids.forEach((id) => roleCache.delete(id)); changes.push(['remove', ids]); },
-    },
-  };
-  const registration = {
-    guildId: guild.id, discordUserId: member.id, region: 'americas',
-    playerId: 'player-1', playerName: 'Player', assignedRoleIds: [],
-    consecutiveMismatches: 0,
-    save: async () => {},
-  };
-  const config = { region: 'americas', approvalMode: 'automatic', enabled: true, checkIntervalMinutes: 360, auditChannelId: null };
+  const bot = { permissions: { has: (flag) => [PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageNicknames].includes(flag) }, roles: { highest: { position: 10 } } };
+  const guild = { id: guildId, name: 'Discord', members: { me: bot, fetch: async () => member },
+    roles: { cache: roles }, channels: { fetch: async () => null } };
+  const member = { id: userId, guild, nickname: 'Nombre previo', manageable: true,
+    setNickname: async (nickname) => { member.nickname = nickname; changes.push(['nickname', nickname]); },
+    roles: { cache: memberRoles,
+      add: async (ids) => { ids.forEach((id) => memberRoles.set(id, roles.get(id))); changes.push(['add', ids]); },
+      remove: async (ids) => { ids.forEach((id) => memberRoles.delete(id)); changes.push(['remove', ids]); } } };
   const rules = [
-    { entityType: 'guild', entityId: 'g1', entityName: 'Gremio', roleIds: ['guild-role'] },
-    { entityType: 'alliance', entityId: 'a1', entityName: 'Alianza', roleIds: ['alliance-role'] },
+    { entityType: 'guild', entityId: 'g1', entityName: 'Bon Bon Bum', entityTag: 'BBB', primaryRoleId: primary1, additionalRoleIds: [extra1], roleIds: [primary1, extra1] },
+    { entityType: 'guild', entityId: 'g2', entityName: 'MONASTERIO', entityTag: 'MONS', primaryRoleId: primary2, additionalRoleIds: [], roleIds: [primary2] },
+    { entityType: 'alliance', entityId: 'a1', entityName: 'Alianza', roleIds: [manual] },
   ];
-  let player = { id: 'player-1', name: 'Player', guildId: 'g1', guildName: 'Gremio', allianceId: 'a1', allianceName: 'Alianza' };
+  let record;
+  let player = { id: 'player-1', name: 'Player', guildId: 'g1', guildName: 'Bon Bon Bum', allianceId: 'a1', allianceName: 'Alianza' };
   Config.findOne = async () => config;
-  Rule.find = () => ({ sort: async () => rules });
-  Registration.findOne = async () => registration;
-  albionApi.findPlayerByName = async () => player;
-  albionApi.getPlayer = async () => player;
-
-  let presentedModal;
-  const buttonInteraction = {
-    customId: 'albion-register:open', guildId: guild.id,
-    isButton: () => true, showModal: async (modal) => { presentedModal = modal; },
+  Rule.find = (query) => {
+    assert.equal(query.entityType, 'guild');
+    return { sort: async () => rules.filter((rule) => rule.entityType === 'guild') };
   };
-  assert.equal(await panel.handleInteraction(buttonInteraction), true);
-  assert.equal(presentedModal.toJSON().custom_id, 'albion-register:submit');
-  let submittedName;
-  register.registerName = async (_interaction, name) => { submittedName = name; };
-  assert.equal(await panel.handleInteraction({
-    customId: 'albion-register:submit', isModalSubmit: () => true,
-    fields: { getTextInputValue: () => 'Player' },
-  }), true);
-  assert.equal(submittedName, 'Player');
-  register.registerName = saved.registerName;
+  Rule.findOne = async () => null;
+  Rule.countDocuments = async () => 2;
+  Rule.findOneAndUpdate = async (_filter, update) => update.$set;
+  Registration.findOne = async (query) => query.playerId ? (record?.playerId === query.playerId ? record : null) : record;
+  Registration.prototype.save = async function save() { record = this; return this; };
+  Registration.updateMany = async () => ({ modifiedCount: 1 });
+  api.findPlayerByName = async () => player;
+  api.getPlayer = async () => player;
 
+  const dashboard = setup.render({ config, rules: rules.slice(0, 2), guild, userId });
+  assert(dashboard.embeds.flatMap((embed) => embed.toJSON().fields || []).some((field) => field.value.includes(`<@&${extra1}>`)));
+  assert(!dashboard.components.some((component) => component.toJSON().components.some((item) => item.custom_id?.includes('alliance'))));
+  assert.equal(setup.render({ config, rules: rules.slice(0, 2), guild, userId, screen: 'detail', entityId: 'g1' }).components.length, 3);
+  const manyRules = Array.from({ length: 25 }, (_, index) => ({ ...rules[0], entityId: `g-${index}`, entityName: `Gremio ${index}` }));
+  const manyDashboard = setup.render({ config, rules: manyRules, guild, userId });
+  assert.equal(manyDashboard.embeds.length, 5);
+  assert.equal(manyDashboard.embeds.slice(1).flatMap((embed) => embed.toJSON().fields).length, 25);
+  assert(manyDashboard.components.every((component) => component.toJSON().components.length <= 5));
+  const savedRule = await service.saveGuildRule({ guild, entity: { id: 'g3', name: 'Otro' }, tag: 'OTRO', primaryRoleId: primary1, additionalRoleIds: [extra1], createdBy: userId });
+  assert.equal(savedRule.primaryRoleId, primary1);
+  assert.deepEqual(savedRule.additionalRoleIds, [extra1]);
+  await assert.rejects(service.saveGuildRule({ guild, entity: { id: 'g3', name: 'Otro' }, tag: 'Mal tag', primaryRoleId: primary1, createdBy: userId }), /etiqueta/);
+  api.findGuildByName = async () => ({ id: 'g4', name: 'Nuevo Gremio' });
+  let setupReply;
+  const setupInteraction = (customId, rest) => ({ customId, guildId, guild, user: { id: userId },
+    member: { permissions: { has: () => true } },
+    deferUpdate: async function deferUpdate() { this.deferred = true; },
+    editReply: async (payload) => { setupReply = payload; }, ...rest });
+  await setup.handleInteraction(setupInteraction(`regcfg:add-submit:${userId}:${guildId}`, {
+    isModalSubmit: () => true, fields: { getTextInputValue: (id) => id === 'name' ? 'Nuevo Gremio' : 'NG' },
+  }));
+  assert(setupReply.components[0].toJSON().components[0].custom_id.includes('create-role'));
+  await setup.handleInteraction(setupInteraction(`regcfg:create-role:${userId}:${guildId}`, {
+    isRoleSelectMenu: () => true, values: [primary2],
+  }));
+  assert.equal(setupReply.embeds[0].toJSON().title, '🛡️ Configuración de registro Albion');
+
+  let shownModal;
+  await panel.handleInteraction({ customId: 'albion-register:open', guildId, isButton: () => true,
+    showModal: async (value) => { shownModal = value; } });
+  assert.equal(shownModal.toJSON().custom_id, 'albion-register:submit');
   await service.registerPlayer({ member, playerName: 'Player' });
-  assert(roleCache.has('guild-role'));
-  assert(roleCache.has('alliance-role'));
+  assert(memberRoles.has(primary1));
+  assert(memberRoles.has(extra1));
+  assert(memberRoles.has(manual));
+  assert.equal(member.nickname, '[BBB] Player');
+  assert.equal(record.originalNickname, 'Nombre previo');
+  assert.deepEqual(new Set(record.assignedRoleIds), new Set([primary1, extra1]));
 
-  // Manual: el panel consulta Albion, pero no asigna roles hasta que un
-  // administrador confirma el personaje. La aprobación vuelve a consultar.
-  config.approvalMode = 'manual';
-  config.auditChannelId = 'audit-1';
-  const otherMember = {
-    id: 'discord-2', guild,
-    roles: {
-      cache: new Map(),
-      add: async (ids) => ids.forEach((id) => otherMember.roles.cache.set(id, roles.get(id))),
-      remove: async (ids) => ids.forEach((id) => otherMember.roles.cache.delete(id)),
-    },
-  };
-  const fetchMember = guild.members.fetch;
-  guild.members.fetch = async (id) => id === otherMember.id ? otherMember : member;
-  let approvalMessage;
-  guild.channels.fetch = async () => ({ send: async (payload) => { approvalMessage = payload; return { id: 'message-1' }; } });
-  Registration.findOne = async (query) => {
-    if (query.status === 'pending') return pendingRegistration;
-    if (query.playerId) return null;
-    if (query.discordUserId === otherMember.id) return pendingRegistration;
-    return null;
-  };
-  let pendingRegistration;
-  Registration.prototype.save = async function save() { this._id = 'pending-1'; pendingRegistration = this; return this; };
-  Registration.deleteOne = async () => ({ deletedCount: 1 });
-  const secondPlayer = { ...player, id: 'player-2', name: 'Another' };
-  albionApi.findPlayerByName = async () => secondPlayer;
-  albionApi.getPlayer = async () => secondPlayer;
-  const pending = await service.registerPlayer({ member: otherMember, playerName: 'Another' });
-  assert.equal(pending.pending, true);
-  assert.equal(pendingRegistration.status, 'pending');
-  assert.equal(otherMember.roles.cache.size, 0);
-  await service.handleDiscordMemberLeave(otherMember);
-  await service.handleDiscordMemberJoin(otherMember);
-  assert.equal(pendingRegistration.status, 'pending');
-  assert.equal(approvalMessage.components[0].components[0].data.custom_id,
-    'albion-approve:guild-1:discord-2:player-2');
-  let deniedMessage;
-  assert.equal(await panel.handleInteraction({
-    customId: 'albion-approve:guild-1:discord-2:player-2',
-    isButton: () => true,
-    guildId: guild.id,
-    member: { permissions: { has: () => false } },
-    reply: async (payload) => { deniedMessage = payload.content; },
-  }), true);
-  assert.match(deniedMessage, /Solo un administrador/);
-  assert.equal(pendingRegistration.status, 'pending');
-  const approved = await service.reviewRegistration({ guild, userId: otherMember.id, playerId: secondPlayer.id, action: 'approve' });
-  assert.equal(approved.status, 'approved');
-  assert.equal(pendingRegistration.status, 'active');
-  assert(otherMember.roles.cache.has('alliance-role'));
-  guild.members.fetch = fetchMember;
-  config.approvalMode = 'automatic';
-  config.auditChannelId = null;
-  Registration.findOne = async () => registration;
-  albionApi.findPlayerByName = async () => player;
-  albionApi.getPlayer = async () => player;
-  assert(roleCache.has('manual-role'));
-  assert.deepEqual(new Set(registration.assignedRoleIds), new Set(['guild-role', 'alliance-role']));
+  player = { ...player, guildId: 'g2', guildName: 'MONASTERIO' };
+  assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
+  assert(memberRoles.has(primary1));
+  record.lastValidatedAt = new Date(Date.now() - 31 * 60_000);
+  api.getPlayer = async () => { throw new api.AlbionApiError('timeout', 'timeout'); };
+  await assert.rejects(service.checkRegistration(guild, record), /timeout/);
+  assert(memberRoles.has(primary1), 'Una caída de Albion no quita roles');
+  api.getPlayer = async () => player;
+  assert.equal((await service.checkRegistration(guild, record)).status, 'synced');
+  assert(!memberRoles.has(primary1));
+  assert(!memberRoles.has(extra1));
+  assert(memberRoles.has(primary2));
+  assert(memberRoles.has(manual));
+  assert.equal(member.nickname, '[MONS] Player');
 
-  // Sale del gremio, pero sigue en alianza: se exige una segunda lectura válida.
-  player = { ...player, guildId: 'g2', guildName: 'Otro' };
-  assert.equal((await service.checkRegistration(guild, registration)).status, 'pending_confirmation');
-  assert(roleCache.has('guild-role'));
-  assert.equal(registration.consecutiveMismatches, 1);
-  albionApi.getPlayer = async () => { throw new albionApi.AlbionApiError('timeout', 'timeout'); };
-  await assert.rejects(service.checkRegistration(guild, registration), /timeout/);
-  assert(roleCache.has('guild-role'), 'un fallo de API no quita permisos');
-  albionApi.getPlayer = async () => player;
-  assert.equal((await service.checkRegistration(guild, registration)).status, 'synced');
-  assert(!roleCache.has('guild-role'));
-  assert(roleCache.has('alliance-role'));
-  assert(roleCache.has('manual-role'));
-
-  player = { ...player, guildId: null, guildName: null, allianceId: null, allianceName: null };
-  await service.checkRegistration(guild, registration);
-  assert(roleCache.has('alliance-role'));
-  await service.checkRegistration(guild, registration);
-  assert(!roleCache.has('alliance-role'));
-  assert(roleCache.has('manual-role'));
-  assert.equal(registration.status, 'unmatched');
-
-  player = { ...player, guildId: 'g1', guildName: 'Gremio', allianceId: 'a1', allianceName: 'Alianza' };
-  await service.checkRegistration(guild, registration);
-  assert(roleCache.has('guild-role'));
-  assert(roleCache.has('alliance-role'));
-  assert(changes.some(([type, ids]) => type === 'remove' && ids.includes('guild-role')));
-
-  // Un rol configurado que ya estaba puesto también queda bajo control del
-  // registro y debe retirarse al abandonar el gremio.
-  registration.assignedRoleIds = ['alliance-role'];
-  await service.applyPlayer({ member, registration, player, config, rules });
-  assert(registration.assignedRoleIds.includes('guild-role'));
   player = { ...player, guildId: null, guildName: null };
-  await service.checkRegistration(guild, registration);
-  await service.checkRegistration(guild, registration);
-  assert(!roleCache.has('guild-role'));
-  assert(roleCache.has('alliance-role'));
+  assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
+  record.lastValidatedAt = new Date(Date.now() - 31 * 60_000);
+  await service.checkRegistration(guild, record);
+  assert(!memberRoles.has(primary2));
+  assert(memberRoles.has(manual));
+  assert.equal(member.nickname, 'Nombre previo');
+  assert.equal(record.status, 'unmatched');
+  assert(changes.some(([kind, ids]) => kind === 'remove' && ids.includes(primary1)));
 
-  // El cliente toma el personaje exacto de la búsqueda y vuelve a comprobar su ID.
-  const fetchBefore = global.fetch;
-  try {
-    global.fetch = async (url) => ({
-      ok: true,
-      json: async () => url.includes('/search?')
-        ? { players: [{ Id: 'wrong', Name: 'PlayerExtra' }, { Id: 'player-1', Name: 'Player' }] }
-        : { Id: 'player-1', Name: 'Player', GuildId: 'g1', AllianceId: 'a1' },
-    });
-    assert.equal((await saved.findPlayerByName('americas', 'Player')).id, 'player-1');
-    assert.deepEqual(albionApi.normalizePlayer({ Id: 'p', Name: 'N', GuildId: '', AllianceId: '' }).guildId, null);
-  } finally {
-    global.fetch = fetchBefore;
-  }
-  console.log('✅ Registro Albion, sincronización de roles y panel verificados');
-})().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-}).finally(() => {
-  Config.findOne = saved.configFindOne;
-  Rule.find = saved.ruleFind;
-  Registration.findOne = saved.registrationFindOne;
-  Registration.prototype.save = saved.registrationSave;
-  Registration.deleteOne = saved.registrationDelete;
-  albionApi.findPlayerByName = saved.findPlayerByName;
-  albionApi.getPlayer = saved.getPlayer;
-  register.registerName = saved.registerName;
+  let fetchCount = 0;
+  global.fetch = async () => { fetchCount += 1; return { ok: true, json: async () => ({ Id: 'cache-test', Name: 'Test', GuildId: null }) }; };
+  const [first, second] = await Promise.all([
+    api.requestJson('americas', '/players/cache-test'), api.requestJson('americas', '/players/cache-test'),
+  ]);
+  assert.equal(fetchCount, 1, 'Las consultas iguales en curso se comparten');
+  assert.deepEqual(first, second);
+  await api.requestJson('americas', '/players/cache-test');
+  assert.equal(fetchCount, 1, 'La ficha se reutiliza brevemente');
+  assert.equal((await api.getPlayer('americas', 'cache-test')).guildId, null);
+  console.log('✅ Paneles, reglas de gremio, roles, apodos, retirada y caché Albion verificados');
+})().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
+  Config.findOne = original.configFind;
+  Rule.find = original.ruleFind;
+  Rule.findOne = original.ruleFindOne;
+  Rule.countDocuments = original.ruleCount;
+  Rule.findOneAndUpdate = original.ruleUpdate;
+  Registration.findOne = original.registrationFind;
+  Registration.prototype.save = original.registrationSave;
+  Registration.updateMany = original.registrationUpdate;
+  api.findPlayerByName = original.apiFind;
+  api.getPlayer = original.apiGet;
+  global.fetch = original.fetch;
 });

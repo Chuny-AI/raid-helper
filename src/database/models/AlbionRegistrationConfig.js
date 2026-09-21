@@ -8,7 +8,7 @@ const albionRegistrationConfigSchema = new mongoose.Schema({
     required: true,
     default: 'americas',
   },
-  approvalMode: { type: String, enum: ['manual', 'automatic'], default: 'manual' },
+  approvalMode: { type: String, enum: ['manual', 'automatic'], default: 'automatic' },
   auditChannelId: { type: String, default: null },
   checkIntervalMinutes: { type: Number, min: 60, max: 1440, default: 360 },
   enabled: { type: Boolean, default: true, index: true },
