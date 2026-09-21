@@ -54,6 +54,12 @@ const RaidEventSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Canal de voz privado creado al pulsar "Iniciar evento". Permanece visible
+  // para el servidor, pero solo líder, participantes y looters pueden entrar.
+  voiceChannelId: {
+    type: String,
+    default: null
+  },
 
   // --- Estado estructurado (stateVersion 2) ---
   // Versión del formato de estado. 1 = legacy (solo embedSnapshot de texto).

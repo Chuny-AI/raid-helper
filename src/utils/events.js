@@ -13,6 +13,7 @@ const raidRegistry = require('../services/raidRegistry');
 const raidInteractions = require('./raidInteractions');
 const { migrateFromSnapshot } = require('../services/raidStateMigration');
 const { renderRaidEmbed, renderRaidComponents } = require('./raidRender');
+const { deleteRaidVoiceChannelIfEmpty } = require('./raidVoice');
 const {
   handleMemberJoin,
   handleMemberLeave,
@@ -94,6 +95,16 @@ async function sealRaidMessage(raid, clientRef, motivo) {
 async function closeRaidAndSeal(raid, clientRef, motivo) {
   const cerrado = await closeRaidEvent(raid.eventId);
   await sealRaidMessage(raid, clientRef, motivo);
+  if (raid.voiceChannelId) {
+    const guild = clientRef.guilds.cache.get(raid.guildId);
+    if (guild) {
+      try {
+        await deleteRaidVoiceChannelIfEmpty(guild, raid);
+      } catch (error) {
+        console.error(`[WARN] ${motivo}: no se pudo limpiar el canal de voz del raid #${raid.eventId}:`, error?.message);
+      }
+    }
+  }
   return cerrado;
 }
 

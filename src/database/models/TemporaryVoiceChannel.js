@@ -5,6 +5,7 @@ const temporaryVoiceChannelSchema = new mongoose.Schema({
   channelId: { type: String, required: true, unique: true, index: true },
   generatorChannelId: { type: String, required: true },
   ownerId: { type: String, required: true },
+  raidId: { type: String, default: null, index: true },
   createdAt: { type: Date, default: Date.now },
 });
 

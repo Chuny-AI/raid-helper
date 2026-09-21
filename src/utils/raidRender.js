@@ -292,6 +292,13 @@ function renderRaidEmbed(raid, state) {
     });
   }
 
+  if (raid.voiceChannelId) {
+    fields.push({
+      name: '🔊 Canal del evento:',
+      value: `<#${raid.voiceChannelId}> — visible para todos; solo líder y participantes confirmados pueden entrar.`,
+    });
+  }
+
   // Mientras el raid está vivo interesa quién ocupa cada arma; una vez
   // finalizado, ese mismo bloque pasa a ser el informe de asistencia
   // (asistieron / no asistieron), que es lo que queda por saber. Se muestra
@@ -524,6 +531,14 @@ function buildButtonRow(raid, state) {
         .setEmoji('👑')
     );
   }
+  buttons.push(
+    new ButtonBuilder()
+      .setCustomId(`raid:start:${raid.eventId}`)
+      .setLabel(raid.voiceChannelId ? 'Evento iniciado' : 'Iniciar evento')
+      .setStyle(raid.voiceChannelId ? ButtonStyle.Secondary : ButtonStyle.Success)
+      .setEmoji('🔊')
+      .setDisabled(Boolean(raid.voiceChannelId))
+  );
   buttons.push(
     new ButtonBuilder()
       .setCustomId(`raid:finish:${raid.eventId}`)

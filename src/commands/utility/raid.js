@@ -36,6 +36,7 @@ const { logDiscordError } = require('../../utils/logging');
 const raidState = require('../../services/raidState');
 const raidRegistry = require('../../services/raidRegistry');
 const { getOrLoadRuntime, finishRaid, attendancePanelPayload } = require('../../utils/raidInteractions');
+const { clearRaidVoiceReference, syncRaidVoiceChannel } = require('../../utils/raidVoice');
 const {
   createRaidThread,
   syncRaidThread,
@@ -172,6 +173,22 @@ async function executeKickSubcommand(interaction) {
         await syncRaidThread(interaction.guild, runtime.raid);
       } catch (e) {
         console.log(`[INFO] kick: no se pudo sincronizar el hilo privado: ${e?.message}`);
+      }
+    }
+
+    if (runtime.raid.voiceChannelId && runtime.raid.status === 'active') {
+      try {
+        const channelId = runtime.raid.voiceChannelId;
+        const voiceResult = await syncRaidVoiceChannel(interaction.guild, runtime.raid);
+        if (voiceResult.reason === 'gone') {
+          await clearRaidVoiceReference({
+            guildId: interaction.guild.id,
+            raidId,
+            channelId,
+          });
+        }
+      } catch (e) {
+        console.log(`[INFO] kick: no se pudo sincronizar el canal de voz: ${e?.message}`);
       }
     }
 

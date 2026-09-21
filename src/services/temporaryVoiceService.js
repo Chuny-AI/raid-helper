@@ -86,14 +86,32 @@ const temporaryChannelName = (member) => {
   return `🔊 Sala de ${rawName}`.slice(0, 100);
 };
 
-const removeTracking = (guildId, channelId) => TemporaryVoiceChannel.deleteOne({ guildId, channelId });
+const clearLinkedRaid = async (tracked) => {
+  if (!tracked?.raidId) return;
+  const { clearRaidVoiceReference } = require('../utils/raidVoice');
+  await clearRaidVoiceReference({
+    guildId: tracked.guildId,
+    raidId: tracked.raidId,
+    channelId: tracked.channelId,
+  });
+};
+
+const removeTracking = async (guildId, channelId, knownTracking = null) => {
+  const tracked = knownTracking
+    || await TemporaryVoiceChannel.findOne({ guildId, channelId });
+  // Si el canal pertenece a un raid, primero suelta la referencia persistida.
+  // Ante un fallo de Mongo conservamos el seguimiento para volver a intentarlo
+  // durante la recuperación del siguiente arranque.
+  await clearLinkedRaid(tracked);
+  await TemporaryVoiceChannel.deleteOne({ guildId, channelId });
+};
 
 const deleteTemporaryChannelIfEmpty = async (channel, reason = 'Canal de voz temporal vacío') => {
   if (!channel?.guild || channel.type !== ChannelType.GuildVoice || channel.members?.size !== 0) return false;
   const tracked = await TemporaryVoiceChannel.findOne({ guildId: channel.guild.id, channelId: channel.id });
   if (!tracked || channel.members?.size !== 0) return false;
   await channel.delete(reason);
-  await removeTracking(channel.guild.id, channel.id);
+  await removeTracking(channel.guild.id, channel.id, tracked);
   return true;
 };
 
@@ -188,7 +206,8 @@ const handleVoiceStateUpdate = async (oldState, newState) => {
 
 const handleChannelDelete = async (channel) => {
   cancelScheduledCleanup(channel.id);
-  await TemporaryVoiceChannel.deleteOne({ channelId: channel.id });
+  const tracked = await TemporaryVoiceChannel.findOne({ channelId: channel.id });
+  if (tracked) await removeTracking(channel.guild?.id || tracked.guildId, channel.id, tracked);
   generatorCache.delete(channel.guild?.id);
 };
 
@@ -201,7 +220,7 @@ const recoverTemporaryVoiceChannels = async (client) => {
     let channel = guild?.channels.cache.get(tracked.channelId) || null;
     if (!channel && guild) channel = await guild.channels.fetch(tracked.channelId).catch(() => null);
     if (!channel || channel.type !== ChannelType.GuildVoice) {
-      await removeTracking(tracked.guildId, tracked.channelId);
+      await removeTracking(tracked.guildId, tracked.channelId, tracked);
       continue;
     }
     if (await deleteTemporaryChannelIfEmpty(channel, 'Limpieza de canal temporal al iniciar')) removed += 1;

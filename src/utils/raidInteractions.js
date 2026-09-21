@@ -32,6 +32,13 @@ const {
 const { safeDeferUpdate } = require('./interaction');
 const { createBuildEmbed } = require('./embed');
 const { syncRaidThread, deleteRaidThread } = require('./raidThread');
+const {
+  clearRaidVoiceReference,
+  createRaidVoiceChannel,
+  deleteRaidVoiceChannelIfEmpty,
+  discardRaidVoiceChannel,
+  syncRaidVoiceChannel,
+} = require('./raidVoice');
 
 /** Responde SIEMPRE de forma efímera, sin importar si la interacción ya fue deferida como update. */
 async function ephemeralReply(interaction, payload) {
@@ -603,7 +610,7 @@ async function finishRaid(raidId, actorId, guild) {
   if (!runtime) return { ok: false, reason: 'not_found' };
   if (runtime.raid.status !== 'active') return { ok: false, reason: 'already_closed' };
 
-  return raidRegistry.withRaidLock(raidId, async () => {
+  const result = await raidRegistry.withRaidLock(raidId, async () => {
     const previous = {
       status: runtime.raid.status,
       closedBy: runtime.raid.closedBy,
@@ -638,6 +645,18 @@ async function finishRaid(raidId, actorId, guild) {
     raidRegistry.unregister(raidId);
     return { ok: true };
   });
+
+  // Una sala que nunca llegó a usarse no debe quedar abandonada al cerrar el
+  // evento. Si aún hay gente dentro, el listener de voz la elimina cuando
+  // salga la última persona.
+  if (result.ok && runtime.raid.voiceChannelId) {
+    try {
+      await deleteRaidVoiceChannelIfEmpty(guild, runtime.raid);
+    } catch (error) {
+      console.error(`[WARN] finishRaid: no se pudo limpiar el canal de voz del raid #${raidId}:`, error?.message);
+    }
+  }
+  return result;
 }
 
 // ─────────────────────────────── Asistencia ───────────────────────────────
@@ -674,6 +693,66 @@ function attendancePanelPayload(runtime, requestedPage = 0) {
     content: lineas.join('\n'),
     components: renderAttendanceRows(runtime.raid, roster, absentIds, page),
   };
+}
+
+/** Crea el canal de voz privado con la lista confirmada del raid. */
+async function handleStartEvent(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
+  if (!runtime) return replyGone(interaction);
+  if (runtime.raid.status !== 'active') return replyClosed(interaction);
+  if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
+    return ephemeralReply(interaction, 'Solo el líder del raid o un administrador puede iniciar el evento.');
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  let result;
+  try {
+    result = await raidRegistry.withRaidLock(runtime.raidId, async () => {
+      const previousChannelId = runtime.raid.voiceChannelId || null;
+      const created = await createRaidVoiceChannel({
+        guild: interaction.guild,
+        raid: runtime.raid,
+        actorId: interaction.user.id,
+      });
+      if (!created.ok || created.reason === 'already_exists') {
+        // createRaidVoiceChannel limpia una referencia obsoleta antes de
+        // buscar dónde crear la nueva sala. Aunque la nueva creación falle,
+        // no debemos conservar en MongoDB ni en el embed un canal inexistente.
+        if (!created.ok && previousChannelId && !runtime.raid.voiceChannelId) {
+          await raidRegistry.saveRaid(runtime.raidId);
+          await raidRegistry.renderAndEdit(runtime.raidId);
+        }
+        return created;
+      }
+
+      runtime.raid.voiceChannelId = created.channel.id;
+      try {
+        await raidRegistry.saveRaid(runtime.raidId);
+      } catch (error) {
+        runtime.raid.voiceChannelId = previousChannelId;
+        await discardRaidVoiceChannel(created.channel);
+        throw error;
+      }
+      await raidRegistry.renderAndEdit(runtime.raidId);
+      return created;
+    });
+  } catch (error) {
+    console.error(`[ERROR] No se pudo iniciar el canal del raid #${runtime.raidId}:`, error);
+    return interaction.editReply({ content: '❌ Discord o la base de datos rechazaron la creación del canal. Inténtalo de nuevo.' });
+  }
+
+  const messages = {
+    no_generator: 'Configura al menos un canal generador en `/setup` → **Salas temporales** antes de iniciar el evento.',
+    missing_permissions: 'El bot necesita Ver canal, Conectar, Gestionar canales y Mover miembros en la categoría configurada.',
+    no_participants: 'No hay líder ni participantes del raid que sigan dentro del servidor.',
+  };
+  if (!result.ok) return interaction.editReply({ content: `❌ ${messages[result.reason] || 'No se pudo crear el canal del evento.'}` });
+  if (result.reason === 'already_exists') {
+    return interaction.editReply({ content: `🔊 El evento ya tiene el canal ${result.channel}.` });
+  }
+  return interaction.editReply({
+    content: `✅ Evento iniciado en ${result.channel}. **${result.allowedCount}** miembro(s) confirmado(s) pueden conectarse.`,
+  });
 }
 
 /** Botón "Registrar asistencia" del mensaje de un raid ya finalizado. */
@@ -882,6 +961,32 @@ function scheduleThreadSync(raidId, interaction) {
   });
 }
 
+const voiceMembershipActions = new Set(['join', 'joinpick', 'waitpick', 'cannotgo', 'looter']);
+
+function scheduleRaidVoiceSync(raidId, interaction, action) {
+  if (!voiceMembershipActions.has(action)) return;
+  const runtime = raidId
+    ? raidRegistry.getByRaidId(raidId)
+    : raidRegistry.getByMessageId(interaction.message?.id);
+  if (!runtime?.raid?.voiceChannelId || runtime.raid.status !== 'active') return;
+
+  setImmediate(async () => {
+    try {
+      const channelId = runtime.raid.voiceChannelId;
+      const result = await syncRaidVoiceChannel(interaction.guild, runtime.raid);
+      if (result.reason === 'gone') {
+        await clearRaidVoiceReference({
+          guildId: interaction.guild.id,
+          raidId: runtime.raidId,
+          channelId,
+        });
+      }
+    } catch (error) {
+      console.error(`[WARN] scheduleRaidVoiceSync: raid #${runtime.raidId}:`, error?.message);
+    }
+  });
+}
+
 /**
  * Punto de entrada único llamado desde events.js para cualquier customId de
  * componente relacionado con un raid (nuevo esquema "raid:*" o legacy).
@@ -945,6 +1050,9 @@ async function routeRaidInteraction(interaction) {
       case 'finishno':
         await handleFinishCancel(interaction);
         break;
+      case 'start':
+        await handleStartEvent(interaction, raidId);
+        break;
       case 'att':
         await handleAttendanceOpen(interaction, raidId);
         break;
@@ -985,6 +1093,7 @@ async function routeRaidInteraction(interaction) {
   }
 
   scheduleThreadSync(raidId, interaction);
+  scheduleRaidVoiceSync(raidId, interaction, action);
   return true;
 }
 
@@ -993,4 +1102,5 @@ module.exports = {
   getOrLoadRuntime,
   finishRaid,
   attendancePanelPayload,
+  handleStartEvent,
 };
