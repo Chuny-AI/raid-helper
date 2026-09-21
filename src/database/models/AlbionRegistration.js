@@ -8,7 +8,7 @@ const albionRegistrationSchema = new mongoose.Schema({
   region: { type: String, enum: ['americas', 'europe', 'asia'], required: true },
   status: {
     type: String,
-    enum: ['active', 'unmatched', 'discord_absent'],
+    enum: ['pending', 'active', 'unmatched', 'discord_absent'],
     default: 'active',
     index: true,
   },

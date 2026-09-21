@@ -1,4 +1,6 @@
-const { EmbedBuilder, PermissionFlagsBits, escapeMarkdown } = require('discord.js');
+const {
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits, escapeMarkdown,
+} = require('discord.js');
 const AlbionRegistrationConfig = require('../database/models/AlbionRegistrationConfig');
 const AlbionMembershipRule = require('../database/models/AlbionMembershipRule');
 const AlbionRegistration = require('../database/models/AlbionRegistration');
@@ -26,9 +28,12 @@ const getConfig = (guildId) => AlbionRegistrationConfig.findOne({ guildId });
 const getRules = (guildId) => AlbionMembershipRule.find({ guildId }).sort({ entityType: 1, entityName: 1 });
 const getRegistration = (guildId, discordUserId) => AlbionRegistration.findOne({ guildId, discordUserId });
 
-const configure = async ({ guildId, region, auditChannelId, updatedBy }) => {
+const configure = async ({ guildId, region, approvalMode, auditChannelId, updatedBy }) => {
   if (!Object.hasOwn(albionApi.REGION_BASE_URLS, region)) {
     throw new RegistrationError('Selecciona Americas, Europe o Asia.');
+  }
+  if (!['manual', 'automatic'].includes(approvalMode)) {
+    throw new RegistrationError('Selecciona aprobación manual o automática.');
   }
   const previous = await getConfig(guildId);
   const registeredCount = await AlbionRegistration.countDocuments({ guildId });
@@ -38,7 +43,7 @@ const configure = async ({ guildId, region, auditChannelId, updatedBy }) => {
   }
   return AlbionRegistrationConfig.findOneAndUpdate(
     { guildId },
-    { $set: { region, auditChannelId, updatedBy, updatedAt: new Date(), enabled: true } },
+    { $set: { region, approvalMode, auditChannelId, updatedBy, updatedAt: new Date(), enabled: true } },
     { upsert: true, new: true, runValidators: true },
   );
 };
@@ -100,6 +105,33 @@ const sendAudit = async (guild, config, title, fields) => {
   } catch (error) {
     console.error(`[WARN] No se pudo publicar auditoría Albion en ${guild.id}:`, error?.message);
     return false;
+  }
+};
+
+const sendApprovalRequest = async (member, config, player) => {
+  try {
+    const channel = await member.guild.channels.fetch(config.auditChannelId);
+    if (!channel?.send) throw new Error('Canal de auditoría no disponible');
+    const embed = new EmbedBuilder()
+      .setTitle('🛡️ Solicitud de registro Albion')
+      .setDescription('Confirma dentro del juego que esta cuenta de Discord pertenece al personaje antes de conceder roles.')
+      .setColor(0xfee75c)
+      .addFields(
+        { name: 'Usuario', value: `<@${member.id}>`, inline: true },
+        { name: 'Personaje', value: clean(player.name), inline: true },
+        { name: 'Gremio', value: clean(player.guildName || 'Sin gremio'), inline: true },
+        { name: 'Alianza', value: clean(player.allianceName || 'Sin alianza'), inline: true },
+      ).setTimestamp();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`albion-approve:${member.guild.id}:${member.id}:${player.id}`)
+        .setLabel('Aprobar').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`albion-reject:${member.guild.id}:${member.id}:${player.id}`)
+        .setLabel('Rechazar').setStyle(ButtonStyle.Danger),
+    );
+    return await channel.send({ embeds: [embed], components: [row], allowedMentions: { parse: [] } });
+  } catch (error) {
+    console.error(`[WARN] Solicitud de Albion en ${member.guild.id}:`, error?.message);
+    return null;
   }
 };
 
@@ -188,14 +220,27 @@ const registerPlayer = async ({ member, playerName }) => {
     if (registration && registration.playerId !== player.id) {
       throw new RegistrationError('Ya tienes otro personaje vinculado. Un administrador debe desvincularlo primero.');
     }
-    if (!registration) {
+    if (registration?.status === 'pending') {
+      return { player, registration, pending: true };
+    }
+    const isNew = !registration;
+    if (isNew) {
       registration = new AlbionRegistration({
         guildId: member.guild.id, discordUserId: member.id, playerId: player.id,
         playerName: player.name, region: config.region,
+        status: config.approvalMode === 'automatic' ? 'active' : 'pending',
       });
       // Reserva el personaje antes de conceder roles para impedir que otra
       // cuenta se registre a la vez. Un índice único resuelve la carrera.
       await registration.save();
+    }
+    if (config.approvalMode !== 'automatic' && isNew) {
+      const request = await sendApprovalRequest(member, config, player);
+      if (!request) {
+        await AlbionRegistration.deleteOne({ _id: registration._id, status: 'pending' });
+        throw new RegistrationError('No se pudo enviar la solicitud al canal de auditoría. Contacta a un administrador.');
+      }
+      return { player, registration, pending: true };
     }
     const result = await applyPlayer({ member, registration, player, config, rules });
     return { player, result, registration };
@@ -204,6 +249,35 @@ const registerPlayer = async ({ member, playerName }) => {
       throw new RegistrationError('Este personaje ya está vinculado. Vuelve a intentarlo o consulta a un administrador.');
     }
     throw error;
+  } finally {
+    runningUsers.delete(key);
+  }
+};
+
+const reviewRegistration = async ({ guild, userId, playerId, action }) => {
+  const key = lockKey(guild.id, userId);
+  if (runningUsers.has(key)) throw new RegistrationError('Este registro ya se está procesando.');
+  runningUsers.add(key);
+  try {
+    const entry = await AlbionRegistration.findOne({
+      guildId: guild.id, discordUserId: userId, playerId, status: 'pending',
+    });
+    if (!entry) throw new RegistrationError('La solicitud ya se procesó o fue cancelada.');
+    if (action === 'reject') {
+      await AlbionRegistration.deleteOne({ _id: entry._id, status: 'pending' });
+      return { status: 'rejected', playerName: entry.playerName };
+    }
+    const config = await getConfig(guild.id);
+    if (!config?.enabled || config.region !== entry.region) throw new RegistrationError('La configuración de Albion cambió.');
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) throw new RegistrationError('El usuario ya no está en este Discord.');
+    const player = await albionApi.getPlayer(entry.region, entry.playerId);
+    const rules = await getRules(guild.id);
+    if (!matchingRoleIds(player, rules).size) {
+      throw new RegistrationError('El personaje ya no cumple ninguna regla de gremio o alianza.');
+    }
+    const result = await applyPlayer({ member, registration: entry, player, config, rules });
+    return { status: 'approved', playerName: player.name, result };
   } finally {
     runningUsers.delete(key);
   }
@@ -275,6 +349,7 @@ const sweepRegistrations = async (client, limit = 20) => {
 const handleDiscordMemberJoin = async (member) => {
   const entry = await getRegistration(member.guild.id, member.id);
   if (!entry) return false;
+  if (entry.status === 'pending') return false;
   entry.status = 'active';
   entry.nextCheckAt = new Date();
   await entry.save();
@@ -285,6 +360,7 @@ const handleDiscordMemberJoin = async (member) => {
 const handleDiscordMemberLeave = async (member) => {
   const entry = await getRegistration(member.guild.id, member.id);
   if (!entry) return false;
+  if (entry.status === 'pending') return true;
   entry.status = 'discord_absent';
   entry.assignedRoleIds = [];
   entry.nextCheckAt = nextCheckAt(DEFAULT_INTERVAL_MINUTES);
@@ -329,6 +405,7 @@ module.exports = {
   handleDiscordMemberLeave,
   matchingRoleIds,
   registerPlayer,
+  reviewRegistration,
   removeRegistration,
   saveRule,
   sendAudit,

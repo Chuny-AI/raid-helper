@@ -12,7 +12,10 @@ const registerName = async (interaction, playerName) => {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
     const member = await interaction.guild.members.fetch(interaction.user.id);
-    const { player, result } = await registration.registerPlayer({ member, playerName });
+    const { player, result, pending } = await registration.registerPlayer({ member, playerName });
+    if (pending) {
+      return interaction.editReply(`✅ **${escapeMarkdown(player.name)}** pertenece a un gremio o alianza configurados. La solicitud está pendiente de aprobación en el canal de auditoría.`);
+    }
     return interaction.editReply({
       content: `✅ **${escapeMarkdown(player.name)}** registrado. Gremio: **${escapeMarkdown(player.guildName || 'Sin gremio')}**. Alianza: **${escapeMarkdown(player.allianceName || 'Sin alianza')}**. Roles asignados: ${[...result.desired].map((id) => `<@&${id}>`).join(', ') || 'ninguno'}.`,
       allowedMentions: { parse: [] },

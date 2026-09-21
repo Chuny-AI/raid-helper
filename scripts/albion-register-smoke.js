@@ -13,6 +13,8 @@ const saved = {
   configFindOne: Config.findOne,
   ruleFind: Rule.find,
   registrationFindOne: Registration.findOne,
+  registrationSave: Registration.prototype.save,
+  registrationDelete: Registration.deleteOne,
   findPlayerByName: albionApi.findPlayerByName,
   getPlayer: albionApi.getPlayer,
   registerName: register.registerName,
@@ -60,7 +62,7 @@ const saved = {
     consecutiveMismatches: 0,
     save: async () => {},
   };
-  const config = { region: 'americas', enabled: true, checkIntervalMinutes: 360, auditChannelId: null };
+  const config = { region: 'americas', approvalMode: 'automatic', enabled: true, checkIntervalMinutes: 360, auditChannelId: null };
   const rules = [
     { entityType: 'guild', entityId: 'g1', entityName: 'Gremio', roleIds: ['guild-role'] },
     { entityType: 'alliance', entityId: 'a1', entityName: 'Alianza', roleIds: ['alliance-role'] },
@@ -91,6 +93,64 @@ const saved = {
   await service.registerPlayer({ member, playerName: 'Player' });
   assert(roleCache.has('guild-role'));
   assert(roleCache.has('alliance-role'));
+
+  // Manual: el panel consulta Albion, pero no asigna roles hasta que un
+  // administrador confirma el personaje. La aprobación vuelve a consultar.
+  config.approvalMode = 'manual';
+  config.auditChannelId = 'audit-1';
+  const otherMember = {
+    id: 'discord-2', guild,
+    roles: {
+      cache: new Map(),
+      add: async (ids) => ids.forEach((id) => otherMember.roles.cache.set(id, roles.get(id))),
+      remove: async (ids) => ids.forEach((id) => otherMember.roles.cache.delete(id)),
+    },
+  };
+  const fetchMember = guild.members.fetch;
+  guild.members.fetch = async (id) => id === otherMember.id ? otherMember : member;
+  let approvalMessage;
+  guild.channels.fetch = async () => ({ send: async (payload) => { approvalMessage = payload; return { id: 'message-1' }; } });
+  Registration.findOne = async (query) => {
+    if (query.status === 'pending') return pendingRegistration;
+    if (query.playerId) return null;
+    if (query.discordUserId === otherMember.id) return pendingRegistration;
+    return null;
+  };
+  let pendingRegistration;
+  Registration.prototype.save = async function save() { this._id = 'pending-1'; pendingRegistration = this; return this; };
+  Registration.deleteOne = async () => ({ deletedCount: 1 });
+  const secondPlayer = { ...player, id: 'player-2', name: 'Another' };
+  albionApi.findPlayerByName = async () => secondPlayer;
+  albionApi.getPlayer = async () => secondPlayer;
+  const pending = await service.registerPlayer({ member: otherMember, playerName: 'Another' });
+  assert.equal(pending.pending, true);
+  assert.equal(pendingRegistration.status, 'pending');
+  assert.equal(otherMember.roles.cache.size, 0);
+  await service.handleDiscordMemberLeave(otherMember);
+  await service.handleDiscordMemberJoin(otherMember);
+  assert.equal(pendingRegistration.status, 'pending');
+  assert.equal(approvalMessage.components[0].components[0].data.custom_id,
+    'albion-approve:guild-1:discord-2:player-2');
+  let deniedMessage;
+  assert.equal(await panel.handleInteraction({
+    customId: 'albion-approve:guild-1:discord-2:player-2',
+    isButton: () => true,
+    guildId: guild.id,
+    member: { permissions: { has: () => false } },
+    reply: async (payload) => { deniedMessage = payload.content; },
+  }), true);
+  assert.match(deniedMessage, /Solo un administrador/);
+  assert.equal(pendingRegistration.status, 'pending');
+  const approved = await service.reviewRegistration({ guild, userId: otherMember.id, playerId: secondPlayer.id, action: 'approve' });
+  assert.equal(approved.status, 'approved');
+  assert.equal(pendingRegistration.status, 'active');
+  assert(otherMember.roles.cache.has('alliance-role'));
+  guild.members.fetch = fetchMember;
+  config.approvalMode = 'automatic';
+  config.auditChannelId = null;
+  Registration.findOne = async () => registration;
+  albionApi.findPlayerByName = async () => player;
+  albionApi.getPlayer = async () => player;
   assert(roleCache.has('manual-role'));
   assert.deepEqual(new Set(registration.assignedRoleIds), new Set(['guild-role', 'alliance-role']));
 
@@ -155,6 +215,8 @@ const saved = {
   Config.findOne = saved.configFindOne;
   Rule.find = saved.ruleFind;
   Registration.findOne = saved.registrationFindOne;
+  Registration.prototype.save = saved.registrationSave;
+  Registration.deleteOne = saved.registrationDelete;
   albionApi.findPlayerByName = saved.findPlayerByName;
   albionApi.getPlayer = saved.getPlayer;
   register.registerName = saved.registerName;

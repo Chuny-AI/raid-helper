@@ -18,7 +18,10 @@ const panelPayload = (config) => ({
     .setDescription([
       'Pulsa **Registrar personaje** e indica el nombre exacto de tu personaje de Albion Online.',
       `Servidor de Albion: **${config.region}**.`,
-      'El bot comprueba tu gremio y alianza, asigna los roles configurados y los revisa periódicamente.',
+      config.approvalMode === 'automatic'
+        ? 'El bot comprueba tu gremio y alianza y asigna los roles configurados.'
+        : 'El bot comprueba tu gremio y alianza. Un administrador verificará tu identidad y aprobará los roles.',
+      'Los roles se revisan periódicamente.',
       'Si sales del gremio, los roles correspondientes se retirarán después de confirmar el cambio.',
       'El personaje quedará vinculado a tu cuenta de Discord en este servidor.',
     ].join('\n\n'))],
@@ -51,6 +54,32 @@ const execute = async (interaction) => {
 };
 
 const handleInteraction = async (interaction) => {
+  if (/^albion-(approve|reject):/.test(interaction.customId) && interaction.isButton?.()) {
+    const [prefix, guildId, userId, playerId, extra] = interaction.customId.split(':');
+    if (!['albion-approve', 'albion-reject'].includes(prefix) || !guildId || !userId || !playerId || extra) return false;
+    if (interaction.guildId !== guildId || !interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+      await interaction.reply({ content: 'Solo un administrador de este servidor puede revisar la solicitud.', flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const result = await registration.reviewRegistration({
+        guild: interaction.guild, userId, playerId,
+        action: prefix === 'albion-approve' ? 'approve' : 'reject',
+      });
+      await interaction.message.edit({ components: [] }).catch((error) => {
+        console.error('[WARN] No se pudo desactivar la solicitud de Albion:', error?.message);
+      });
+      return interaction.editReply(result.status === 'approved'
+        ? `✅ Personaje **${result.playerName}** aprobado; roles asignados a <@${userId}>.`
+        : `✅ Solicitud de **${result.playerName}** rechazada.`);
+    } catch (error) {
+      const message = error instanceof registration.RegistrationError ? error.message
+        : 'No se pudo revisar la solicitud. Comprueba Albion y los permisos del bot.';
+      console.error('[WARN] Revisión de registro Albion:', error);
+      return interaction.editReply(`❌ ${message}`);
+    }
+  }
   if (interaction.customId === 'albion-register:open' && interaction.isButton?.()) {
     const config = await registration.getConfig(interaction.guildId);
     if (!config?.enabled) return interaction.reply({ content: 'El registro no está disponible en este momento.', flags: MessageFlags.Ephemeral });

@@ -20,7 +20,12 @@ const data = new SlashCommandBuilder()
         { name: 'Asia', value: 'asia' },
       ))
     .addChannelOption((option) => option.setName('auditoria').setDescription('Canal privado para cambios de roles')
-      .addChannelTypes(ChannelType.GuildText).setRequired(true)))
+      .addChannelTypes(ChannelType.GuildText).setRequired(true))
+    .addStringOption((option) => option.setName('aprobacion').setDescription('Cómo se comprueba al dueño del personaje')
+      .addChoices(
+        { name: 'Manual por administradores (recomendado)', value: 'manual' },
+        { name: 'Automática sin comprobar identidad', value: 'automatic' },
+      )))
   .addSubcommand((sub) => sub.setName('gremio')
     .setDescription('Asocia un gremio con entre 1 y 25 roles de Discord')
     .addStringOption((option) => option.setName('nombre').setDescription('Nombre exacto del gremio en Albion').setRequired(true))
@@ -66,16 +71,17 @@ const execute = async (interaction) => {
       const config = await registration.configure({
         guildId: interaction.guildId,
         region: interaction.options.getString('region', true),
+        approvalMode: interaction.options.getString('aprobacion') || 'manual',
         auditChannelId: channel.id,
         updatedBy: interaction.user.id,
       });
-      return interaction.editReply(`✅ Registro configurado en **${config.region}**. Auditoría: ${channel}. Añade reglas y publica el panel con `/panel`.`);
+      return interaction.editReply(`✅ Registro configurado en **${config.region}**. Aprobación: **${config.approvalMode === 'manual' ? 'manual' : 'automática'}**. Auditoría: ${channel}. Añade reglas y publica el panel con /panel.`);
     }
     if (action === 'reglas') {
       const [config, rules] = await Promise.all([registration.getConfig(interaction.guildId), registration.getRules(interaction.guildId)]);
       if (!config) return interaction.editReply('Configura primero `/register-setup configurar`.');
       const lines = rules.map((rule) => `${rule.entityType === 'guild' ? '🏰 Gremio' : '🤝 Alianza'} **${escapeMarkdown(rule.entityName)}** · ID \`${rule.entityId}\` → ${rule.roleIds.map((id) => `<@&${id}>`).join(', ')}`);
-      return interaction.editReply({ content: `**Región:** ${config.region} · **Auditoría:** <#${config.auditChannelId}>\n${lines.join('\n').slice(0, 1750) || 'Aún no hay reglas.'}`, allowedMentions: { parse: [] } });
+      return interaction.editReply({ content: `**Región:** ${config.region} · **Aprobación:** ${config.approvalMode || 'manual'} · **Auditoría:** <#${config.auditChannelId}>\n${lines.join('\n').slice(0, 1750) || 'Aún no hay reglas.'}`, allowedMentions: { parse: [] } });
     }
     if (action === 'desvincular') {
       const user = interaction.options.getUser('usuario', true);
