@@ -15,6 +15,11 @@ const { migrateFromSnapshot } = require('../services/raidStateMigration');
 const { renderRaidEmbed, renderRaidComponents } = require('./raidRender');
 const { deleteRaidVoiceChannelIfEmpty } = require('./raidVoice');
 const {
+  handleDiscordMemberJoin,
+  handleDiscordMemberLeave,
+  sweepRegistrations,
+} = require('../services/albionRegistrationService');
+const {
   handleMemberJoin,
   handleMemberLeave,
   handleMemberUpdate,
@@ -269,6 +274,17 @@ const getEvents = () => {
       console.error('[ERROR] No se pudieron recuperar los canales de voz temporales:', error);
     }
 
+    // Un lote pequeño al arrancar y luego lotes periódicos. Cada ficha
+    // conserva su propio nextCheckAt y un fallo de Albion no retira roles.
+    sweepRegistrations(readyClient).catch((error) => {
+      console.error('[WARN] No se pudieron sincronizar los registros Albion al iniciar:', error);
+    });
+    setInterval(() => {
+      sweepRegistrations(readyClient).catch((error) => {
+        console.error('[WARN] No se pudieron sincronizar los registros Albion:', error);
+      });
+    }, 5 * 60 * 1000).unref?.();
+
   });
 
   client.on(Events.GuildCreate, async (guild) => {
@@ -286,6 +302,11 @@ const getEvents = () => {
     } catch (error) {
       console.error(`[ERROR] No se pudo registrar la entrada de ${member.id}:`, error);
     }
+    try {
+      await handleDiscordMemberJoin(member);
+    } catch (error) {
+      console.error(`[WARN] No se pudo validar Albion al entrar ${member.id}:`, error);
+    }
   });
 
   client.on(Events.GuildMemberUpdate, async (_oldMember, newMember) => {
@@ -301,6 +322,11 @@ const getEvents = () => {
       await handleMemberLeave(member, client.user);
     } catch (error) {
       console.error(`[ERROR] No se pudo registrar la salida de ${member.id}:`, error);
+    }
+    try {
+      await handleDiscordMemberLeave(member);
+    } catch (error) {
+      console.error(`[WARN] No se pudo actualizar la vinculación Albion de ${member.id}:`, error);
     }
   });
 
@@ -345,6 +371,10 @@ const getEvents = () => {
     // ir, looters, finalizar evento) antes que cualquier otro manejador. Cubre
     // tanto el esquema de customId nuevo ("raid:*") como el legacy pre-refactor.
     if (interaction.customId) {
+      if (interaction.customId.startsWith('albion-register:')) {
+        const panelCommand = interaction.client.commands?.get('panel');
+        if (panelCommand?.handleInteraction && await panelCommand.handleInteraction(interaction)) return;
+      }
       const handled = await raidInteractions.routeRaidInteraction(interaction);
       if (handled) return;
 

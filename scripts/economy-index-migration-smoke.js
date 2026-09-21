@@ -19,6 +19,9 @@ const models = [
   '../src/database/models/MemberIdentity',
   '../src/database/models/TemporaryVoiceConfig',
   '../src/database/models/TemporaryVoiceChannel',
+  '../src/database/models/AlbionRegistrationConfig',
+  '../src/database/models/AlbionMembershipRule',
+  '../src/database/models/AlbionRegistration',
 ].map((path) => require(path)).concat([
   EconomyBalance, EconomyContext, EconomyLogChannel, EconomyTransaction,
 ]);
@@ -71,6 +74,9 @@ const saved = models.map((model) => ({
     'create:MemberIdentity',
     'create:TemporaryVoiceConfig',
     'create:TemporaryVoiceChannel',
+    'create:AlbionRegistrationConfig',
+    'create:AlbionMembershipRule',
+    'create:AlbionRegistration',
   ]);
   assert(events.indexOf('create:EconomyBalance') > events.indexOf('drop:EconomyLogChannel:guildId_1'));
   console.log('✅ Migración de índices de economía verificada');
