@@ -32,5 +32,6 @@ La API pública de Albion muestra el gremio de un personaje, pero no demuestra q
 El bot revisa los registros cada seis horas, en lotes pequeños. Si detecta que un personaje dejó su gremio o pasó a otro configurado, exige una segunda lectura válida de Albion al menos 30 minutos después antes de retirar los roles anteriores. Los errores o respuestas incompletas de la API no retiran roles. Tras confirmar el cambio, asigna los roles del nuevo gremio y actualiza el apodo. Si ya no pertenece a un gremio configurado, restaura el apodo anterior siempre que nadie lo haya editado manualmente mientras tanto.
 
 Las consultas iguales que coinciden en el tiempo se comparten. Las búsquedas se guardan brevemente en caché, y las fichas de personajes solo 30 segundos. Las solicitudes simultáneas a Albion se limitan a dos para reducir las demoras y los picos de tráfico.
+El formulario y la búsqueda de gremios esperan hasta 45 segundos por solicitud y reintentan hasta cuatro veces con pausas crecientes. Una búsqueda completa puede tardar varios minutos si Albion responde lentamente; el bot mantiene la interacción abierta. Las comprobaciones periódicas usan límites menores para no bloquear toda la cola.
 
 La configuración, los registros y la propiedad de los roles se separan por servidor de Discord. Los roles concedidos manualmente y ajenos a este sistema no se retiran.

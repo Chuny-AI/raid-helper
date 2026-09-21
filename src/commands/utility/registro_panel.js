@@ -20,6 +20,7 @@ const panelPayload = (config, client) => ({
       'Pulsa **Registrar personaje** y escribe el nombre exacto de tu personaje.',
       `Servidor: **${config.region}**. El bot comprobará tu gremio y asignará sus roles automáticamente.`,
       'Tu apodo mostrará la etiqueta del gremio. El bot revisará tu pertenencia periódicamente y retirará los roles si sales del gremio.',
+      'Albion puede responder lentamente: la verificación puede tardar varios minutos. Espera la respuesta del bot antes de volver a intentarlo.',
     ].join('\n\n'))
     .setFooter({ text: 'Chuny BOT · Registro de gremios' })],
   components: [new ActionRowBuilder().addComponents(

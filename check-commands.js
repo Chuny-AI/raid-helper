@@ -30,9 +30,10 @@ async function checkCommands() {
       });
     }
 
+    let guildCommands = [];
     if (guildId) {
       console.log('\n🏠 COMANDOS DEL SERVIDOR ESPECÍFICO:');
-      const guildCommands = await rest.get(
+      guildCommands = await rest.get(
         Routes.applicationGuildCommands(clientId, guildId)
       );
 
@@ -52,14 +53,11 @@ async function checkCommands() {
     console.log('\n📋 RESUMEN:');
     console.log(`   • Comandos Globales: ${globalCommands.length}`);
     if (guildId) {
-      const guildCommands = await rest.get(
-        Routes.applicationGuildCommands(clientId, guildId)
-      );
       console.log(`   • Comandos de Servidor: ${guildCommands.length}`);
-
-      if (globalCommands.length > 0 && guildCommands.length > 0) {
-        console.log('\n⚠️  ADVERTENCIA: Tienes comandos duplicados!');
-        console.log('💡 Considera eliminar los comandos globales con: npm run delete-global');
+      const globalNames = new Set(globalCommands.map((command) => `${command.type}:${command.name}`));
+      const localOverrides = guildCommands.filter((command) => globalNames.has(`${command.type}:${command.name}`));
+      if (localOverrides.length) {
+        console.log(`   • ${localOverrides.length} comando(s) del servidor reemplazan su versión global allí.`);
       }
     }
 

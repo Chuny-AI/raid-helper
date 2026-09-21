@@ -136,6 +136,23 @@ const original = {
   await api.requestJson('americas', '/players/cache-test');
   assert.equal(fetchCount, 1, 'La ficha se reutiliza brevemente');
   assert.equal((await api.getPlayer('americas', 'cache-test')).guildId, null);
+  let attempts = 0;
+  global.fetch = async (_url, { signal }) => {
+    attempts += 1;
+    if (attempts < 3) return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    });
+    return { ok: true, json: async () => ({ Id: 'retry-test', Name: 'Test', GuildId: null }) };
+  };
+  const recovered = await api.requestJson('americas', '/players/retry-test', {
+    timeoutMs: 15, retries: 2, queueTimeoutMs: 1_000,
+  });
+  assert.equal(recovered.Id, 'retry-test');
+  assert.equal(attempts, 3, 'Dos timeouts se recuperan con el tercer intento');
   console.log('✅ Paneles, reglas de gremio, roles, apodos, retirada y caché Albion verificados');
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
   Config.findOne = original.configFind;
