@@ -7,7 +7,9 @@ const AlbionRegistration = require('../database/models/AlbionRegistration');
 const albionApi = require('./albionApiService');
 
 const DEFAULT_INTERVAL_MINUTES = 360;
-const CONFIRMATION_DELAY_MINUTES = 30;
+const MISMATCH_RECHECK_MINUTES = 12 * 60;
+const MISMATCH_GRACE_MINUTES = 72 * 60;
+const MIN_MISMATCH_CONFIRMATIONS = 3;
 const MAX_RULES = 25;
 const runningUsers = new Set();
 let sweepRunning = false;
@@ -181,8 +183,10 @@ const applyPlayer = async ({ member, registration, player, config, rules }) => {
   registration.lastAllianceId = player.allianceId;
   registration.lastAllianceName = player.allianceName;
   registration.lastValidatedAt = new Date();
-  registration.nextCheckAt = nextCheckAt(config.checkIntervalMinutes || DEFAULT_INTERVAL_MINUTES);
+  registration.nextCheckAt = nextCheckAt(desired.size ? (config.checkIntervalMinutes || DEFAULT_INTERVAL_MINUTES) : 60);
   registration.consecutiveMismatches = 0;
+  registration.mismatchStartedAt = null;
+  registration.mismatchGuildId = null;
   registration.lastError = null;
   registration.status = desired.size ? 'active' : 'unmatched';
   registration.updatedAt = new Date();
@@ -244,7 +248,7 @@ const registerPlayer = async ({ member, playerName }) => {
   }
 };
 
-const checkRegistration = async (guild, registration, { immediate = false } = {}) => {
+const checkRegistration = async (guild, registration) => {
   const key = lockKey(guild.id, registration.discordUserId);
   if (runningUsers.has(key)) return { status: 'busy' };
   runningUsers.add(key);
@@ -258,22 +262,40 @@ const checkRegistration = async (guild, registration, { immediate = false } = {}
       await registration.save();
       return { status: 'discord_absent' };
     }
-    if (!immediate && registration.consecutiveMismatches === 1 && registration.lastValidatedAt
-      && Date.now() - new Date(registration.lastValidatedAt).getTime() < CONFIRMATION_DELAY_MINUTES * 60_000) {
-      return { status: 'pending_confirmation' };
-    }
     const player = await albionApi.getPlayer(registration.region, registration.playerId);
     const rules = await getRules(guild.id);
     const desired = matchingRoleIds(player, rules);
     const current = new Set(registration.assignedRoleIds || []);
     const losesRole = [...current].some((id) => !desired.has(id));
-    if (losesRole && !immediate && registration.consecutiveMismatches < 1) {
-      registration.consecutiveMismatches = 1;
-      registration.lastValidatedAt = new Date();
-      registration.nextCheckAt = nextCheckAt(CONFIRMATION_DELAY_MINUTES);
-      registration.lastError = null;
-      await registration.save();
-      return { status: 'pending_confirmation', player };
+    // Un cambio de reglas con el mismo gremio es inmediato; una salida o
+    // cambio de gremio informado por la API necesita confirmaciones duraderas.
+    if (losesRole && player.guildId !== registration.lastGuildId) {
+      const now = new Date();
+      const candidateGuildId = player.guildId || null;
+      const priorCount = registration.consecutiveMismatches || 0;
+      const priorAt = registration.lastValidatedAt ? new Date(registration.lastValidatedAt).getTime() : 0;
+      const sameCandidate = priorCount > 0 && registration.mismatchGuildId === candidateGuildId;
+      const startedAt = sameCandidate
+        ? new Date(registration.mismatchStartedAt || registration.lastValidatedAt)
+        : now;
+      const separated = now.getTime() - priorAt >= MISMATCH_RECHECK_MINUTES * 60_000;
+      const count = sameCandidate
+        ? Math.min(MIN_MISMATCH_CONFIRMATIONS, priorCount + (separated ? 1 : 0))
+        : 1;
+      if (count < MIN_MISMATCH_CONFIRMATIONS
+        || now.getTime() - startedAt.getTime() < MISMATCH_GRACE_MINUTES * 60_000) {
+        registration.consecutiveMismatches = count;
+        registration.mismatchStartedAt = startedAt;
+        registration.mismatchGuildId = candidateGuildId;
+        if (!sameCandidate || separated) registration.lastValidatedAt = now;
+        registration.nextCheckAt = new Date(Math.max(
+          now.getTime() + 60_000,
+          new Date(registration.lastValidatedAt).getTime() + MISMATCH_RECHECK_MINUTES * 60_000,
+        ));
+        registration.lastError = null;
+        await registration.save();
+        return { status: 'pending_confirmation', player };
+      }
     }
     const result = await applyPlayer({ member, registration, player, config, rules });
     return { status: 'synced', player, result };

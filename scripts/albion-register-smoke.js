@@ -104,11 +104,27 @@ const original = {
   player = { ...player, guildId: 'g2', guildName: 'MONASTERIO' };
   assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
   assert(memberRoles.has(primary1));
-  record.lastValidatedAt = new Date(Date.now() - 31 * 60_000);
+  assert.equal(record.consecutiveMismatches, 1);
+  assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
+  assert.equal(record.consecutiveMismatches, 1, 'dos consultas seguidas no son confirmaciones independientes');
   api.getPlayer = async () => { throw new api.AlbionApiError('timeout', 'timeout'); };
   await assert.rejects(service.checkRegistration(guild, record), /timeout/);
   assert(memberRoles.has(primary1), 'Una caída de Albion no quita roles');
+  api.getPlayer = async () => ({ ...player, guildId: 'g1', guildName: 'Bon Bon Bum' });
+  assert.equal((await service.checkRegistration(guild, record)).status, 'synced');
+  assert.equal(record.consecutiveMismatches, 0, 'una lectura correcta cancela la sospecha');
+  assert(memberRoles.has(primary1));
   api.getPlayer = async () => player;
+  assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
+  record.lastValidatedAt = new Date(Date.now() - 13 * 60 * 60_000);
+  assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
+  assert.equal(record.consecutiveMismatches, 2);
+  record.lastValidatedAt = new Date(Date.now() - 13 * 60 * 60_000);
+  assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
+  assert.equal(record.consecutiveMismatches, 3);
+  assert(memberRoles.has(primary1), 'tres lecturas en menos de 72 horas no quitan roles');
+  record.mismatchStartedAt = new Date(Date.now() - 73 * 60 * 60_000);
+  record.lastValidatedAt = new Date(Date.now() - 13 * 60 * 60_000);
   assert.equal((await service.checkRegistration(guild, record)).status, 'synced');
   assert(!memberRoles.has(primary1));
   assert(!memberRoles.has(extra1));
@@ -118,14 +134,20 @@ const original = {
 
   player = { ...player, guildId: null, guildName: null };
   assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
-  record.lastValidatedAt = new Date(Date.now() - 31 * 60_000);
-  await service.checkRegistration(guild, record);
+  record.mismatchStartedAt = new Date(Date.now() - 73 * 60 * 60_000);
+  for (let index = 0; index < 2; index += 1) {
+    record.lastValidatedAt = new Date(Date.now() - 13 * 60 * 60_000);
+    const checked = await service.checkRegistration(guild, record);
+    if (index === 0) assert.equal(checked.status, 'pending_confirmation');
+    else assert.equal(checked.status, 'synced');
+  }
   assert(!memberRoles.has(primary2));
   assert(memberRoles.has(manual));
   assert.equal(member.nickname, 'Nombre previo');
   assert.equal(record.status, 'unmatched');
   assert(changes.some(([kind, ids]) => kind === 'remove' && ids.includes(primary1)));
 
+  api.getPlayer = original.apiGet;
   let fetchCount = 0;
   global.fetch = async () => { fetchCount += 1; return { ok: true, json: async () => ({ Id: 'cache-test', Name: 'Test', GuildId: null }) }; };
   const [first, second] = await Promise.all([
@@ -136,6 +158,10 @@ const original = {
   await api.requestJson('americas', '/players/cache-test');
   assert.equal(fetchCount, 1, 'La ficha se reutiliza brevemente');
   assert.equal((await api.getPlayer('americas', 'cache-test')).guildId, null);
+  global.fetch = async () => ({ ok: true, json: async () => ({
+    Id: 'inconsistent-test', Name: 'Test', GuildId: null, GuildName: 'Bon Bon Bum',
+  }) });
+  await assert.rejects(api.getPlayer('americas', 'inconsistent-test'), /incompleta/);
   let attempts = 0;
   global.fetch = async (_url, { signal }) => {
     attempts += 1;

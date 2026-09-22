@@ -146,7 +146,8 @@ const getPlayer = async (region, playerId, options = BACKGROUND_OPTIONS) => {
   const raw = await requestJson(region, `/players/${encodeURIComponent(playerId)}`, options);
   const player = normalizePlayer(raw);
   if (!player.id || player.id !== String(playerId) || !player.name
-    || !['GuildId', 'guildId'].some((key) => Object.hasOwn(raw, key))) {
+    || !['GuildId', 'guildId'].some((key) => Object.hasOwn(raw, key))
+    || (!player.guildId && player.guildName)) {
     throw new AlbionApiError('La ficha del personaje está incompleta.', 'invalid_response');
   }
   return player;
