@@ -31,6 +31,7 @@ const {
 } = require('./raidRender');
 const { safeDeferUpdate } = require('./interaction');
 const { createBuildEmbed } = require('./embed');
+const { sendRaidStartNotice } = require('./raidStartNotice');
 const { syncRaidThread, deleteRaidThread } = require('./raidThread');
 const {
   clearRaidVoiceReference,
@@ -750,8 +751,15 @@ async function handleStartEvent(interaction, raidId) {
   if (result.reason === 'already_exists') {
     return interaction.editReply({ content: `🔊 El evento ya tiene el canal ${result.channel}.` });
   }
+  let noticeFailed = false;
+  try {
+    await sendRaidStartNotice(interaction.channel, runtime.raidId, result.channel.id, result.allowedIds);
+  } catch (error) {
+    noticeFailed = true;
+    console.error(`[WARN] No se pudo etiquetar a los inscritos del raid #${runtime.raidId}:`, error?.message);
+  }
   return interaction.editReply({
-    content: `✅ Evento iniciado en ${result.channel}. **${result.allowedCount}** miembro(s) confirmado(s) pueden conectarse.`,
+    content: `✅ Evento iniciado en ${result.channel}. **${result.allowedCount}** miembro(s) confirmado(s) pueden conectarse.${noticeFailed ? ' No pude enviar las menciones; revisa mi permiso para escribir en este canal.' : ''}`,
   });
 }
 

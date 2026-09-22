@@ -12,6 +12,10 @@ const {
 } = require('../services/temporaryVoiceService');
 const { collectAllowedMemberIds } = require('./raidThread');
 
+// Discord reemplaza la lista completa de overwrites en cada sincronización.
+// Serializar por sala impide que una respuesta REST vieja restaure permisos.
+const syncQueues = new Map();
+
 const memberPermissions = [
   PermissionFlagsBits.ViewChannel,
   PermissionFlagsBits.Connect,
@@ -131,7 +135,7 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
       },
       { upsert: true, new: true, runValidators: true },
     );
-    return { ok: true, reason: 'created', channel, allowedCount: allowedIds.length };
+    return { ok: true, reason: 'created', channel, allowedCount: allowedIds.length, allowedIds };
   } catch (error) {
     if (channel?.members?.size === 0) {
       await channel.delete('Creación del canal privado del raid incompleta').catch(() => {});
@@ -141,7 +145,19 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
   }
 };
 
-const syncRaidVoiceChannel = async (guild, raid) => {
+const syncRaidVoiceChannel = (guild, raid) => {
+  const key = `${guild?.id}:${raid?.eventId}`;
+  const tail = syncQueues.get(key) || Promise.resolve();
+  const run = tail.then(() => syncRaidVoiceChannelNow(guild, raid));
+  const guarded = run.catch(() => {});
+  syncQueues.set(key, guarded);
+  guarded.then(() => {
+    if (syncQueues.get(key) === guarded) syncQueues.delete(key);
+  });
+  return run;
+};
+
+const syncRaidVoiceChannelNow = async (guild, raid) => {
   if (!raid?.voiceChannelId) return { ok: false, reason: 'no_channel' };
   const channel = await fetchRaidVoiceChannel(guild, raid.voiceChannelId);
   if (!channel || channel.type !== ChannelType.GuildVoice) return { ok: false, reason: 'gone' };
@@ -151,6 +167,17 @@ const syncRaidVoiceChannel = async (guild, raid) => {
     buildPermissionOverwrites(guild, allowedIds),
     `Sincronización de participantes del raid #${raid.eventId}`,
   );
+  // Quitar Connect no expulsa de inmediato a quien ya está conectado.
+  const allowed = new Set(allowedIds);
+  const unauthorized = [...(channel.members?.values() || [])]
+    .filter((member) => member.id !== guild.members.me?.id && !allowed.has(member.id));
+  const disconnected = await Promise.allSettled(unauthorized.map((member) =>
+    member.voice.disconnect(`Salió del raid #${raid.eventId}`)));
+  for (const failure of disconnected) {
+    if (failure.status === 'rejected') {
+      console.error(`[WARN] No se pudo sacar a un usuario del canal del raid #${raid.eventId}:`, failure.reason?.message);
+    }
+  }
   return { ok: true, channel, allowedCount: allowedIds.length };
 };
 

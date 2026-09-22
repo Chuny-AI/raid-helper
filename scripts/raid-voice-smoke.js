@@ -7,6 +7,7 @@ const {
 const TemporaryVoiceConfig = require('../src/database/models/TemporaryVoiceConfig');
 const TemporaryVoiceChannel = require('../src/database/models/TemporaryVoiceChannel');
 const raidVoice = require('../src/utils/raidVoice');
+const { sendRaidStartNotice } = require('../src/utils/raidStartNotice');
 const { renderRaidEmbed, renderRaidComponents } = require('../src/utils/raidRender');
 
 const saved = {
@@ -108,6 +109,11 @@ const raid = {
   assert.equal(overwriteById.has('absent-1'), false);
 
   raid.voiceChannelId = createdChannel.id;
+  let disconnected = false;
+  createdChannel.members.set('user-2', {
+    id: 'user-2',
+    voice: { disconnect: async () => { disconnected = true; } },
+  });
   raid.slots[0].users = [{ userId: 'user-1', username: 'Uno' }];
   raid.looters.users.push({ userId: 'user-3', username: 'Tres' });
   memberCache.set('user-3', { id: 'user-3' });
@@ -118,21 +124,54 @@ const raid = {
   assert(syncedIds.has('user-3'));
   assert(!syncedIds.has('user-2'));
   assert(!syncedIds.has('waiting-1'));
+  assert.equal(disconnected, true, 'quien sale del raid debe abandonar la sala');
+
+  let releaseFirstSync;
+  const firstSyncGate = new Promise((resolve) => { releaseFirstSync = resolve; });
+  let syncCalls = 0;
+  createdChannel.permissionOverwrites.set = async (overwrites) => {
+    syncCalls += 1;
+    if (syncCalls === 1) await firstSyncGate;
+    syncedOverwrites = overwrites;
+  };
+  const firstSync = raidVoice.syncRaidVoiceChannel(guild, raid);
+  await new Promise((resolve) => setImmediate(resolve));
+  raid.slots[0].users.push({ userId: 'user-2', username: 'Dos' });
+  const secondSync = raidVoice.syncRaidVoiceChannel(guild, raid);
+  assert.equal(syncCalls, 1, 'dos sincronizaciones no deben modificar permisos en paralelo');
+  releaseFirstSync();
+  await Promise.all([firstSync, secondSync]);
+  assert.equal(syncCalls, 2);
+  assert(syncedOverwrites.some((overwrite) => overwrite.id === 'user-2'));
 
   const beforeStart = { ...raid, voiceChannelId: null };
   const startButton = renderRaidComponents(beforeStart, beforeStart)
     .flatMap((row) => row.components)
     .find((component) => component.data.custom_id === `raid:start:${raid.eventId}`);
   assert.equal(startButton.data.label, 'Iniciar evento');
-  assert.equal(startButton.data.disabled, false);
+  assert.equal(Boolean(startButton.data.disabled), false);
 
   const startedButton = renderRaidComponents(raid, raid)
     .flatMap((row) => row.components)
-    .find((component) => component.data.custom_id === `raid:start:${raid.eventId}`);
-  assert.equal(startedButton.data.label, 'Evento iniciado');
-  assert.equal(startedButton.data.disabled, true);
-  const voiceField = renderRaidEmbed(raid, raid).data.fields.find((field) => field.name.includes('Canal del evento'));
+    .find((component) => component.data.label === 'Ir al evento');
+  assert.equal(startedButton.data.style, 5);
+  assert.equal(startedButton.data.url, `https://discord.com/channels/${raid.guildId}/${raid.voiceChannelId}`);
+  const voiceField = renderRaidEmbed(raid, raid).data.fields.find((field) => field.name.includes('Ir al evento'));
   assert.match(voiceField.value, /raid-voice-1/);
+
+  const notices = [];
+  const noticeIds = Array.from({ length: 105 }, (_, index) => String(100000000000000000n + BigInt(index)));
+  const mentioned = await sendRaidStartNotice(
+    { send: async (payload) => { notices.push(payload); } },
+    raid.eventId,
+    createdChannel.id,
+    [...noticeIds, noticeIds[0]],
+  );
+  assert.equal(mentioned, 105);
+  assert(notices.length > 1, 'las menciones deben dividirse para respetar los límites de Discord');
+  assert(notices.every((notice) => notice.content.length <= 2000 && notice.allowedMentions.users.length <= 100));
+  assert.deepEqual(notices.flatMap((notice) => notice.allowedMentions.users), noticeIds);
+  assert(notices.every((notice) => notice.allowedMentions.parse.length === 0));
 
   console.log('✅ Inicio privado de raids por voz verificado');
 })().catch((error) => {

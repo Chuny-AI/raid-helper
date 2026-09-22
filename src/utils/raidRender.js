@@ -294,7 +294,7 @@ function renderRaidEmbed(raid, state) {
 
   if (raid.voiceChannelId) {
     fields.push({
-      name: '🔊 Canal del evento:',
+      name: '🔊 Ir al evento:',
       value: `<#${raid.voiceChannelId}> — visible para todos; solo líder y participantes confirmados pueden entrar.`,
     });
   }
@@ -531,14 +531,17 @@ function buildButtonRow(raid, state) {
         .setEmoji('👑')
     );
   }
-  buttons.push(
-    new ButtonBuilder()
-      .setCustomId(`raid:start:${raid.eventId}`)
-      .setLabel(raid.voiceChannelId ? 'Evento iniciado' : 'Iniciar evento')
-      .setStyle(raid.voiceChannelId ? ButtonStyle.Secondary : ButtonStyle.Success)
+  buttons.push(raid.voiceChannelId
+    ? new ButtonBuilder()
+      .setURL(`https://discord.com/channels/${raid.guildId}/${raid.voiceChannelId}`)
+      .setLabel('Ir al evento')
+      .setStyle(ButtonStyle.Link)
       .setEmoji('🔊')
-      .setDisabled(Boolean(raid.voiceChannelId))
-  );
+    : new ButtonBuilder()
+      .setCustomId(`raid:start:${raid.eventId}`)
+      .setLabel('Iniciar evento')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('🔊'));
   buttons.push(
     new ButtonBuilder()
       .setCustomId(`raid:finish:${raid.eventId}`)
