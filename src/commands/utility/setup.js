@@ -104,6 +104,19 @@ module.exports = {
       } else if (route.action === 'voice-clear' && interaction.isButton?.()) {
         await setupService.clearTemporaryVoiceGenerators(interaction.guild.id);
         await dashboard(interaction);
+      } else if (route.action === 'raidvoice') {
+        const status = await setupService.getSetupStatus(interaction.guild, interaction.channelId);
+        await editPanel(interaction, setupUi.buildRaidVoiceScreen({ status, userId: route.userId, guildId: route.guildId }));
+      } else if (route.action === 'raidvoice-save' && interaction.isChannelSelectMenu?.()) {
+        await setupService.setRaidVoiceCategory({
+          guild: interaction.guild,
+          categoryId: interaction.values[0],
+          updatedBy: interaction.user.id,
+        });
+        await dashboard(interaction);
+      } else if (route.action === 'raidvoice-clear' && interaction.isButton?.()) {
+        await setupService.clearRaidVoiceCategory(interaction.guild.id);
+        await dashboard(interaction);
       } else if (route.action === 'check') {
         const permissions = interaction.channel?.permissionsFor?.(interaction.guild.members.me);
         await editPanel(interaction, setupUi.buildPermissionScreen({ permissions, userId: route.userId, guildId: route.guildId }));

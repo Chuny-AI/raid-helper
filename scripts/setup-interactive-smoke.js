@@ -27,11 +27,15 @@ const status = {
   temporaryVoiceGeneratorIds: ['444444444444444'],
   staleTemporaryVoiceGenerators: 0,
   temporaryVoiceReady: true,
+  raidVoiceCategoryId: '555555555555555',
+  staleRaidVoiceCategory: false,
 };
 const dashboard = ui.buildDashboard({ status, userId: 'user-1', guildId: 'guild-1', sourceChannelId: 'source-1' });
 assert.equal(dashboard.components.length, 2);
 assert.equal(dashboard.components[1].components[0].data.disabled, false);
 assert.match(dashboard.embeds[0].data.fields[1].name, /source-1/);
+assert(dashboard.components[0].components.some((button) => button.data.custom_id.includes('raidvoice')));
+assert.match(dashboard.embeds[0].data.fields[3].value, /555555555555555/);
 
 const roles = ui.buildRolesScreen({ status, userId: 'user-1', guildId: 'guild-1' });
 assert.equal(roles.components[0].components[0].data.type, ComponentType.RoleSelect);
@@ -46,6 +50,9 @@ const temporaryVoice = ui.buildTemporaryVoiceScreen({ status, userId: 'user-1', 
 assert.equal(temporaryVoice.components[0].components[0].data.type, ComponentType.ChannelSelect);
 assert.equal(temporaryVoice.components[0].components[0].data.max_values, 25);
 assert.deepEqual(temporaryVoice.components[0].components[0].data.default_values.map((value) => value.id), ['444444444444444']);
+const raidVoice = ui.buildRaidVoiceScreen({ status, userId: 'user-1', guildId: 'guild-1' });
+assert.equal(raidVoice.components[0].components[0].data.type, ComponentType.ChannelSelect);
+assert.deepEqual(raidVoice.components[0].components[0].data.default_values.map((value) => value.id), ['555555555555555']);
 const clearConfirmation = ui.buildEconomyClearConfirmation({ userId: 'user-1', guildId: 'guild-1', sourceChannelId: 'source-1' });
 assert.match(clearConfirmation.embeds[0].data.description, /balances y movimientos existentes no se borrarán/);
 assert(clearConfirmation.components[0].components.some((button) => button.data.custom_id.includes('clear-confirm')));
@@ -77,6 +84,8 @@ const originalSaveRoles = setupService.saveEconomyRoles;
 const originalClearLog = setupService.clearLogChannel;
 const originalSetTemporaryVoice = setupService.setTemporaryVoiceGenerators;
 const originalClearTemporaryVoice = setupService.clearTemporaryVoiceGenerators;
+const originalSetRaidVoice = setupService.setRaidVoiceCategory;
+const originalClearRaidVoice = setupService.clearRaidVoiceCategory;
 (async () => {
   const calls = [];
   setupService.getSetupStatus = async () => status;
@@ -84,6 +93,8 @@ const originalClearTemporaryVoice = setupService.clearTemporaryVoiceGenerators;
   setupService.clearLogChannel = async (...args) => calls.push(['log', args]);
   setupService.setTemporaryVoiceGenerators = async (args) => calls.push(['voice-save', args]);
   setupService.clearTemporaryVoiceGenerators = async (...args) => calls.push(['voice-clear', args]);
+  setupService.setRaidVoiceCategory = async (args) => calls.push(['raidvoice-save', args]);
+  setupService.clearRaidVoiceCategory = async (...args) => calls.push(['raidvoice-clear', args]);
   const interact = async (action, overrides = {}) => {
     const interaction = {
       customId: ui.componentId(action, 'user-1', 'guild-1'),
@@ -115,6 +126,17 @@ const originalClearTemporaryVoice = setupService.clearTemporaryVoiceGenerators;
   calls.length = 0;
   await interact('voice-clear');
   assert.deepEqual(calls, [['voice-clear', ['guild-1']]]);
+  calls.length = 0;
+  await interact('raidvoice-save', {
+    values: ['category-1'],
+    isButton: () => false,
+    isChannelSelectMenu: () => true,
+  });
+  assert.equal(calls[0][0], 'raidvoice-save');
+  assert.equal(calls[0][1].categoryId, 'category-1');
+  calls.length = 0;
+  await interact('raidvoice-clear');
+  assert.deepEqual(calls, [['raidvoice-clear', ['guild-1']]]);
   console.log('Interactive setup smoke tests passed.');
 })().catch((error) => {
   console.error(error);
@@ -125,4 +147,6 @@ const originalClearTemporaryVoice = setupService.clearTemporaryVoiceGenerators;
   setupService.clearLogChannel = originalClearLog;
   setupService.setTemporaryVoiceGenerators = originalSetTemporaryVoice;
   setupService.clearTemporaryVoiceGenerators = originalClearTemporaryVoice;
+  setupService.setRaidVoiceCategory = originalSetRaidVoice;
+  setupService.clearRaidVoiceCategory = originalClearRaidVoice;
 });

@@ -11,6 +11,7 @@ const {
   getConfiguredGeneratorIds,
 } = require('../services/temporaryVoiceService');
 const { collectAllowedMemberIds } = require('./raidThread');
+const { getRaidVoiceCategory } = require('../services/raidVoiceConfigService');
 
 // Discord reemplaza la lista completa de overwrites en cada sincronización.
 // Serializar por sala impide que una respuesta REST vieja restaure permisos.
@@ -97,10 +98,14 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
     raid.voiceChannelId = null;
   }
 
-  const generator = await findGeneratorChannel(guild);
-  if (!generator) return { ok: false, reason: 'no_generator' };
+  const configuredCategory = await getRaidVoiceCategory(guild);
+  if (configuredCategory.configured && !configuredCategory.category) {
+    return { ok: false, reason: 'invalid_category' };
+  }
+  const generator = configuredCategory.configured ? null : await findGeneratorChannel(guild);
+  if (!configuredCategory.configured && !generator) return { ok: false, reason: 'no_generator' };
 
-  const category = generator.parent;
+  const category = configuredCategory.category || generator?.parent;
   const permissions = category?.permissionsFor?.(guild.members.me);
   if (!category || !permissions?.has([
     PermissionFlagsBits.ViewChannel,
@@ -119,7 +124,7 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
     channel = await guild.channels.create({
       name: buildRaidVoiceName(raid),
       type: ChannelType.GuildVoice,
-      parent: generator.parentId,
+      parent: category.id,
       permissionOverwrites: buildPermissionOverwrites(guild, allowedIds),
       reason: `Canal privado para el raid #${raid.eventId}`,
     });
@@ -128,7 +133,7 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
       {
         guildId: guild.id,
         channelId: channel.id,
-        generatorChannelId: generator.id,
+        generatorChannelId: generator?.id || null,
         ownerId: actorId || raid.leaderId,
         raidId: raid.eventId,
         createdAt: new Date(),

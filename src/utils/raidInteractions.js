@@ -743,8 +743,9 @@ async function handleStartEvent(interaction, raidId) {
   }
 
   const messages = {
-    no_generator: 'Configura al menos un canal generador en `/setup` → **Salas temporales** antes de iniciar el evento.',
-    missing_permissions: 'El bot necesita Ver canal, Conectar, Gestionar canales y Mover miembros en la categoría configurada.',
+    no_generator: 'Selecciona una categoría en `/setup` → **Voz de raids** antes de iniciar el evento.',
+    invalid_category: 'La categoría de voz para raids ya no existe. Actualízala en `/setup` → **Voz de raids**.',
+    missing_permissions: 'El bot necesita Ver canal, Conectar, Gestionar canales y Mover miembros en la categoría configurada para raids.',
     no_participants: 'No hay líder ni participantes del raid que sigan dentro del servidor.',
   };
   if (!result.ok) return interaction.editReply({ content: `❌ ${messages[result.reason] || 'No se pudo crear el canal del evento.'}` });

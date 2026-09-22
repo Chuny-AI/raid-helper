@@ -53,9 +53,15 @@ const buildDashboard = ({ status, userId, guildId, sourceChannelId }) => {
           ? status.temporaryVoiceGeneratorIds.map((id) => `<#${id}>`).join(', ')
           : 'Sin canales generadores configurados.',
       },
+      {
+        name: `${status.raidVoiceCategoryId ? '✅ Configurada' : '➖ Opcional'} · Categoría de voz para raids`,
+        value: status.raidVoiceCategoryId
+          ? `<#${status.raidVoiceCategoryId}>`
+          : 'Selecciona dónde se crearán las salas privadas de los eventos.',
+      },
     );
 
-  if (status.staleAuthorizedRoles || status.staleEconomyRoles || status.staleTemporaryVoiceGenerators) {
+  if (status.staleAuthorizedRoles || status.staleEconomyRoles || status.staleTemporaryVoiceGenerators || status.staleRaidVoiceCategory) {
     embed.addFields({
       name: '🧹 Configuración obsoleta detectada',
       value: 'Hay referencias a roles o canales eliminados. Guarda nuevamente la sección correspondiente para limpiarlas.',
@@ -66,6 +72,7 @@ const buildDashboard = ({ status, userId, guildId, sourceChannelId }) => {
     new ButtonBuilder().setCustomId(componentId('roles', userId, guildId)).setLabel('Roles gestores').setEmoji('🛡️').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(componentId('economy', userId, guildId)).setLabel('Economía').setEmoji('💰').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(componentId('voice', userId, guildId)).setLabel('Salas temporales').setEmoji('🔊').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(componentId('raidvoice', userId, guildId)).setLabel('Voz de raids').setEmoji('🎙️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(componentId('check', userId, guildId)).setLabel('Verificar permisos').setEmoji('🔎').setStyle(ButtonStyle.Secondary),
   );
   const finishRow = new ActionRowBuilder().addComponents(
@@ -103,6 +110,34 @@ const buildTemporaryVoiceScreen = ({ status, userId, guildId }) => {
       new ActionRowBuilder().addComponents(channelSelect),
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(componentId('voice-clear', userId, guildId)).setLabel('Desactivar salas temporales').setEmoji('🧹').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(componentId('home', userId, guildId)).setLabel('Volver al resumen').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
+};
+
+const buildRaidVoiceScreen = ({ status, userId, guildId }) => {
+  const categorySelect = new ChannelSelectMenuBuilder()
+    .setCustomId(componentId('raidvoice-save', userId, guildId))
+    .setPlaceholder('Categoría para las salas privadas de raids')
+    .setChannelTypes(ChannelType.GuildCategory)
+    .setMinValues(1)
+    .setMaxValues(1);
+  if (status.raidVoiceCategoryId) categorySelect.setDefaultChannels(status.raidVoiceCategoryId);
+
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle('🎙️ Categoría de voz para raids')
+      .setDescription([
+        `Categoría actual: ${status.raidVoiceCategoryId ? `<#${status.raidVoiceCategoryId}>` : 'sin configurar'}.`,
+        'Al pulsar **Iniciar evento**, el canal de voz se creará aquí con acceso privado para el líder y los inscritos. Se actualizará cuando cambie la lista del raid.',
+        'Si no eliges una categoría, los raids existentes seguirán usando la categoría del primer generador de salas temporales.',
+      ].join('\n\n'))
+      .setColor(0x5865f2)],
+    components: [
+      new ActionRowBuilder().addComponents(categorySelect),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(componentId('raidvoice-clear', userId, guildId)).setLabel('Quitar categoría de raids').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId(componentId('home', userId, guildId)).setLabel('Volver al resumen').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
       ),
     ],
@@ -214,6 +249,7 @@ module.exports = {
   buildEconomyScreen,
   buildPermissionScreen,
   buildRolesScreen,
+  buildRaidVoiceScreen,
   buildTemporaryVoiceScreen,
   componentId,
   parseComponentId,

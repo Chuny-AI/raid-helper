@@ -18,14 +18,20 @@ const {
   getTemporaryVoiceStatus,
   setTemporaryVoiceGenerators,
 } = require('../../../services/temporaryVoiceService');
+const {
+  clearRaidVoiceCategory,
+  getRaidVoiceCategory,
+  setRaidVoiceCategory,
+} = require('../../../services/raidVoiceConfigService');
 
 const getSetupStatus = async (guild, sourceChannelId) => {
   await getOrCreateServer(guild.id, guild.name);
-  const [authorizedRoles, economyRoles, economyChannelId, temporaryVoiceStatus] = await Promise.all([
+  const [authorizedRoles, economyRoles, economyChannelId, temporaryVoiceStatus, raidVoiceCategory] = await Promise.all([
     getAuthorizedRoles(guild.id),
     listEconomyRoles(guild.id),
     getLogChannel(guild.id, sourceChannelId),
     getTemporaryVoiceStatus(guild),
+    getRaidVoiceCategory(guild),
   ]);
 
   const liveAuthorizedRoles = authorizedRoles.filter((role) => guild.roles.cache.has(role.roleId));
@@ -42,6 +48,8 @@ const getSetupStatus = async (guild, sourceChannelId) => {
     staleEconomyRoles: economyRoles.length - liveEconomyRoles.length,
     baseReady: liveAuthorizedRoles.length > 0,
     economyReady: liveEconomyRoles.length > 0 && Boolean(economyChannel),
+    raidVoiceCategoryId: raidVoiceCategory.category?.id || null,
+    staleRaidVoiceCategory: Boolean(raidVoiceCategory.configured && !raidVoiceCategory.category),
     ...temporaryVoiceStatus,
   };
 };
@@ -80,6 +88,7 @@ const saveEconomyChannel = async ({ guild, sourceChannelId, channelId, userId })
 
 module.exports = {
   clearLogChannel,
+  clearRaidVoiceCategory,
   clearTemporaryVoiceGenerators,
   getSetupStatus,
   resolveSelectableRoles,
@@ -87,4 +96,5 @@ module.exports = {
   saveEconomyChannel,
   saveEconomyRoles,
   setTemporaryVoiceGenerators,
+  setRaidVoiceCategory,
 };

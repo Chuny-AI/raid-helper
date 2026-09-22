@@ -6,12 +6,16 @@ const {
 } = require('discord.js');
 const TemporaryVoiceConfig = require('../src/database/models/TemporaryVoiceConfig');
 const TemporaryVoiceChannel = require('../src/database/models/TemporaryVoiceChannel');
+const RaidVoiceConfig = require('../src/database/models/RaidVoiceConfig');
+const raidVoiceConfig = require('../src/services/raidVoiceConfigService');
 const raidVoice = require('../src/utils/raidVoice');
 const { sendRaidStartNotice } = require('../src/utils/raidStartNotice');
 const { renderRaidEmbed, renderRaidComponents } = require('../src/utils/raidRender');
 
 const saved = {
   configFindOne: TemporaryVoiceConfig.findOne,
+  raidConfigFindOne: RaidVoiceConfig.findOne,
+  raidConfigUpdate: RaidVoiceConfig.findOneAndUpdate,
   trackedUpdate: TemporaryVoiceChannel.findOneAndUpdate,
   trackedDelete: TemporaryVoiceChannel.deleteOne,
 };
@@ -44,6 +48,7 @@ const raid = {
     id: 'category-1',
     permissionsFor: () => ({ has: (values) => values.every((value) => granted.includes(value)) }),
   };
+  const raidCategory = { ...category, id: 'raid-category-2', type: ChannelType.GuildCategory };
   const generator = {
     id: 'generator-1',
     type: ChannelType.GuildVoice,
@@ -52,7 +57,7 @@ const raid = {
   };
   const memberIds = ['bot-1', 'leader', 'user-1', 'user-2', 'looter-1', 'waiting-1', 'absent-1'];
   const memberCache = new Map(memberIds.map((id) => [id, { id }]));
-  const channelCache = new Map([[generator.id, generator]]);
+  const channelCache = new Map([[generator.id, generator], [raidCategory.id, raidCategory]]);
   let createdOptions;
   let syncedOverwrites;
   const createdChannel = {
@@ -85,6 +90,12 @@ const raid = {
   };
 
   TemporaryVoiceConfig.findOne = async () => ({ generatorChannelIds: [generator.id] });
+  let configuredCategoryId = null;
+  RaidVoiceConfig.findOne = async () => configuredCategoryId ? { categoryId: configuredCategoryId } : null;
+  RaidVoiceConfig.findOneAndUpdate = async (_filter, update) => {
+    configuredCategoryId = update.categoryId;
+    return update;
+  };
   let tracked;
   TemporaryVoiceChannel.findOneAndUpdate = async (_filter, update) => { tracked = update; return update; };
   TemporaryVoiceChannel.deleteOne = async () => ({ deletedCount: 1 });
@@ -97,6 +108,32 @@ const raid = {
   assert.equal(createdOptions.type, ChannelType.GuildVoice);
   assert.match(createdOptions.name, /Avaloniana 8\.3/);
   assert.equal(tracked.raidId, raid.eventId);
+
+  await assert.rejects(
+    raidVoiceConfig.setRaidVoiceCategory({ guild, categoryId: generator.id, updatedBy: 'leader' }),
+    /categoría válida/,
+  );
+  channelCache.set('blocked-category', {
+    id: 'blocked-category',
+    type: ChannelType.GuildCategory,
+    permissionsFor: () => ({ has: () => false }),
+  });
+  await assert.rejects(
+    raidVoiceConfig.setRaidVoiceCategory({ guild, categoryId: 'blocked-category', updatedBy: 'leader' }),
+    /Gestionar canales/,
+  );
+  await raidVoiceConfig.setRaidVoiceCategory({ guild, categoryId: raidCategory.id, updatedBy: 'leader' });
+  TemporaryVoiceConfig.findOne = async () => null;
+  const configuredRaid = { ...raid, eventId: 'VOICE2', voiceChannelId: null };
+  const configuredResult = await raidVoice.createRaidVoiceChannel({ guild, raid: configuredRaid, actorId: 'leader' });
+  assert.equal(configuredResult.ok, true, 'la sala del raid debe funcionar sin canales generadores');
+  assert.equal(createdOptions.parent, raidCategory.id);
+  assert.equal(tracked.generatorChannelId, null);
+  configuredCategoryId = 'deleted-category';
+  const invalidResult = await raidVoice.createRaidVoiceChannel({ guild, raid: configuredRaid, actorId: 'leader' });
+  assert.equal(invalidResult.reason, 'invalid_category');
+  configuredCategoryId = null;
+  TemporaryVoiceConfig.findOne = async () => ({ generatorChannelIds: [generator.id] });
 
   const overwriteById = new Map(createdOptions.permissionOverwrites.map((overwrite) => [overwrite.id, overwrite]));
   assert.equal(overwriteById.get(guild.id).type, OverwriteType.Role);
@@ -179,6 +216,8 @@ const raid = {
   process.exitCode = 1;
 }).finally(() => {
   TemporaryVoiceConfig.findOne = saved.configFindOne;
+  RaidVoiceConfig.findOne = saved.raidConfigFindOne;
+  RaidVoiceConfig.findOneAndUpdate = saved.raidConfigUpdate;
   TemporaryVoiceChannel.findOneAndUpdate = saved.trackedUpdate;
   TemporaryVoiceChannel.deleteOne = saved.trackedDelete;
 });
