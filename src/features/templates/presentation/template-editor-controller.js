@@ -148,7 +148,21 @@ const handleInteraction = async (interaction) => {
         groupIndex,
         emojiId: interaction.values[0],
       });
-      await groupScreens.showGroup(interaction, sessionId, result.result);
+      if (mode === 'create') {
+        const staged = await editor.stageCatalogWeapon({
+          ...context(interaction, sessionId),
+          groupIndex: result.result,
+          emojiId: interaction.values[0],
+        });
+        await groupScreens.showCatalogWeaponModal(
+          interaction,
+          sessionId,
+          result.result,
+          staged.result.weapon,
+        );
+      } else {
+        await groupScreens.showGroup(interaction, sessionId, result.result);
+      }
     } else if (action === 'group-delete') {
       await groupScreens.showDeleteConfirmation(interaction, sessionId, Number(parts[2]));
     } else if (action === 'group-delete-ok') {
@@ -163,7 +177,26 @@ const handleInteraction = async (interaction) => {
       await groupScreens.showCatalogWeapons(interaction, sessionId, Number(parts[2]), category, weapons);
     } else if (action === 'catalog-add') {
       const groupIndex = Number(parts[2]);
-      await editor.addCatalogWeapons({ ...context(interaction, sessionId), groupIndex, emojiIds: interaction.values });
+      const staged = await editor.stageCatalogWeapon({
+        ...context(interaction, sessionId),
+        groupIndex,
+        emojiId: interaction.values[0],
+      });
+      await groupScreens.showCatalogWeaponModal(
+        interaction,
+        sessionId,
+        groupIndex,
+        staged.result.weapon,
+      );
+    } else if (action === 'catalog-add-submit') {
+      const groupIndex = Number(parts[2]);
+      editor.confirmCatalogWeapon({
+        ...context(interaction, sessionId),
+        groupIndex,
+        units: field(interaction, 'units'),
+        url: field(interaction, 'url'),
+        label: field(interaction, 'label'),
+      });
       await groupScreens.showGroup(interaction, sessionId, groupIndex);
     } else if (action === 'weapon-edit-menu' || action === 'weapon-remove-menu') {
       await groupScreens.showWeaponMenu(

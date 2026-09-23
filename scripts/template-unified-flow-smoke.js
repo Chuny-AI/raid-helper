@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const command = require('../src/commands/utility/template');
 const sessions = require('../src/features/templates/application/template-edit-session-store');
+const editor = require('../src/features/templates/application/template-editor-service');
 const templateService = require('../src/services/templateService');
 
 const originalGetTemplateByName = templateService.getTemplateByName;
@@ -98,6 +99,45 @@ const selectInteraction = (customId, values) => ({
   const session = sessions.getValidSession(sessionId, 'user-1', 'guild-1').session;
   assert.equal(session.data.weapons.DPS.displayName, 'DPS');
   assert.equal(session.data.weapons.DPS.defaultEmoji, selectedEmoji);
+  const firstWeaponModal = modals.at(-1);
+  assert.equal(firstWeaponModal.data.custom_id, `te:catalog-add-submit:0:${sessionId}`);
+  assert.equal(session.data.weapons.DPS.data.length, 0, 'el arma inicial espera la confirmación del modal');
+
+  await command.handleInteraction(modalInteraction(firstWeaponModal.data.custom_id, {
+    units: '3',
+    url: 'https://example.com/build',
+    label: 'Build principal',
+  }));
+  assert.equal(session.data.weapons.DPS.data.length, 1);
+  assert.equal(session.data.weapons.DPS.data[0].units, 3);
+  assert.equal(session.data.weapons.DPS.data[0].url, 'https://example.com/build');
+  assert.equal(session.data.weapons.DPS.data[0].label, 'Build principal');
+  assert.doesNotThrow(() => editor.validateBeforeSave(session.data));
+  assert.match(payloads.at(-1).embeds[0].data.title, /DPS/);
+
+  await command.handleInteraction(buttonInteraction(`te:catalog:0:${sessionId}`));
+  const catalogCategorySelect = payloads.at(-1).components[0].components[0];
+  await command.handleInteraction(selectInteraction(
+    catalogCategorySelect.data.custom_id,
+    [catalogCategorySelect.options[0].data.value],
+  ));
+  const catalogWeaponSelect = payloads.at(-1).components[0].components[0];
+  assert.equal(catalogWeaponSelect.data.max_values, 1, 'cada arma debe configurarse individualmente');
+  const catalogWeaponEmoji = catalogWeaponSelect.options[0].data.value;
+  await command.handleInteraction(selectInteraction(catalogWeaponSelect.data.custom_id, [catalogWeaponEmoji]));
+
+  const weaponModal = modals.at(-1);
+  assert.equal(weaponModal.data.custom_id, `te:catalog-add-submit:0:${sessionId}`);
+  assert.equal(session.data.weapons.DPS.data.length, 1, 'el arma no se añade antes de confirmar el modal');
+
+  await command.handleInteraction(modalInteraction(weaponModal.data.custom_id, {
+    units: '2',
+    url: '',
+    label: 'Build secundaria',
+  }));
+  assert.equal(session.data.weapons.DPS.data.length, 2);
+  assert.equal(session.data.weapons.DPS.data[1].units, 2);
+  assert.equal(session.data.weapons.DPS.data[1].label, 'Build secundaria');
   assert.match(payloads.at(-1).embeds[0].data.title, /DPS/);
 
   await command.handleInteraction(buttonInteraction(`te:cancel:${sessionId}`));

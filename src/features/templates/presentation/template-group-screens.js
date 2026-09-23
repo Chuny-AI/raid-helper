@@ -269,12 +269,42 @@ const showCatalogWeapons = async (interaction, sessionId, groupIndex, category, 
   }));
   if (options.length === 0) return safeReply(interaction, { content: 'Esta categoría no tiene armas activas.', ephemeral: true });
   return respondPanel(interaction, {
-    embeds: [new EmbedBuilder().setTitle('Añadir armas').setDescription(`Categoría: **${category}**. Puedes seleccionar varias.`).setColor(0x57f287)],
+    embeds: [new EmbedBuilder().setTitle('Añadir arma').setDescription(`Categoría: **${category}**. Selecciona un arma para configurar sus plazas y build.`).setColor(0x57f287)],
     components: [
-      new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`te:catalog-add:${groupIndex}:${valid.sessionId}`).setPlaceholder('Selecciona las armas').setMinValues(1).setMaxValues(options.length).addOptions(options)),
+      new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`te:catalog-add:${groupIndex}:${valid.sessionId}`).setPlaceholder('Selecciona un arma para configurar').setMinValues(1).setMaxValues(1).addOptions(options)),
       new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`te:catalog:${groupIndex}:${valid.sessionId}`).setLabel('Volver a categorías').setStyle(ButtonStyle.Secondary)),
     ],
   });
+};
+
+const showCatalogWeaponModal = (interaction, sessionId, groupIndex, weapon) => {
+  const name = String(weapon?.name || 'Arma');
+  return interaction.showModal(new ModalBuilder()
+    .setCustomId(`te:catalog-add-submit:${groupIndex}:${sessionId}`)
+    .setTitle(`Configurar: ${name}`.slice(0, 45))
+    .addComponents(
+      new ActionRowBuilder().addComponents(new TextInputBuilder()
+        .setCustomId('units')
+        .setLabel('Cantidad de plazas')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(3)
+        .setValue(String(weapon?.units || 1))),
+      new ActionRowBuilder().addComponents(new TextInputBuilder()
+        .setCustomId('url')
+        .setLabel('Enlace de build (opcional)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(500)
+        .setValue(String(weapon?.url || ''))),
+      new ActionRowBuilder().addComponents(new TextInputBuilder()
+        .setCustomId('label')
+        .setLabel('Etiqueta (opcional)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(100)
+        .setPlaceholder('Ej: Build A')),
+    ));
 };
 
 const pagedWeaponOptions = (weapons, page) => {
@@ -337,6 +367,7 @@ const showWeaponEditModal = async (interaction, sessionId, groupIndex, weaponInd
 
 module.exports = {
   showCatalogCategories,
+  showCatalogWeaponModal,
   showCatalogWeapons,
   showDeleteConfirmation,
   showEditGroupModal,

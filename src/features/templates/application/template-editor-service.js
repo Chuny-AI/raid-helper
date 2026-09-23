@@ -231,18 +231,74 @@ const deleteGroup = ({ sessionId, userId, guildId, groupIndex }) => mutate(
 const catalogCategories = () => weaponService.getWeaponCategories();
 const catalogWeapons = (category) => weaponService.getWeaponsByCategory(category);
 
-const addCatalogWeapons = async ({ sessionId, userId, guildId, groupIndex, emojiIds }) => {
-  const uniqueIds = [...new Set(emojiIds || [])].slice(0, 25);
-  const found = await weaponService.getWeaponsByEmojiIds(uniqueIds);
-  const byId = new Map(found.map((weapon) => [String(weapon.emojiId), weapon]));
-  const ordered = uniqueIds.map((id) => byId.get(String(id))).filter(Boolean);
-  if (ordered.length === 0) throw new Error('No se encontraron armas activas para añadir.');
-  return mutate(sessionId, userId, guildId, (data) => {
-    const added = domain.addWeaponsToGroup(data, groupIndex, ordered);
-    if (!added) throw new Error('El grupo seleccionado ya no existe.');
-    return added;
+/**
+ * Conserva el arma elegida hasta que el usuario confirme su configuracion en
+ * el modal. No se modifica el grupo todavia: cerrar el modal no debe dejar un
+ * arma añadida a medias.
+ */
+const stageCatalogWeapon = async ({ sessionId, userId, guildId, groupIndex, emojiId }) => {
+  const weapon = await weaponService.getWeaponByEmojiId(String(emojiId || ''));
+  if (!weapon) throw new Error('No se encontró el arma seleccionada en el catálogo actual.');
+
+  const normalizedIndex = Number(groupIndex);
+  const valid = sessions.mutateOwnedSession(sessionId, userId, guildId, (session) => {
+    if (!domain.getWeaponGroupFromSession(session, normalizedIndex)) {
+      throw new Error('El grupo seleccionado ya no existe.');
+    }
+    session.pendingCatalogWeapon = {
+      groupIndex: normalizedIndex,
+      weapon: {
+        name: weapon.name,
+        emojiId: weapon.emojiId,
+        image: weapon.image || '',
+        url: weapon.url || '',
+        units: weapon.units || 1,
+      },
+    };
+    return session.pendingCatalogWeapon;
   });
+  if (!valid) throw new Error('La sesión de edición expiró o no te pertenece.');
+  return valid;
 };
+
+/** Añade el arma únicamente después de confirmar su configuración inicial. */
+const confirmCatalogWeapon = ({
+  sessionId,
+  userId,
+  guildId,
+  groupIndex,
+  units,
+  url,
+  label,
+}) => mutate(sessionId, userId, guildId, (data, session) => {
+  const normalizedIndex = Number(groupIndex);
+  const pending = session.pendingCatalogWeapon;
+  if (!pending || pending.groupIndex !== normalizedIndex) {
+    throw new Error('La selección del arma expiró. Selecciónala de nuevo desde el catálogo.');
+  }
+
+  const group = domain.getWeaponGroupFromSession(session, normalizedIndex);
+  if (!group) throw new Error('El grupo seleccionado ya no existe.');
+
+  const cleanUrl = optionalHttpUrl(url, 'El enlace del arma');
+  const cleanLabel = String(label || '').trim().slice(0, 100);
+  const existingCount = domain.getWeaponCollection(group)
+    .filter((weapon) => weapon.name === pending.weapon.name)
+    .length;
+  const finalLabel = cleanLabel
+    || (existingCount > 0 ? `${pending.weapon.name} (${existingCount + 1})` : '');
+  const added = domain.addWeaponsToGroup(data, normalizedIndex, [{
+    ...pending.weapon,
+    units: positiveInteger(units, 'La cantidad de plazas'),
+    url: cleanUrl,
+    label: finalLabel,
+    private: Boolean(cleanUrl),
+  }]);
+  if (!added) throw new Error('No se pudo añadir el arma al grupo seleccionado.');
+
+  delete session.pendingCatalogWeapon;
+  return added;
+});
 
 const updateWeapon = ({ sessionId, userId, guildId, groupIndex, weaponIndex, name, units, emoji, url }) => mutate(
   sessionId,
@@ -312,16 +368,17 @@ const cancel = ({ sessionId, userId, guildId }) =>
   sessions.deleteOwnedSession(sessionId, userId, guildId);
 
 module.exports = {
-  addCatalogWeapons,
   addGroup,
   applyStagedGroupEmoji,
   cancel,
   catalogCategories,
   catalogWeapons,
+  confirmCatalogWeapon,
   deleteGroup,
   get,
   removeWeapons,
   save,
+  stageCatalogWeapon,
   stageGroupChange,
   start,
   startCreate,
