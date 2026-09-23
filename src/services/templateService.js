@@ -133,7 +133,15 @@ const updateTemplate = async (templateId, updateData, serverId, expectedUpdatedA
     }
 
     const filter = { _id: templateId, serverId };
-    if (expectedUpdatedAt) filter.updatedAt = new Date(expectedUpdatedAt);
+    const hasConcurrencyCheck = expectedUpdatedAt !== null && expectedUpdatedAt !== undefined;
+    if (expectedUpdatedAt?.missing === true) {
+      // Las plantillas creadas antes de incorporar `updatedAt` no tienen el
+      // campo en Mongo. El default de Mongoose no debe convertirse en una
+      // fecha fantasma que impida guardarlas por primera vez.
+      filter.updatedAt = { $exists: false };
+    } else if (hasConcurrencyCheck) {
+      filter.updatedAt = new Date(expectedUpdatedAt);
+    }
 
     const result = await Template.findOneAndUpdate(
       filter,
@@ -142,7 +150,7 @@ const updateTemplate = async (templateId, updateData, serverId, expectedUpdatedA
     );
     
     if (!result) {
-      throw new Error(expectedUpdatedAt
+      throw new Error(hasConcurrencyCheck
         ? 'La plantilla cambió en otra sesión. Vuelve a abrir el editor para no sobrescribir esos cambios.'
         : `Template con ID ${templateId} no encontrado en este servidor`);
     }

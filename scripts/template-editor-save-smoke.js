@@ -45,6 +45,22 @@ assert.deepEqual(titleIndex?.[1].collation, { locale: 'es', strength: 2 });
   assert.equal(new Date(updateArgs[3]).toISOString(), updatedAt.toISOString(), 'el guardado debe usar control de concurrencia');
   assert.equal(sessions.getValidSession(editId, 'owner', 'guild'), null);
 
+  const legacyDocument = Template.hydrate({
+    _id: '507f1f77bcf86cd799439011',
+    serverId: 'guild',
+    ...validData,
+  });
+  assert.equal(legacyDocument.$isDefault('updatedAt'), true, 'Mongoose aplica un default en memoria al documento legacy');
+  const legacyEditId = sessions.createEditSession({
+    userId: 'owner', guildId: 'guild', template: legacyDocument,
+  });
+  await editor.save({ sessionId: legacyEditId, userId: 'owner', guildId: 'guild', guildName: 'Guild' });
+  assert.deepEqual(
+    updateArgs[3],
+    { missing: true },
+    'un updatedAt generado solo en memoria debe buscar el campo ausente en Mongo',
+  );
+
   let atomicUpdate;
   Template.findOneAndUpdate = async (filter, update, options) => {
     atomicUpdate = { filter, update, options };
@@ -55,6 +71,9 @@ assert.deepEqual(titleIndex?.[1].collation, { locale: 'es', strength: 2 });
   assert.equal(atomicUpdate.filter.updatedAt.toISOString(), updatedAt.toISOString());
   assert(atomicUpdate.update.updatedAt instanceof Date);
   assert.equal(atomicUpdate.options.runValidators, true);
+
+  await originals.updateTemplate('template-legacy', { title: 'Legacy' }, 'guild', { missing: true });
+  assert.deepEqual(atomicUpdate.filter.updatedAt, { $exists: false });
 
   const createId = await editor.startCreate({ userId: 'owner', guildId: 'guild', title: 'Nueva', description: 'Descripción', image: '' });
   sessions.mutateOwnedSession(createId, 'owner', 'guild', (session) => { session.data.weapons = validData.weapons; });

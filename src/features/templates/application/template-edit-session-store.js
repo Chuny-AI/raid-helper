@@ -15,12 +15,21 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 
 const createEditSession = ({ userId, guildId, template }, now = Date.now()) => {
   const sessionId = randomBytes(12).toString('hex');
+  const source = template.toObject?.() || template;
+  // Mongoose aplica defaults al hidratar documentos antiguos. Si `updatedAt`
+  // no existe en Mongo, el documento recibe una fecha solo en memoria; usarla
+  // como token de concurrencia haría que el primer guardado nunca coincidiera.
+  const updatedAtIsDefault = template.$isDefault?.('updatedAt') === true;
+  const concurrencyToken = !updatedAtIsDefault && source.updatedAt
+    ? source.updatedAt
+    : { missing: true };
   templateEditSessions.set(sessionId, {
     mode: 'edit',
     userId: String(userId),
     guildId: String(guildId),
     templateId: template._id,
-    originalData: clone(template.toObject?.() || template),
+    originalData: clone(source),
+    concurrencyToken: clone(concurrencyToken),
     lastActivity: now,
     data: {
       title: template.title,

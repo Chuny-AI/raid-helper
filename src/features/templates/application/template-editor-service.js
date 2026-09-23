@@ -357,7 +357,7 @@ const save = async ({ sessionId, userId, guildId, guildName }) => {
       valid.session.templateId,
       payload,
       guildId,
-      valid.session.originalData?.updatedAt || null,
+      valid.session.concurrencyToken ?? valid.session.originalData?.updatedAt ?? null,
     );
   }
   sessions.deleteOwnedSession(valid.sessionId, userId, guildId);
