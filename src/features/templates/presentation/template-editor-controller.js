@@ -49,7 +49,6 @@ const handleSettingsSubmit = async (interaction, sessionId) => {
     color: field(interaction, 'color'),
     url: field(interaction, 'url'),
     reminder: field(interaction, 'reminder'),
-    notifyAll: field(interaction, 'notifyAll'),
   });
   return screens.showOverview(interaction, sessionId);
 };

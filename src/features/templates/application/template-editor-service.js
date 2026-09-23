@@ -97,7 +97,7 @@ const updateBasic = ({ sessionId, userId, guildId, title, description, image }) 
   },
 );
 
-const updateSettings = ({ sessionId, userId, guildId, color, url, reminder, notifyAll }) => mutate(
+const updateSettings = ({ sessionId, userId, guildId, color, url, reminder }) => mutate(
   sessionId,
   userId,
   guildId,
@@ -113,9 +113,6 @@ const updateSettings = ({ sessionId, userId, guildId, color, url, reminder, noti
     data.color = cleanColor || '#0099ff';
     data.url = optionalHttpUrl(url, 'El enlace');
     data.reminder = cleanReminder;
-    data.notifyAll = ['sí', 'si', 's', 'true', '1', 'yes', 'y'].includes(
-      String(notifyAll || '').trim().toLowerCase(),
-    );
   },
 );
 
@@ -130,6 +127,9 @@ const updateRoles = ({ sessionId, userId, guildId, roleIds, guild }) => mutate(
         return role && role.id !== guild.id && !role.managed;
       })
       .slice(0, 25);
+    // Los roles configurados siempre se mencionan y reciben DM por defecto.
+    // El raid concreto todavía puede desactivar los DMs desde su configuración.
+    data.notifyAll = data.roles.length > 0;
   },
 );
 

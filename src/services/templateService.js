@@ -67,6 +67,7 @@ const createTemplate = async (templateData, serverId) => {
 
     const template = new Template({
       ...templateData,
+      notifyAll: Array.isArray(templateData.roles) && templateData.roles.length > 0,
       serverId
     });
 
@@ -107,6 +108,9 @@ const updateTemplate = async (templateId, updateData, serverId, expectedUpdatedA
     }
     
     const safeUpdate = { ...updateData, updatedAt: new Date() };
+    if (safeUpdate.roles !== undefined) {
+      safeUpdate.notifyAll = Array.isArray(safeUpdate.roles) && safeUpdate.roles.length > 0;
+    }
 
     // Validar estructura de weapons si está presente
     if (safeUpdate.weapons !== undefined) {

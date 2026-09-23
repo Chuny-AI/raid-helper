@@ -72,6 +72,11 @@ assert.deepEqual(titleIndex?.[1].collation, { locale: 'es', strength: 2 });
   assert(atomicUpdate.update.updatedAt instanceof Date);
   assert.equal(atomicUpdate.options.runValidators, true);
 
+  await originals.updateTemplate('template-roles', { roles: ['role-1'] }, 'guild');
+  assert.equal(atomicUpdate.update.notifyAll, true, 'guardar roles activa las notificaciones por defecto');
+  await originals.updateTemplate('template-without-roles', { roles: [] }, 'guild');
+  assert.equal(atomicUpdate.update.notifyAll, false, 'sin roles no se activa la notificación');
+
   await originals.updateTemplate('template-legacy', { title: 'Legacy' }, 'guild', { missing: true });
   assert.deepEqual(atomicUpdate.filter.updatedAt, { $exists: false });
 

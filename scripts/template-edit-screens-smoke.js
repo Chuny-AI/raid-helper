@@ -69,12 +69,30 @@ const interaction = {
   interaction.customId = `te:roles-select:${sessionId}`;
   interaction.values = ['111111111111111'];
   await templateCommand.handleInteraction(interaction);
-  assert.deepEqual(sessions.getValidSession(sessionId, 'user-1', 'guild-1').session.data.roles, ['111111111111111']);
+  const sessionAfterRole = sessions.getValidSession(sessionId, 'user-1', 'guild-1').session;
+  assert.deepEqual(sessionAfterRole.data.roles, ['111111111111111']);
+  assert.equal(sessionAfterRole.data.notifyAll, true, 'seleccionar un rol activa su notificación por defecto');
   assert.equal(payloads.at(-1).components[0].components[0].data.type, ComponentType.RoleSelect);
 
   await screens.showBasicInfo(interaction, sessionId);
   assert.equal(modals.length, 1);
   assert.equal(modals[0].data.custom_id, `te:basic-submit:${sessionId}`);
+
+  await screens.showSettings(interaction, sessionId);
+  assert.equal(modals.at(-1).data.custom_id, `te:settings-submit:${sessionId}`);
+  assert.equal(
+    modals.at(-1).components.some((row) => row.components[0].data.custom_id === 'notifyAll'),
+    false,
+    'la configuración del template no pregunta por una notificación derivada de sus roles',
+  );
+
+  interaction.customId = `te:roles-clear:${sessionId}`;
+  await templateCommand.handleInteraction(interaction);
+  assert.equal(
+    sessions.getValidSession(sessionId, 'user-1', 'guild-1').session.data.notifyAll,
+    false,
+    'sin roles no se programa ninguna notificación',
+  );
 
   sessions.mutateOwnedSession(sessionId, 'user-1', 'guild-1', (session) => {
     session.data.weapons.group_0.data = Array.from({ length: 40 }, (_, index) => ({

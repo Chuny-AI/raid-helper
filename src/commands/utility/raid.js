@@ -54,6 +54,7 @@ const {
  * Se limpian automáticamente a los 15 minutos (expiración del token de Discord).
  */
 const pendingRaids = new Map();
+const shouldNotifyRolesByDefault = (roleIds) => Array.isArray(roleIds) && roleIds.length > 0;
 
 const panelOptions = (pending, page = 0) => ({
   page,
@@ -1791,7 +1792,10 @@ module.exports = {
           .filter((roleId) => String(roleId) !== guildId)
           .slice(0, MAX_ROLES_TO_NOTIFY)
         : parsedNotificationRoles;
-      const shouldSendMassDm = usesTemplateRoles ? Boolean(template.notifyAll) : true;
+      // Si hay roles seleccionados, se mencionan en el canal y sus miembros
+      // reciben DM por defecto. El panel del raid permite desactivar los DMs
+      // para esa publicación concreta.
+      const shouldSendMassDm = shouldNotifyRolesByDefault(finalNotificationRoles);
 
       // @everyone se descarta: en la lista de roles del raid no llega a ping'ar,
       // así que aceptarlo daba la falsa impresión de haber avisado a todos.
@@ -1897,5 +1901,6 @@ module.exports = {
   handleConfirmRaidEdit,
   resolveMentionableRoles,
   safeInteractionUpdate,
+  shouldNotifyRolesByDefault,
 };
 

@@ -91,6 +91,9 @@ const run = async (customId, options) => {
 };
 
 (async () => {
+  assert.strictEqual(raid.shouldNotifyRolesByDefault([]), false);
+  assert.strictEqual(raid.shouldNotifyRolesByDefault(['role-1']), true);
+
   console.log('\n── Navegación del panel');
 
   await test('Seleccionar un grupo abre su panel con el selector de armas', async () => {

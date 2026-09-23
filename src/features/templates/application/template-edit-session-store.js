@@ -38,7 +38,9 @@ const createEditSession = ({ userId, guildId, template }, now = Date.now()) => {
       color: template.color || '',
       url: template.url || '',
       roles: Array.isArray(template.roles) ? [...template.roles] : [],
-      notifyAll: template.notifyAll === true,
+      // `notifyAll` se conserva por compatibilidad de datos, pero es derivado:
+      // con al menos un rol, la notificación queda activa por defecto.
+      notifyAll: Array.isArray(template.roles) && template.roles.length > 0,
       reminder: template.reminder || '5m',
       weapons: clone(template.weapons || {}),
     },

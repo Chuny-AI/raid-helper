@@ -131,9 +131,6 @@ const showSettings = async (interaction, sessionId) => {
       new ActionRowBuilder().addComponents(new TextInputBuilder()
         .setCustomId('reminder').setLabel('Recordatorio: 5m, 2h o 1d').setStyle(TextInputStyle.Short)
         .setValue(template.reminder || '5m').setRequired(true).setMaxLength(5)),
-      new ActionRowBuilder().addComponents(new TextInputBuilder()
-        .setCustomId('notifyAll').setLabel('Notificar a todos: sí o no').setStyle(TextInputStyle.Short)
-        .setValue(template.notifyAll ? 'sí' : 'no').setRequired(true).setMaxLength(3)),
     );
   return interaction.showModal(modal);
 };
