@@ -56,7 +56,7 @@ async function ephemeralReply(interaction, payload) {
 }
 
 function replyClosed(interaction) {
-  return ephemeralReply(interaction, '🔒 Este evento ha sido finalizado.');
+  return ephemeralReply(interaction, '🔒 Las inscripciones de este evento ya están cerradas.');
 }
 
 function replyGone(interaction) {
@@ -254,6 +254,10 @@ async function handleJoin(interaction, raidId) {
   const user = { userId: interaction.user.id, username: interaction.user.username };
 
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
+    if (runtime.raid.status !== 'active') {
+      await replyClosed(interaction);
+      return;
+    }
     const result = raidState.joinSlot(runtime.raid, slotId, user);
     if (!result.ok) {
       const msg = joinFailureMessage(result.reason);
@@ -320,7 +324,7 @@ async function handleGroupBrowser(interaction, raidId, requestedPage = 0) {
 async function handleGroupBrowserPick(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
-  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
+  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
   const groupKey = interaction.values[0];
   const panel = renderGroupPickPanel(runtime.raid, runtime.raid, groupKey);
   if (!panel) return interaction.update({ content: 'Ese grupo ya no tiene plazas disponibles.', components: [] });
@@ -334,7 +338,7 @@ async function handleGroupBrowserPick(interaction, raidId) {
 async function handleGroupWeaponPage(interaction, raidId, extra) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
-  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
+  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
   const [groupIndexText, pageText] = String(extra || '').split(':');
   const group = runtime.raid.groups[Number(groupIndexText)];
   if (!group) return interaction.update({ content: 'Ese grupo ya no existe.', components: [] });
@@ -367,7 +371,7 @@ async function handleGroupSearchOpen(interaction, raidId) {
 async function handleGroupSearchSubmit(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
-  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
+  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
   const query = interaction.fields.getTextInputValue('query');
   const normalized = normalizeGroupSearch(query);
   const available = new Set(raidState.availableSlots(runtime.raid).map((slot) => slot.groupKey));
@@ -393,12 +397,16 @@ async function handleGroupSearchSubmit(interaction, raidId) {
 async function handleJoinPick(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
-  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
+  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
 
   const slotId = interaction.values[0];
   const user = { userId: interaction.user.id, username: interaction.user.username };
 
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
+    if (runtime.raid.status !== 'active') {
+      await interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
+      return;
+    }
     const result = raidState.joinSlot(runtime.raid, slotId, user);
     if (!result.ok) {
       const msg = joinFailureMessage(result.reason) || 'No se pudo completar la acción.';
@@ -441,7 +449,7 @@ async function handleWaitlistOpen(interaction, raidId, requestedPage = 0) {
 async function handleWaitlistPick(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
-  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Este evento ha sido finalizado.', components: [] });
+  if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
 
   const slotIds = raidState.expandWaitlistSlotIds(runtime.raid, interaction.values);
   const user = { userId: interaction.user.id, username: interaction.user.username };
@@ -454,6 +462,10 @@ async function handleWaitlistPick(interaction, raidId) {
   }
 
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
+    if (runtime.raid.status !== 'active') {
+      await interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
+      return;
+    }
     const preferred = new Set(slotIds);
     const directSlot = raidState.availableSlots(runtime.raid)
       .find((slot) => preferred.has(slot.slotId))?.slotId;
@@ -504,6 +516,10 @@ async function handleCannotGo(interaction, raidId) {
   const user = { userId: interaction.user.id, username: interaction.user.username };
 
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
+    if (runtime.raid.status !== 'active') {
+      await replyClosed(interaction);
+      return;
+    }
     const result = raidState.toggleCannotGo(runtime.raid, user);
     let promoted = [];
     if (result.toggled === 'added' && result.freedSlotIds && result.freedSlotIds.length > 0) {
@@ -529,6 +545,10 @@ async function handleLooter(interaction, raidId) {
   const user = { userId: interaction.user.id, username: interaction.user.username };
 
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
+    if (runtime.raid.status !== 'active') {
+      await replyClosed(interaction);
+      return;
+    }
     const already = (runtime.raid.looters?.users || []).some((u) => u.userId === user.userId);
     const result = already ? raidState.leaveLooter(runtime.raid, user.userId) : raidState.joinLooter(runtime.raid, user);
     if (!result.ok) {
@@ -547,11 +567,11 @@ async function handleLooter(interaction, raidId) {
   });
 }
 
-/** Botón "Finalizar evento": pide confirmación en dos pasos. */
+/** Compatibilidad con mensajes antiguos que todavía tengan "Finalizar evento". */
 async function handleFinish(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
-  if (runtime.raid.status !== 'active') return replyClosed(interaction);
+  if (runtime.raid.status === 'closed') return replyClosed(interaction);
   if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
     return ephemeralReply(interaction, 'Solo el líder del raid o un administrador puede finalizarlo.');
   }
@@ -579,8 +599,8 @@ async function handleFinishConfirm(interaction, raidId) {
     return interaction.update({ content: msg, components: [] });
   }
 
-  // Es justo ahora cuando el líder sabe quién apareció, así que se le pregunta
-  // aquí mismo en vez de dejarle buscar el botón del mensaje.
+  // Al finalizar se conserva un último acceso directo al panel, por si el
+  // líder todavía necesita corregir la asistencia.
   const panel = attendancePanelPayload(runtime);
   if (!panel) {
     return interaction.update({ content: `🔒 Raid **#${raidId}** finalizado correctamente.`, components: [] });
@@ -597,8 +617,7 @@ async function handleFinishCancel(interaction) {
 
 /**
  * Cierra un raid: marca status=closed, deja el mensaje en solo lectura y saca
- * el runtime del registro. Compartido entre el botón "Finalizar evento" y
- * `/raid close`.
+ * el runtime del registro. Usado por `/raid close` y botones antiguos.
  *
  * No borra el hilo privado: sobrevive al cierre y solo desaparece si alguien
  * pulsa "Eliminar hilo".
@@ -609,9 +628,10 @@ async function handleFinishCancel(interaction) {
 async function finishRaid(raidId, actorId, guild) {
   const runtime = await getOrLoadRuntime({ raidId, guild });
   if (!runtime) return { ok: false, reason: 'not_found' };
-  if (runtime.raid.status !== 'active') return { ok: false, reason: 'already_closed' };
+  if (runtime.raid.status === 'closed') return { ok: false, reason: 'already_closed' };
 
   const result = await raidRegistry.withRaidLock(raidId, async () => {
+    if (runtime.raid.status === 'closed') return { ok: false, reason: 'already_closed' };
     const previous = {
       status: runtime.raid.status,
       closedBy: runtime.raid.closedBy,
@@ -661,7 +681,7 @@ async function finishRaid(raidId, actorId, guild) {
 }
 
 // ─────────────────────────────── Asistencia ───────────────────────────────
-// Solo tras finalizar el raid. El líder marca a quienes NO aparecieron; todo el
+// Desde que inicia el raid. El líder marca a quienes NO aparecieron; todo el
 // que participó y no queda marcado cuenta como asistente, así que el informe
 // del embed ya es correcto desde el cierre y esto solo registra las excepciones.
 
@@ -696,7 +716,12 @@ function attendancePanelPayload(runtime, requestedPage = 0) {
   };
 }
 
-/** Crea el canal de voz privado con la lista confirmada del raid. */
+/**
+ * Crea el canal de voz privado y finaliza el raid en el mismo paso. El mensaje
+ * queda abierto únicamente para entrar a la sala y registrar asistencia; al
+ * dejar de estar `active` tampoco se recalculan permisos ni se desconecta a
+ * nadie que ya haya entrado.
+ */
 async function handleStartEvent(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
@@ -709,17 +734,25 @@ async function handleStartEvent(interaction, raidId) {
   let result;
   try {
     result = await raidRegistry.withRaidLock(runtime.raidId, async () => {
+      if (runtime.raid.status !== 'active') {
+        return { ok: false, reason: 'registrations_closed' };
+      }
       const previousChannelId = runtime.raid.voiceChannelId || null;
+      const previousStatus = runtime.raid.status;
+      const previousStartedBy = runtime.raid.startedBy;
+      const previousStartedAt = runtime.raid.startedAt;
+      const previousClosedBy = runtime.raid.closedBy;
+      const previousClosedAt = runtime.raid.closedAt;
       const created = await createRaidVoiceChannel({
         guild: interaction.guild,
         raid: runtime.raid,
         actorId: interaction.user.id,
       });
-      if (!created.ok || created.reason === 'already_exists') {
+      if (!created.ok) {
         // createRaidVoiceChannel limpia una referencia obsoleta antes de
         // buscar dónde crear la nueva sala. Aunque la nueva creación falle,
         // no debemos conservar en MongoDB ni en el embed un canal inexistente.
-        if (!created.ok && previousChannelId && !runtime.raid.voiceChannelId) {
+        if (previousChannelId && !runtime.raid.voiceChannelId) {
           await raidRegistry.saveRaid(runtime.raidId);
           await raidRegistry.renderAndEdit(runtime.raidId);
         }
@@ -727,12 +760,27 @@ async function handleStartEvent(interaction, raidId) {
       }
 
       runtime.raid.voiceChannelId = created.channel.id;
+      runtime.raid.status = 'closed';
+      runtime.raid.startedBy = interaction.user.id;
+      runtime.raid.startedAt = new Date();
+      runtime.raid.closedBy = interaction.user.id;
+      runtime.raid.closedAt = runtime.raid.startedAt;
       try {
         await raidRegistry.saveRaid(runtime.raidId);
       } catch (error) {
         runtime.raid.voiceChannelId = previousChannelId;
-        await discardRaidVoiceChannel(created.channel);
+        runtime.raid.status = previousStatus;
+        runtime.raid.startedBy = previousStartedBy;
+        runtime.raid.startedAt = previousStartedAt;
+        runtime.raid.closedBy = previousClosedBy;
+        runtime.raid.closedAt = previousClosedAt;
+        if (created.reason === 'created') await discardRaidVoiceChannel(created.channel);
         throw error;
+      }
+      try {
+        require('./reminderManager').cancelReminder(runtime.raidId);
+      } catch (error) {
+        console.error('[WARN] handleStartEvent: error cancelando recordatorio:', error?.message);
       }
       await raidRegistry.renderAndEdit(runtime.raidId);
       return created;
@@ -747,29 +795,37 @@ async function handleStartEvent(interaction, raidId) {
     invalid_category: 'La categoría de voz para raids ya no existe. Actualízala en `/setup` → **Voz de raids**.',
     missing_permissions: 'El bot necesita Ver canal, Conectar, Gestionar canales y Mover miembros en la categoría configurada para raids.',
     no_participants: 'No hay líder ni participantes del raid que sigan dentro del servidor.',
+    registrations_closed: 'Las inscripciones ya están cerradas; el evento no se volverá a iniciar.',
   };
   if (!result.ok) return interaction.editReply({ content: `❌ ${messages[result.reason] || 'No se pudo crear el canal del evento.'}` });
-  if (result.reason === 'already_exists') {
-    return interaction.editReply({ content: `🔊 El evento ya tiene el canal ${result.channel}.` });
-  }
   let noticeFailed = false;
-  try {
-    await sendRaidStartNotice(interaction.channel, runtime.raidId, result.channel.id, result.allowedIds);
-  } catch (error) {
-    noticeFailed = true;
-    console.error(`[WARN] No se pudo etiquetar a los inscritos del raid #${runtime.raidId}:`, error?.message);
+  if (result.reason === 'created') {
+    try {
+      await sendRaidStartNotice(interaction.channel, runtime.raidId, result.channel.id, result.allowedIds);
+    } catch (error) {
+      noticeFailed = true;
+      console.error(`[WARN] No se pudo etiquetar a los inscritos del raid #${runtime.raidId}:`, error?.message);
+    }
   }
-  return interaction.editReply({
-    content: `✅ Evento iniciado en ${result.channel}. **${result.allowedCount}** miembro(s) confirmado(s) pueden conectarse.${noticeFailed ? ' No pude enviar las menciones; revisa mi permiso para escribir en este canal.' : ''}`,
+  const panel = attendancePanelPayload(runtime);
+  const startSummary =
+    `✅ Evento iniciado en ${result.channel}. El raid quedó finalizado, las inscripciones se cerraron y se ` +
+    `congelaron los permisos para **${result.allowedCount}** miembro(s).`;
+  const reply = await interaction.editReply({
+    content: `${startSummary}${noticeFailed ? ' No pude enviar las menciones; revisa mi permiso para escribir en este canal.' : ''}` +
+      (panel ? `\n\n${panel.content}` : '\n\nNo hay participantes para registrar asistencia.'),
+    components: panel?.components || [],
   });
+  raidRegistry.unregister(runtime.raidId);
+  return reply;
 }
 
-/** Botón "Registrar asistencia" del mensaje de un raid ya finalizado. */
+/** Botón "Registrar asistencia" desde que el evento está en curso. */
 async function handleAttendanceOpen(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
   if (runtime.raid.status === 'active') {
-    return ephemeralReply(interaction, 'La asistencia solo se registra cuando el evento ha finalizado.');
+    return ephemeralReply(interaction, 'La asistencia se habilita al iniciar el evento y cerrar las inscripciones.');
   }
   if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
     return ephemeralReply(interaction, 'Solo el líder del raid o un administrador puede registrar la asistencia.');
@@ -791,6 +847,9 @@ async function handleAttendancePick(interaction, raidId, extra) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) {
     return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  }
+  if (runtime.raid.status === 'active') {
+    return interaction.update({ content: 'La asistencia todavía no está habilitada.', components: [] });
   }
   if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
     return interaction.update({
@@ -830,6 +889,9 @@ async function handleAttendancePick(interaction, raidId, extra) {
 async function handleAttendancePage(interaction, raidId, extra) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
+  if (runtime.raid.status === 'active') {
+    return interaction.update({ content: 'La asistencia todavía no está habilitada.', components: [] });
+  }
   if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
     return interaction.update({
       content: 'Solo el líder del raid o un administrador puede registrar la asistencia.',
@@ -845,16 +907,19 @@ async function handleAttendancePage(interaction, raidId, extra) {
 /**
  * Botón "Listo": cierra el panel efímero. Lo registrado ya está guardado.
  *
- * Es el momento en que el hilo privado deja de hacer falta, así que aquí se
- * ofrece borrarlo. Solo se ofrece: si el líder no pulsa nada, el hilo se queda.
+ * Mientras el evento está en curso solo cierra el panel. Tras finalizar, ofrece
+ * además borrar el hilo privado; nunca se elimina automáticamente.
  */
 async function handleAttendanceDone(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) {
     return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
   }
+  if (runtime.raid.status === 'active') {
+    return interaction.update({ content: 'La asistencia todavía no está habilitada.', components: [] });
+  }
   const { attended, absent } = raidState.attendanceReport(runtime.raid);
-  const threadRow = renderThreadDeleteRow(runtime.raid);
+  const threadRow = runtime.raid.status === 'closed' ? renderThreadDeleteRow(runtime.raid) : null;
   const resumen =
     `📋 Asistencia del raid **#${runtime.raidId}** registrada: ` +
     `**${attended.length}** asistieron · **${absent.length}** no asistieron. ` +

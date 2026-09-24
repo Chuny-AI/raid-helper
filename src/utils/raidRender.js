@@ -241,7 +241,9 @@ function buildSocialFields() {
  */
 function renderRaidEmbed(raid, state) {
   const embed = new EmbedBuilder();
-  const isClosed = raid.status === 'closed';
+  // `started` solo puede existir como compatibilidad transitoria con la versión
+  // anterior: visualmente y funcionalmente ya cuenta como finalizado.
+  const isClosed = raid.status !== 'active';
   const baseTitle = raid.title || '(sin título)';
 
   embed.setTitle(isClosed ? `🔒 [FINALIZADO] ${baseTitle}` : baseTitle);
@@ -299,11 +301,9 @@ function renderRaidEmbed(raid, state) {
     });
   }
 
-  // Mientras el raid está vivo interesa quién ocupa cada arma; una vez
-  // finalizado, ese mismo bloque pasa a ser el informe de asistencia
-  // (asistieron / no asistieron), que es lo que queda por saber. Se muestra
-  // aunque no fuera nadie: un "Asistieron (0)" explica el raid vacío mejor que
-  // una lista de grupos en blanco.
+  // Al iniciar el evento se cierran las inscripciones y comienza la fase de
+  // asistencia. Desde entonces el roster queda congelado y el bloque de grupos
+  // se sustituye por el informe de asistentes / ausentes.
   const useAttendance = isClosed;
   const blockFields = useAttendance ? buildAttendanceFields(state) : buildGroupFields(state);
   const inicioGrupos = fields.length;
@@ -338,9 +338,11 @@ function renderRaidEmbed(raid, state) {
     fields.push({ name: CANNOTGO_FIELD_NAME, value: safeFieldValue(lines.join('\n')), inline: false });
   }
 
-  if (isClosed && (raid.closedBy || raid.closedAt)) {
-    const who = raid.closedBy ? `<@${raid.closedBy}>` : 'desconocido';
-    const when = raid.closedAt ? `<t:${Math.floor(new Date(raid.closedAt).getTime() / 1000)}:R>` : '';
+  if (isClosed && (raid.closedBy || raid.closedAt || raid.startedBy || raid.startedAt)) {
+    const whoId = raid.closedBy || raid.startedBy;
+    const closedAt = raid.closedAt || raid.startedAt;
+    const who = whoId ? `<@${whoId}>` : 'desconocido';
+    const when = closedAt ? `<t:${Math.floor(new Date(closedAt).getTime() / 1000)}:R>` : '';
     fields.push({ name: '🔒 Estado', value: `Finalizado por ${who}${when ? ` · ${when}` : ''}` });
   }
 
@@ -542,13 +544,6 @@ function buildButtonRow(raid, state) {
       .setLabel('Iniciar evento')
       .setStyle(ButtonStyle.Success)
       .setEmoji('🔊'));
-  buttons.push(
-    new ButtonBuilder()
-      .setCustomId(`raid:finish:${raid.eventId}`)
-      .setLabel('Finalizar evento')
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji('🔒')
-  );
   return new ActionRowBuilder().addComponents(buttons);
 }
 
@@ -572,13 +567,23 @@ function renderThreadDeleteRow(raid) {
 }
 
 /**
- * Acciones que quedan en un raid finalizado: registrar quién no apareció y,
+ * Acciones que quedan en un raid finalizado: corregir quién no apareció y,
  * si el hilo privado sigue vivo, borrarlo. El borrado nunca es automático, así
  * que este botón es la única vía para quitarlo de en medio.
  * @returns {ActionRowBuilder[]} vacío si no queda ninguna acción
  */
 function buildClosedRaidRows(raid, state) {
   const buttons = [];
+
+  if (raid.voiceChannelId) {
+    buttons.push(
+      new ButtonBuilder()
+        .setURL(`https://discord.com/channels/${raid.guildId}/${raid.voiceChannelId}`)
+        .setLabel('Ir al evento')
+        .setStyle(ButtonStyle.Link)
+        .setEmoji('🔊')
+    );
+  }
 
   if (raidRoster(state).length > 0) {
     buttons.push(
@@ -598,14 +603,11 @@ function buildClosedRaidRows(raid, state) {
 /**
  * Construye los componentes (selects + botones) del mensaje del raid.
  *
- * Un raid cerrado ya no admite inscripciones, pero conserva los botones para
- * registrar la asistencia (es justo después de finalizar cuando se sabe quién
- * apareció de verdad) y para borrar el hilo privado cuando ya no haga falta.
+ * Un raid iniciado ya no admite inscripciones y muestra la fase de asistencia.
+ * Al finalizar conserva el acceso a esa asistencia y al borrado manual del hilo.
  */
 function renderRaidComponents(raid, state) {
-  if (raid.status !== 'active') {
-    return buildClosedRaidRows(raid, state);
-  }
+  if (raid.status !== 'active') return buildClosedRaidRows(raid, state);
 
   const rows = [];
   const avail = availableSlots(state);

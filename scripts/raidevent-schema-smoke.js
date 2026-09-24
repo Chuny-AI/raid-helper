@@ -49,5 +49,22 @@ if (err) {
   console.error('Validación FALLÓ:', err);
   process.exit(1);
 }
+
+doc.status = 'started';
+doc.startedBy = '123';
+doc.startedAt = new Date();
+const startedErr = doc.validateSync();
+if (startedErr) {
+  console.error('Validación de fase iniciada FALLÓ:', startedErr);
+  process.exit(1);
+}
+doc.status = 'closed';
+doc.closedBy = '123';
+doc.closedAt = doc.startedAt;
+const closedErr = doc.validateSync();
+if (closedErr) {
+  console.error('Validación de cierre automático FALLÓ:', closedErr);
+  process.exit(1);
+}
 console.log('Validación OK. Documento:');
 console.log(JSON.stringify(doc.toObject(), null, 2));

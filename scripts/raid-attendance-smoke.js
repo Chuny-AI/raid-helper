@@ -66,6 +66,14 @@ const raid = {
   stateVersion: 2,
 };
 const closedRaid = { ...raid, status: 'closed', closedBy: 'L1', closedAt: new Date() };
+const autoClosedRaid = {
+  ...raid,
+  status: 'closed',
+  guildId: 'G1',
+  voiceChannelId: 'V1',
+  startedBy: 'L1',
+  startedAt: new Date(),
+};
 
 /** Estado con `n` plazas ocupadas por usuarios u0..u(n-1). */
 const stateWith = (grupos, armas = 1, cupo = 1, lootersMax = 0) => {
@@ -151,6 +159,14 @@ test('un raid activo sigue mostrando los grupos y no la asistencia', () => {
   assert.ok(!json.fields.some((f) => f.name.includes('Asistieron')), 'muestra asistencia estando activo');
 });
 
+test('al iniciar el evento se finaliza y aparece la fase de asistencia', () => {
+  const json = renderRaidEmbed(autoClosedRaid, stateWith(3, 1)).toJSON();
+  assert.match(json.title, /FINALIZADO/);
+  assert.ok(fieldNamed(json, '✅ Asistieron (3)'), 'falta el bloque de asistentes');
+  assert.ok(fieldNamed(json, '❌ No asistieron (0)'), 'falta el bloque de ausentes');
+  assert.ok(!json.fields.some((f) => f.name.startsWith('Grupo ')), 'las inscripciones siguen visibles');
+});
+
 console.log('\n── Marcar y desmarcar ausentes');
 
 test('marcar a uno lo saca de asistentes', () => {
@@ -224,7 +240,7 @@ test('queda registrado quién y cuándo tocó la asistencia', () => {
   assert.ok(state.attendance.updatedAt instanceof Date);
 });
 
-console.log('\n── El botón solo aparece con el raid finalizado');
+console.log('\n── La asistencia aparece al iniciar y no hay finalización manual');
 
 test('un raid cerrado con participantes trae el botón de asistencia', () => {
   const filas = renderRaidComponents(closedRaid, stateWith(2, 1));
@@ -246,6 +262,17 @@ test('un raid activo no trae el botón de asistencia', () => {
   const filas = renderRaidComponents(raid, stateWith(2, 1));
   const ids = filas.flatMap((f) => f.toJSON().components.map((c) => c.custom_id));
   assert.ok(!ids.some((id) => id?.startsWith('raid:att')), 'el botón sale con el raid activo');
+});
+
+test('un raid iniciado deja asistencia y voz, sin botón de finalizar', () => {
+  const ids = renderRaidComponents(autoClosedRaid, stateWith(2, 1))
+    .flatMap((fila) => fila.toJSON().components.map((componente) => componente.custom_id || componente.url));
+  assert.ok(ids.includes(`raid:att:${autoClosedRaid.eventId}`));
+  assert.ok(!ids.includes(`raid:finish:${autoClosedRaid.eventId}`));
+  assert.ok(ids.some((id) => id?.includes(`/channels/${autoClosedRaid.guildId}/${autoClosedRaid.voiceChannelId}`)));
+  assert.ok(!ids.some((id) => id?.startsWith('raid:join')));
+  assert.ok(!ids.includes(`raid:wait:${autoClosedRaid.eventId}`));
+  assert.ok(!ids.includes(`raid:cannotgo:${autoClosedRaid.eventId}`));
 });
 
 console.log('\n── El panel de marcado respeta los límites de Discord');

@@ -122,9 +122,9 @@ const RaidEventSchema = new mongoose.Schema({
     default: false
   },
 
-  // Asistencia real, registrada por el líder DESPUÉS de finalizar el raid.
+  // Asistencia real, registrada por el líder DESDE que inicia el raid.
   // Se guardan SOLO los ausentes: quien participó y no está en esta lista se
-  // considera que asistió. Así el informe existe desde el instante del cierre
+  // considera que asistió. Así el informe existe desde el instante del inicio
   // (todos presentes) y el líder solo tiene que marcar las excepciones.
   // No confundir con `cannotGo`, que es quien avisó ANTES y liberó su plaza:
   // ese ni siquiera entra en el reparto de asistencia.
@@ -140,11 +140,17 @@ const RaidEventSchema = new mongoose.Schema({
   closedBy: String,
   closedAt: Date,
 
-  // Estado del raid: 'active' | 'closed'
+  // Metadatos del inicio. Al iniciar también se cierra el raid automáticamente;
+  // estos campos permiten distinguir ese cierre de `/raid close`.
+  startedBy: String,
+  startedAt: Date,
+
+  // `started` se conserva solo para migrar documentos creados por una versión
+  // anterior que tenía una fase intermedia separada.
   status: {
     type: String,
     default: 'active',
-    enum: ['active', 'closed']
+    enum: ['active', 'started', 'closed']
   },
   // Snapshot del embed serializado (formato de texto legacy). Se sigue escribiendo
   // solo para raids en stateVersion 1; en stateVersion 2 se conserva de solo lectura

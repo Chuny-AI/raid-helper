@@ -1,11 +1,12 @@
 const RaidEvent = require('../database/models/RaidEvent');
 
 /**
- * Obtener todos los raids activos
+ * Obtener todos los raids que todavía requieren runtime (inscripciones o
+ * evento iniciado). Los cerrados ya no necesitan quedar en memoria.
  */
 async function getActiveRaids() {
   try {
-    return await RaidEvent.find({ status: 'active' });
+    return await RaidEvent.find({ status: { $in: ['active', 'started'] } });
   } catch (error) {
     console.error('[ERROR] Error obteniendo raids activos:', error);
     return [];

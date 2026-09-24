@@ -129,7 +129,7 @@ async function executeKickSubcommand(interaction) {
     });
   }
   if (runtime.raid.status !== 'active') {
-    return interaction.editReply({ content: `🔒 El raid **#${raidId}** ya está finalizado.` });
+    return interaction.editReply({ content: `🔒 Las inscripciones del raid **#${raidId}** ya están cerradas.` });
   }
   if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
     return interaction.editReply({ content: 'Solo el líder del raid puede expulsar participantes.' });
@@ -138,6 +138,7 @@ async function executeKickSubcommand(interaction) {
   let result;
   try {
     result = await raidRegistry.withRaidLock(raidId, async () => {
+      if (runtime.raid.status !== 'active') return { closed: true };
       const kickResult = raidState.kickUser(runtime.raid, targetUser.id);
       if (!kickResult.wasInSlot && !kickResult.wasLooter) return kickResult;
 
@@ -155,6 +156,9 @@ async function executeKickSubcommand(interaction) {
     return interaction.editReply({ content: '❌ No se pudo guardar la expulsión. Inténtalo de nuevo.' });
   }
 
+  if (result.closed) {
+    return interaction.editReply({ content: `🔒 Las inscripciones del raid **#${raidId}** ya están cerradas.` });
+  }
   if (!result.wasInSlot && !result.wasLooter) {
     return interaction.editReply({ content: `**${targetUser.username}** no está en este raid.` });
   }
@@ -249,7 +253,7 @@ async function executeEditSubcommand(interaction) {
     return interaction.editReply({ content: `No se encontró ningún raid activo con el ID **${raidId}**.` });
   }
   if (runtime.raid.status !== 'active') {
-    return interaction.editReply({ content: `🔒 El raid **#${raidId}** ya está finalizado.` });
+    return interaction.editReply({ content: `🔒 Las inscripciones del raid **#${raidId}** ya están cerradas.` });
   }
   if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
     return interaction.editReply({ content: 'Solo el líder del raid puede editarlo.' });
@@ -381,8 +385,7 @@ async function executeCloseSubcommand(interaction) {
     });
   }
 
-  // Igual que el botón "Finalizar evento": se pregunta la asistencia aquí
-  // mismo, que es cuando el líder acaba de ver quién apareció.
+  // El cierre manual conserva el acceso directo al panel de asistencia.
   const panel = attendancePanelPayload(runtime);
   if (!panel) {
     return interaction.editReply({ content: `✅ Raid **#${raidId}** finalizado correctamente.` });

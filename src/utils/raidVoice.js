@@ -167,6 +167,13 @@ const syncRaidVoiceChannelNow = async (guild, raid) => {
   const channel = await fetchRaidVoiceChannel(guild, raid.voiceChannelId);
   if (!channel || channel.type !== ChannelType.GuildVoice) return { ok: false, reason: 'gone' };
 
+  // Una vez iniciado el evento, la lista de acceso es una fotografía del
+  // roster en ese instante. No se vuelven a escribir permisos ni se expulsa a
+  // nadie que ya esté conectado, aunque una llamada atrasada llegue después.
+  if (raid.status !== 'active') {
+    return { ok: true, reason: 'frozen', channel };
+  }
+
   const allowedIds = await resolveLiveAllowedIds(guild, raid);
   await channel.permissionOverwrites.set(
     buildPermissionOverwrites(guild, allowedIds),

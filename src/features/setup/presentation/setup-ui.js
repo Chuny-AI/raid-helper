@@ -130,7 +130,7 @@ const buildRaidVoiceScreen = ({ status, userId, guildId }) => {
       .setTitle('🎙️ Categoría de voz para raids')
       .setDescription([
         `Categoría actual: ${status.raidVoiceCategoryId ? `<#${status.raidVoiceCategoryId}>` : 'sin configurar'}.`,
-        'Al pulsar **Iniciar evento**, el canal de voz se creará aquí con acceso privado para el líder y los inscritos. Se actualizará cuando cambie la lista del raid.',
+        'Al pulsar **Iniciar evento**, el canal de voz se creará aquí con acceso privado para el líder y los inscritos. El raid se finalizará y esa lista de acceso quedará congelada.',
         'Si no eliges una categoría, los raids existentes seguirán usando la categoría del primer generador de salas temporales.',
       ].join('\n\n'))
       .setColor(0x5865f2)],

@@ -44,7 +44,7 @@ const RAID_CONFIG_PREFIX = 'raidcfg-';
  * Deja el mensaje de un raid cerrado en solo lectura.
  *
  * `closeRaidEvent` solo cambia el estado en BD, así que el mensaje se quedaba
- * con sus selectores y su botón "Finalizar evento" sobre un raid ya cerrado:
+ * con sus selectores sobre un raid ya cerrado:
  * quien los pulsara recibía un error en vez de ver que el evento terminó.
  * `finishRaid` (cierre manual) sí lo hacía; esto lo iguala para los cierres
  * automáticos.
@@ -124,7 +124,7 @@ async function closeRaidAndSeal(raid, clientRef, motivo) {
  * @returns {boolean} true si quedó un recordatorio programado
  */
 function restoreReminder(raid) {
-  if (!raid.reminder || !raid.eventTimestamp) return false;
+  if (raid.status !== 'active' || !raid.reminder || !raid.eventTimestamp) return false;
   try {
     const { createReminder } = require('./reminderManager');
     const timeoutId = createReminder(
@@ -165,11 +165,30 @@ const getEvents = () => {
     try {
       const activeRaids = await getActiveRaids();
       let migrated = 0;
+      let migratedStarted = 0;
       let reattached = 0;
       let restoredReminders = 0;
       const now = Date.now();
 
       for (const raid of activeRaids) {
+        // Compatibilidad: tanto el antiguo estado `started` como un raid activo
+        // que ya tenga sala significan que se pulsó Iniciar. El flujo actual lo
+        // convierte directamente en finalizado con asistencia abierta.
+        if (raid.status === 'started' || (raid.status === 'active' && raid.voiceChannelId)) {
+          raid.status = 'closed';
+          raid.startedAt ||= raid.updatedAt || new Date();
+          raid.closedBy ||= raid.startedBy;
+          raid.closedAt ||= raid.startedAt;
+          try {
+            await raid.save();
+            migratedStarted++;
+            await sealRaidMessage(raid, readyClient, 'migración de evento iniciado');
+          } catch (saveError) {
+            console.error(`[MIGRATE] Raid #${raid.eventId}: no se pudo finalizar el evento ya iniciado:`, saveError);
+          }
+          continue;
+        }
+
         // Expirar raids cuya hora ya pasó hace más de 2 horas
         if (raid.eventTimestamp && raid.eventTimestamp * 1000 + 2 * 60 * 60 * 1000 < now) {
           await closeRaidAndSeal(raid, readyClient, 'expiración al arrancar');
@@ -207,7 +226,7 @@ const getEvents = () => {
           }
           raidRegistry.register({ raidId: raid.eventId, raid, message, templateName: raid.templateName });
           // Re-renderiza con los componentes actuales (customId estables por raidId,
-          // opciones desaparecen/reaparecen según ocupación, botón "Finalizar evento").
+          // opciones desaparecen/reaparecen según ocupación y fase del raid).
           await raidRegistry.renderAndEdit(raid.eventId);
           if (restoreReminder(raid)) restoredReminders++;
           reattached++;
@@ -217,6 +236,7 @@ const getEvents = () => {
       }
 
       if (migrated > 0) console.log(`[INFO] ${migrated} raid(s) migrados a estado estructurado (stateVersion 2).`);
+      if (migratedStarted > 0) console.log(`[INFO] ${migratedStarted} raid(s) iniciados finalizados automáticamente con asistencia abierta.`);
       if (reattached > 0) console.log(`[INFO] ${reattached} raid(s) activos reconectados.`);
       if (restoredReminders > 0) console.log(`[INFO] ${restoredReminders} recordatorio(s) reprogramados.`);
     } catch (error) {

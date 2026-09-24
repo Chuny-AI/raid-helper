@@ -9,6 +9,8 @@ const TemporaryVoiceChannel = require('../src/database/models/TemporaryVoiceChan
 const RaidVoiceConfig = require('../src/database/models/RaidVoiceConfig');
 const raidVoiceConfig = require('../src/services/raidVoiceConfigService');
 const raidVoice = require('../src/utils/raidVoice');
+const raidRegistry = require('../src/services/raidRegistry');
+const { handleStartEvent, routeRaidInteraction } = require('../src/utils/raidInteractions');
 const { sendRaidStartNotice } = require('../src/utils/raidStartNotice');
 const { renderRaidEmbed, renderRaidComponents } = require('../src/utils/raidRender');
 
@@ -181,19 +183,124 @@ const raid = {
   assert.equal(syncCalls, 2);
   assert(syncedOverwrites.some((overwrite) => overwrite.id === 'user-2'));
 
+  // Al iniciar el evento, cualquier sincronización ya encolada o accidental
+  // debe respetar la fotografía original de permisos y no sacar a nadie.
+  raid.status = 'started';
+  disconnected = false;
+  raid.slots[0].users = [{ userId: 'user-1', username: 'Uno' }];
+  const frozenSync = await raidVoice.syncRaidVoiceChannel(guild, raid);
+  assert.equal(frozenSync.reason, 'frozen');
+  assert.equal(syncCalls, 2, 'un evento iniciado no debe reescribir permisos');
+  assert.equal(disconnected, false, 'un evento iniciado no debe desconectar usuarios');
+  raid.status = 'active';
+
+  let startReply;
+  let renderedStart;
+  const flowRaid = {
+    ...raid,
+    eventId: 'VOICEFLOW',
+    voiceChannelId: null,
+    status: 'active',
+    startedBy: null,
+    startedAt: null,
+    save: async () => {},
+  };
+  const flowMessage = {
+    id: 'message-flow',
+    edit: async (payload) => {
+      renderedStart = payload;
+      return flowMessage;
+    },
+  };
+  raidRegistry.register({ raidId: flowRaid.eventId, raid: flowRaid, message: flowMessage, templateName: 'T' });
+  await handleStartEvent({
+    guild,
+    channel: { send: async () => {} },
+    message: flowMessage,
+    member: { id: 'leader' },
+    user: { id: 'leader' },
+    deferReply: async () => {},
+    editReply: async (payload) => { startReply = payload; },
+  }, flowRaid.eventId);
+  assert.equal(flowRaid.status, 'closed', 'iniciar debe finalizar el raid');
+  assert.equal(flowRaid.startedBy, 'leader');
+  assert.equal(flowRaid.closedBy, 'leader');
+  assert(flowRaid.startedAt instanceof Date);
+  assert.match(startReply.content, /raid quedó finalizado/);
+  assert(startReply.components.some((row) => row.components.some(
+    (component) => component.data.custom_id?.startsWith('raid:attpick:')
+  )), 'iniciar debe abrir el panel de asistencia');
+  assert(renderedStart.components.flatMap((row) => row.components)
+    .every((component) => !component.data.custom_id?.startsWith('raid:join')),
+  'el mensaje iniciado no debe conservar controles de inscripción');
+  assert(renderedStart.components.flatMap((row) => row.components)
+    .every((component) => component.data.custom_id !== `raid:finish:${flowRaid.eventId}`),
+  'el mensaje iniciado no debe mostrar Finalizar evento');
+  raidRegistry.unregister(flowRaid.eventId);
+
+  // Si alguien confirma un arma a la vez que el líder inicia, el orden del
+  // lock manda: una inscripción que queda detrás del inicio debe rechazarse.
+  const raceRaid = {
+    ...raid,
+    eventId: 'VOICERACE',
+    voiceChannelId: null,
+    status: 'active',
+    startedBy: null,
+    startedAt: null,
+    slots: [{
+      slotId: 'dps~0', groupKey: 'dps', itemIndex: 0, label: 'DPS', emoji: '⚔️', units: 3,
+      users: [{ userId: 'user-1', username: 'Uno' }],
+    }],
+    save: async () => {},
+  };
+  const raceMessage = { id: 'message-race', edit: async () => raceMessage };
+  raidRegistry.register({ raidId: raceRaid.eventId, raid: raceRaid, message: raceMessage, templateName: 'T' });
+  let releaseRaceLock;
+  const raceGate = new Promise((resolve) => { releaseRaceLock = resolve; });
+  const heldLock = raidRegistry.withRaidLock(raceRaid.eventId, () => raceGate);
+  const startDuringRace = handleStartEvent({
+    guild,
+    channel: { send: async () => {} },
+    message: raceMessage,
+    member: { id: 'leader' },
+    user: { id: 'leader' },
+    deferReply: async () => {},
+    editReply: async () => {},
+  }, raceRaid.eventId);
+  await new Promise((resolve) => setImmediate(resolve));
+  let raceJoinReply;
+  const joinDuringRace = routeRaidInteraction({
+    customId: `raid:joinpick:${raceRaid.eventId}`,
+    guild,
+    user: { id: 'late-user', username: 'Tarde' },
+    values: ['dps~0'],
+    update: async (payload) => { raceJoinReply = payload; },
+  });
+  releaseRaceLock();
+  await Promise.all([heldLock, startDuringRace, joinDuringRace]);
+  assert.equal(raceRaid.status, 'closed');
+  assert.equal(raceRaid.slots[0].users.some((user) => user.userId === 'late-user'), false);
+  assert.match(raceJoinReply.content, /inscripciones.*cerradas/i);
+  raidRegistry.unregister(raceRaid.eventId);
+
   const beforeStart = { ...raid, voiceChannelId: null };
   const startButton = renderRaidComponents(beforeStart, beforeStart)
     .flatMap((row) => row.components)
     .find((component) => component.data.custom_id === `raid:start:${raid.eventId}`);
   assert.equal(startButton.data.label, 'Iniciar evento');
   assert.equal(Boolean(startButton.data.disabled), false);
+  const finishButton = renderRaidComponents(beforeStart, beforeStart)
+    .flatMap((row) => row.components)
+    .find((component) => component.data.custom_id === `raid:finish:${raid.eventId}`);
+  assert.equal(finishButton, undefined, 'Finalizar evento ya no debe aparecer');
 
-  const startedButton = renderRaidComponents(raid, raid)
+  const finalizedVoiceRaid = { ...raid, status: 'closed' };
+  const startedButton = renderRaidComponents(finalizedVoiceRaid, finalizedVoiceRaid)
     .flatMap((row) => row.components)
     .find((component) => component.data.label === 'Ir al evento');
   assert.equal(startedButton.data.style, 5);
   assert.equal(startedButton.data.url, `https://discord.com/channels/${raid.guildId}/${raid.voiceChannelId}`);
-  const voiceField = renderRaidEmbed(raid, raid).data.fields.find((field) => field.name.includes('Ir al evento'));
+  const voiceField = renderRaidEmbed(finalizedVoiceRaid, finalizedVoiceRaid).data.fields.find((field) => field.name.includes('Ir al evento'));
   assert.match(voiceField.value, /raid-voice-1/);
 
   const notices = [];
