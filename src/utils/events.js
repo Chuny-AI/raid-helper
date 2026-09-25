@@ -30,6 +30,10 @@ const {
   handleVoiceStateUpdate,
   recoverTemporaryVoiceChannels,
 } = require('../services/temporaryVoiceService');
+const {
+  clearUtcClockConfigByChannel,
+  startUtcClockUpdater,
+} = require('../services/utcClockService');
 
 // Import template command
 const templateCommand = require("../commands/utility/template");
@@ -294,6 +298,13 @@ const getEvents = () => {
       console.error('[ERROR] No se pudieron recuperar los canales de voz temporales:', error);
     }
 
+    try {
+      await startUtcClockUpdater(readyClient);
+      console.log('[INFO] Actualizador de relojes UTC iniciado.');
+    } catch (error) {
+      console.error('[ERROR] No se pudieron iniciar los relojes UTC:', error);
+    }
+
     // Un lote pequeño al arrancar y luego lotes periódicos. Cada ficha
     // conserva su propio nextCheckAt y un fallo de Albion no retira roles.
     sweepRegistrations(readyClient).catch((error) => {
@@ -363,6 +374,11 @@ const getEvents = () => {
       await handleChannelDelete(channel);
     } catch (error) {
       console.error(`[ERROR] No se pudo limpiar el registro del canal ${channel.id}:`, error);
+    }
+    try {
+      await clearUtcClockConfigByChannel(channel.id);
+    } catch (error) {
+      console.error(`[ERROR] No se pudo limpiar el reloj UTC del canal ${channel.id}:`, error);
     }
   });
 

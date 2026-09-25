@@ -22,6 +22,7 @@ const models = [
   '../src/database/models/AlbionRegistrationConfig',
   '../src/database/models/AlbionMembershipRule',
   '../src/database/models/AlbionRegistration',
+  '../src/database/models/UtcClockConfig',
 ].map((path) => require(path)).concat([
   EconomyBalance, EconomyContext, EconomyLogChannel, EconomyTransaction,
 ]);
@@ -77,6 +78,7 @@ const saved = models.map((model) => ({
     'create:AlbionRegistrationConfig',
     'create:AlbionMembershipRule',
     'create:AlbionRegistration',
+    'create:UtcClockConfig',
   ]);
   assert(events.indexOf('create:EconomyBalance') > events.indexOf('drop:EconomyLogChannel:guildId_1'));
   console.log('✅ Migración de índices de economía verificada');

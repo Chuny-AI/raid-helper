@@ -6,6 +6,7 @@ const permissionsConfig = {
   raid: [['admin', 'authorizedroles']],
   template: { default: [['admin', 'authorizedroles']] },
   setup: ['admin'],
+  'setup-utc': ['admin'],
   'registro-miembros': ['admin'],
   'setup-registro': ['admin'],
   'registro-panel': ['admin'],

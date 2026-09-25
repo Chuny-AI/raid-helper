@@ -18,6 +18,7 @@ const TemporaryVoiceChannel = require('../database/models/TemporaryVoiceChannel'
 const AlbionRegistrationConfig = require('../database/models/AlbionRegistrationConfig');
 const AlbionMembershipRule = require('../database/models/AlbionMembershipRule');
 const AlbionRegistration = require('../database/models/AlbionRegistration');
+const UtcClockConfig = require('../database/models/UtcClockConfig');
 
 /**
  * Crea las colecciones en MongoDB si no existen.
@@ -45,6 +46,7 @@ const ensureCollections = async () => {
     AlbionRegistrationConfig,
     AlbionMembershipRule,
     AlbionRegistration,
+    UtcClockConfig,
   ];
 
   for (const model of models) {
@@ -88,6 +90,7 @@ const ensureCollections = async () => {
   await AlbionRegistrationConfig.createIndexes();
   await AlbionMembershipRule.createIndexes();
   await AlbionRegistration.createIndexes();
+  await UtcClockConfig.createIndexes();
 };
 
 module.exports = { ensureCollections };
