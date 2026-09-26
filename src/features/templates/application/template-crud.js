@@ -16,6 +16,7 @@ const {
 } = require('../domain/template-transfer');
 
 const allowedAttachmentHosts = new Set(['cdn.discordapp.com', 'media.discordapp.net']);
+const allowedAttachmentPathPrefixes = ['/attachments/', '/ephemeral-attachments/'];
 
 const list = async ({ guildId, guildName }) => {
   await getOrCreateServer(guildId, guildName);
@@ -80,7 +81,7 @@ const validateAttachment = (attachment) => {
   }
   if (url.protocol !== 'https:'
     || !allowedAttachmentHosts.has(url.hostname.toLowerCase())
-    || !url.pathname.startsWith('/attachments/')) {
+    || !allowedAttachmentPathPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
     throw new TemplateTransferError('El archivo debe proceder de un adjunto seguro de Discord.');
   }
 };
@@ -118,6 +119,7 @@ const deleteTemplate = ({ guildId, templateId }) => deleteTemplateById(templateI
 
 module.exports = {
   allowedAttachmentHosts,
+  allowedAttachmentPathPrefixes,
   autocomplete,
   clone,
   deleteTemplate,

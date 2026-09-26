@@ -28,7 +28,12 @@ const attachment = {
   url: 'https://cdn.discordapp.com/attachments/1/2/template.json?token=signed',
 };
 assert.doesNotThrow(() => crud.validateAttachment(attachment));
+assert.doesNotThrow(() => crud.validateAttachment({
+  ...attachment,
+  url: 'https://cdn.discordapp.com/ephemeral-attachments/1/2/template.json?token=signed',
+}));
 assert.throws(() => crud.validateAttachment({ ...attachment, url: 'https://example.com/attachments/template.json' }), /Discord/);
+assert.throws(() => crud.validateAttachment({ ...attachment, url: 'https://cdn.discordapp.com/not-an-attachment/template.json' }), /Discord/);
 assert.throws(() => crud.validateAttachment({ ...attachment, size: transfer.MAX_IMPORT_BYTES + 1 }), /8 MB/);
 
 (async () => {
