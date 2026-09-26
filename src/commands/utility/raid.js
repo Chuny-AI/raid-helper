@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, MessageFlags, InteractionContextType, PermissionFlagsBits } = require("discord.js");
 const { createMassNotificationEmbed } = require("../../utils/embed");
-const { renderRaidEmbed, renderRaidComponents } = require("../../utils/raidRender");
+const { renderRaidEmbeds, renderRaidComponents } = require("../../utils/raidRender");
 const { parseUTCTime, parseMinutes } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
 const {
@@ -887,11 +887,11 @@ async function handleConfirmRaidCreate(interaction) {
   // Registrar ANTES de publicar para que los botones puedan resolverlo en cuanto exista el mensaje.
   raidRegistry.register({ raidId, raid: raidDoc, message: null, templateName });
 
-  const embed = renderRaidEmbed(raidDoc, raidDoc);
+  const embeds = renderRaidEmbeds(raidDoc, raidDoc);
   const components = renderRaidComponents(raidDoc, raidDoc);
 
   // Publicar el raid en el canal.
-  const contenidoBase = { embeds: [embed], components };
+  const contenidoBase = { embeds, components };
   const notificationContent =
     mentionRoles.length > 0 ? `${mentionRoles.map((id) => `<@&${id}>`).join(' ')}\n` : '';
 

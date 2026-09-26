@@ -8,7 +8,7 @@
  * los metadatos del raid — es, a la vez, el "raid" y el "state" que consumen
  * raidState.js y raidRender.js.
  */
-const { renderRaidEmbed, renderRaidComponents } = require('../utils/raidRender');
+const { renderRaidEmbeds, renderRaidComponents } = require('../utils/raidRender');
 
 /** @type {Map<string, {raidId:string, raid:Object, message:Object|null, templateName:string}>} */
 const byRaidId = new Map();
@@ -87,9 +87,9 @@ async function renderAndEdit(raidId) {
     try {
       do {
         entry._dirty = false;
-        const embed = renderRaidEmbed(entry.raid, entry.raid);
+        const embeds = renderRaidEmbeds(entry.raid, entry.raid);
         const components = renderRaidComponents(entry.raid, entry.raid);
-        entry.message = await entry.message.edit({ embeds: [embed], components });
+        entry.message = await entry.message.edit({ embeds, components });
       } while (entry._dirty);
       return true;
     } catch (error) {

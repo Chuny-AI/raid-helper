@@ -243,12 +243,12 @@ const clearRaidVoiceReference = async ({ guildId, raidId, channelId }) => {
   if (raid.channelId && raid.messageId && raid.stateVersion >= 2) {
     try {
       const { client } = require('./client');
-      const { renderRaidEmbed, renderRaidComponents } = require('./raidRender');
+      const { renderRaidEmbeds, renderRaidComponents } = require('./raidRender');
       const channel = await client.channels.fetch(raid.channelId);
       const message = channel ? await channel.messages.fetch(raid.messageId) : null;
       if (message) {
         await message.edit({
-          embeds: [renderRaidEmbed(raid, raid)],
+          embeds: renderRaidEmbeds(raid, raid),
           components: renderRaidComponents(raid, raid),
         });
       }

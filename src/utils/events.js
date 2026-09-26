@@ -12,7 +12,7 @@ const { logUncontrolledError } = require('./processGuards');
 const raidRegistry = require('../services/raidRegistry');
 const raidInteractions = require('./raidInteractions');
 const { migrateFromSnapshot } = require('../services/raidStateMigration');
-const { renderRaidEmbed, renderRaidComponents } = require('./raidRender');
+const { renderRaidEmbeds, renderRaidComponents } = require('./raidRender');
 const { deleteRaidVoiceChannelIfEmpty } = require('./raidVoice');
 const {
   handleDiscordMemberJoin,
@@ -79,7 +79,7 @@ async function sealRaidMessage(raid, clientRef, motivo) {
     // En stateVersion 2 el render deja el botón de registrar asistencia: un
     // raid que se cierra solo (expiración) también necesita ese informe.
     const payload = raid.stateVersion >= 2
-      ? { embeds: [renderRaidEmbed(raid, raid)], components: renderRaidComponents(raid, raid) }
+      ? { embeds: renderRaidEmbeds(raid, raid), components: renderRaidComponents(raid, raid) }
       : { components: [] };
     await message.edit(payload);
   } catch (e) {

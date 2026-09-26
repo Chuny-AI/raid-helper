@@ -14,7 +14,7 @@ const assert = require('node:assert');
 
 const { buildInitialState, joinSlot } = require('../src/services/raidState');
 const {
-  renderRaidEmbed,
+  renderRaidEmbeds,
   renderRaidComponents,
   renderGroupBrowser,
   renderGroupPickPanel,
@@ -79,48 +79,62 @@ const embedSize = (json) =>
   (json.footer?.text || '').length +
   json.fields.reduce((suma, f) => suma + f.name.length + f.value.length, 0);
 
+const renderedJson = (raidData, state) => renderRaidEmbeds(raidData, state).map((embed) => embed.toJSON());
+const allFields = (embeds) => embeds.flatMap((embed) => embed.fields || []);
+
 console.log('\n── El embed se renderiza con cualquier número de grupos');
 
 for (const [grupos, armas] of [[1, 1], [11, 1], [16, 1], [17, 1], [25, 2], [40, 3], [100, 1]]) {
   test(`${grupos} grupos x ${armas} arma(s)`, () => {
-    const json = renderRaidEmbed(raid, fullState(grupos, armas)).toJSON();
-    assert.ok(json.fields.length <= 25, `${json.fields.length} campos`);
-    assert.ok(embedSize(json) <= 6000, `${embedSize(json)} caracteres`);
-    for (const campo of json.fields) {
-      assert.ok(campo.value.length <= 1024, `campo "${campo.name}" con ${campo.value.length}`);
+    const embeds = renderedJson(raid, fullState(grupos, armas));
+    assert.ok(embeds.length <= 10, `${embeds.length} embeds`);
+    assert.ok(embeds.reduce((sum, embed) => sum + embedSize(embed), 0) <= 6000, 'más de 6000 caracteres');
+    for (const embed of embeds) {
+      assert.ok(embed.fields.length <= 25, `${embed.fields.length} campos`);
+      for (const campo of embed.fields) {
+        assert.ok(campo.value.length <= 1024, `campo "${campo.name}" con ${campo.value.length}`);
+      }
     }
   });
 }
 
-console.log('\n── Lo que no cabe se dice, no se calla');
+console.log('\n── Los grupos se reparten sin desaparecer');
 
-test('con 17 grupos aparece el aviso de grupos no mostrados', () => {
-  const json = renderRaidEmbed(raid, fullState(17, 1)).toJSON();
-  const aviso = json.fields.find((f) => f.name.includes('no mostrados'));
-  assert.ok(aviso, 'no aparece el aviso');
-  assert.match(aviso.value, /No caben \*\*\d+\*\* grupo\(s\)/);
+test('los 20 grupos aparecen completos en varios embeds', () => {
+  const embeds = renderedJson(raid, fullState(20, 1));
+  const fields = allFields(embeds);
+  assert.ok(embeds.length > 1, 'no se creó el embed de continuación');
+  assert.strictEqual(fields.filter((f) => f.name.includes('Grupo de nombre largo')).length, 20);
+  assert.ok(!fields.some((f) => f.name.includes('no mostrados')), 'se recortaron grupos que sí cabían');
 });
 
 test('con 16 grupos cabe todo y no se avisa de nada', () => {
-  const json = renderRaidEmbed(raid, fullState(16, 1)).toJSON();
-  assert.ok(!json.fields.some((f) => f.name.includes('no mostrados')), 'avisa sin haber recortado');
-  assert.strictEqual(json.fields.filter((f) => f.name.includes('Grupo de nombre largo')).length, 16);
+  const fields = allFields(renderedJson(raid, fullState(16, 1)));
+  assert.ok(!fields.some((f) => f.name.includes('no mostrados')), 'avisa sin haber recortado');
+  assert.strictEqual(fields.filter((f) => f.name.includes('Grupo de nombre largo')).length, 16);
+});
+
+test('si se alcanzan 6000 caracteres, el aviso sustituye solo a los grupos finales', () => {
+  const fields = allFields(renderedJson(raid, fullState(100, 1)));
+  const aviso = fields.find((f) => f.name.includes('no mostrados'));
+  assert.ok(aviso, 'no aparece el aviso');
+  assert.match(aviso.value, /límites totales de Discord/);
 });
 
 console.log('\n── Nunca se recortan los campos que no son de grupo');
 
 test('líder, hora, participantes y redes sobreviven al recorte', () => {
-  const json = renderRaidEmbed(raid, fullState(100, 1)).toJSON();
+  const fields = allFields(renderedJson(raid, fullState(100, 1)));
   for (const nombre of ['Líder de la actividad:', 'Hora de la actividad:', '👥 Participantes', '🎮 Twitch']) {
-    assert.ok(json.fields.some((f) => f.name === nombre), `falta el campo "${nombre}"`);
+    assert.ok(fields.some((f) => f.name === nombre), `falta el campo "${nombre}"`);
   }
 });
 
 test('la lista de espera sobrevive al recorte', () => {
   const state = fullState(40, 1);
   state.waitlist = [{ userId: USER, username: 'u' }];
-  const json = renderRaidEmbed(raid, state).toJSON();
-  assert.ok(json.fields.some((f) => f.name.includes('Lista de espera')), 'falta la lista de espera');
+  const fields = allFields(renderedJson(raid, state));
+  assert.ok(fields.some((f) => f.name.includes('Lista de espera')), 'falta la lista de espera');
 });
 
 console.log('\n── Los componentes tampoco se pasan de los límites');
@@ -174,9 +188,9 @@ console.log('\n── Un raid cerrado se sigue renderizando', '');
 
 test('el embed de un raid cerrado con muchos grupos no revienta', () => {
   const cerrado = { ...raid, status: 'closed', closedBy: USER, closedAt: new Date() };
-  const json = renderRaidEmbed(cerrado, fullState(40, 1)).toJSON();
-  assert.ok(json.fields.length <= 25, `${json.fields.length} campos`);
-  assert.match(json.title, /FINALIZADO/);
+  const embeds = renderedJson(cerrado, fullState(40, 1));
+  assert.ok(embeds.every((embed) => embed.fields.length <= 25));
+  assert.match(embeds[0].title, /FINALIZADO/);
 });
 
 console.log(`\n${process.exitCode ? '❌ Fallos detectados' : `✅ ${passed} comprobaciones OK`}\n`);

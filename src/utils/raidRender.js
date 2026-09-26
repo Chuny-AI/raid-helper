@@ -155,6 +155,7 @@ function buildAttendanceFields(state) {
 /** Límites de un embed en Discord. */
 const MAX_EMBED_FIELDS = 25;
 const MAX_EMBED_CHARS = 6000;
+const MAX_MESSAGE_EMBEDS = 10;
 
 /** Caracteres que Discord cuenta para el límite de 6000 de un embed. */
 function embedSize(embed, fields) {
@@ -171,54 +172,95 @@ function embedSize(embed, fields) {
 const avisoGrupos = (ocultos) => ({
   name: '⚠️ Grupos no mostrados',
   value:
-    `No caben **${ocultos}** grupo(s) más en el mensaje (Discord admite ${MAX_EMBED_FIELDS} bloques). ` +
-    'Usa menos grupos en el template para que se vean todos.',
+    `No fue posible mostrar **${ocultos}** grupo(s) porque el mensaje alcanzó los límites totales de Discord.`,
 });
 
 const avisoAsistencia = (ocultos) => ({
   name: '⚠️ Asistencia no mostrada al completo',
   value:
-    `No caben **${ocultos}** bloque(s) más en el mensaje (Discord admite ${MAX_EMBED_FIELDS} campos). ` +
+    `No caben **${ocultos}** bloque(s) más porque el mensaje alcanzó los límites totales de Discord. ` +
     'La asistencia sí quedó registrada; solo falta espacio para listarla entera.',
 });
 
 /**
- * Deja el embed dentro de los 25 campos y 6000 caracteres que admite Discord.
- *
- * Cada grupo del template ocupa un campo, así que a partir de 17 grupos se
- * pasaba de 25 y discord.js rechazaba el embed entero con "Invalid number
- * value": el raid no se podía publicar y, peor, tampoco volver a renderizar,
- * con lo que un raid ya publicado se quedaba congelado.
- *
- * Se recortan grupos por el final y se deja constancia. Los campos de cabecera
- * (líder, hora, hilo) y las listas de espera nunca se tocan.
- *
- * @param {EmbedBuilder} embed
- * @param {Array} fields Todos los campos, en orden.
- * @param {number} inicioGrupos Índice del primer campo del bloque recortable.
- * @param {number} numGrupos Cuántos campos tiene ese bloque.
- * @param {(ocultos:number) => {name:string, value:string}} [aviso] Campo que sustituye a lo recortado.
- * @returns {Array} Los campos que sí caben.
+ * Construye la carátula del raid. Los embeds de continuación solo llevan los
+ * campos restantes para no repetir descripción, imagen ni redes sociales.
  */
-function fitFields(embed, fields, inicioGrupos, numGrupos, aviso = avisoGrupos) {
-  const armar = (visibles) => {
-    const ocultos = numGrupos - visibles;
-    if (ocultos <= 0) return fields.slice();
-    const copia = fields.slice();
-    copia.splice(inicioGrupos + visibles, ocultos, { ...aviso(ocultos), inline: false });
-    return copia;
+function buildRaidEmbedShell(raid, isClosed) {
+  const embed = new EmbedBuilder();
+  const baseTitle = raid.title || '(sin título)';
+  embed.setTitle(isClosed ? `🔒 [FINALIZADO] ${baseTitle}` : baseTitle);
+  embed.setColor(isClosed ? '#808080' : raid.color || '#00FFFF');
+  if (raid.description) embed.setDescription(raid.description);
+  if (raid.image) embed.setImage(raid.image);
+  embed.setAuthor({ name: 'Chuny', iconURL: BRAND_ICON, url: 'https://www.linkedin.com/in/edwinjpa/' });
+  embed.setFooter({
+    text: raid.eventId ? `Raid #${raid.eventId} • Creado con ❤️ por Chuny` : 'Creado con ❤️ por Chuny',
+    iconURL: BRAND_ICON,
+  });
+  embed.setTimestamp();
+  return embed;
+}
+
+function buildContinuationEmbed(raid, isClosed, page) {
+  return new EmbedBuilder()
+    .setTitle(`📋 ${raid.title || 'Raid'} · continuación ${page}`)
+    .setColor(isClosed ? '#808080' : raid.color || '#00FFFF');
+}
+
+/** Divide los campos entre varios embeds, conservando su orden. */
+function paginateRaidFields(raid, isClosed, fields) {
+  const chunks = [];
+  for (let index = 0; index < fields.length; index += MAX_EMBED_FIELDS) {
+    chunks.push(fields.slice(index, index + MAX_EMBED_FIELDS));
+  }
+  if (chunks.length === 0) chunks.push([]);
+
+  return chunks.map((chunk, index) => {
+    const embed = index === 0
+      ? buildRaidEmbedShell(raid, isClosed)
+      : buildContinuationEmbed(raid, isClosed, index + 1);
+    if (chunk.length > 0) embed.addFields(chunk);
+    return embed;
+  });
+}
+
+const totalEmbedsSize = (embeds) => embeds.reduce(
+  (total, embed) => total + embedSize(embed, embed.toJSON().fields || []),
+  0,
+);
+
+const embedsFitDiscord = (embeds) => (
+  embeds.length <= MAX_MESSAGE_EMBEDS
+  && embeds.every((embed) => (embed.toJSON().fields || []).length <= MAX_EMBED_FIELDS)
+  && totalEmbedsSize(embeds) <= MAX_EMBED_CHARS
+);
+
+/**
+ * Reparte todos los grupos entre embeds de continuación. Solo recorta el
+ * bloque variable si el mensaje completo supera los límites globales de
+ * Discord (10 embeds y 6000 caracteres entre todos).
+ */
+function fitRaidEmbeds(raid, isClosed, fields, blockStart, blockLength, warningFactory) {
+  const withVisibleBlock = (visible) => {
+    const hidden = blockLength - visible;
+    const selected = fields.slice();
+    if (hidden > 0) {
+      selected.splice(blockStart + visible, hidden, {
+        ...warningFactory(hidden),
+        inline: false,
+      });
+    }
+    return paginateRaidFields(raid, isClosed, selected);
   };
 
-  let visibles = numGrupos;
-  let resultado = armar(visibles);
-  while (
-    visibles > 0 &&
-    (resultado.length > MAX_EMBED_FIELDS || embedSize(embed, resultado) > MAX_EMBED_CHARS)
-  ) {
-    visibles--;
-    resultado = armar(visibles);
+  let visible = blockLength;
+  let embeds = withVisibleBlock(visible);
+  while (visible > 0 && !embedsFitDiscord(embeds)) {
+    visible -= 1;
+    embeds = withVisibleBlock(visible);
   }
-  return resultado;
+  return embeds;
 }
 
 function buildSocialFields() {
@@ -239,23 +281,10 @@ function buildSocialFields() {
  * @param {Object} raid - Documento RaidEvent (o plano con la misma forma)
  * @param {Object} state - Estado estructurado (mismo raid, o el objeto de migración)
  */
-function renderRaidEmbed(raid, state) {
-  const embed = new EmbedBuilder();
+function renderRaidEmbeds(raid, state) {
   // `started` solo puede existir como compatibilidad transitoria con la versión
   // anterior: visualmente y funcionalmente ya cuenta como finalizado.
   const isClosed = raid.status !== 'active';
-  const baseTitle = raid.title || '(sin título)';
-
-  embed.setTitle(isClosed ? `🔒 [FINALIZADO] ${baseTitle}` : baseTitle);
-  embed.setColor(isClosed ? '#808080' : raid.color || '#00FFFF');
-  if (raid.description) embed.setDescription(raid.description);
-  if (raid.image) embed.setImage(raid.image);
-  embed.setAuthor({ name: 'Chuny', iconURL: BRAND_ICON, url: 'https://www.linkedin.com/in/edwinjpa/' });
-  embed.setFooter({
-    text: raid.eventId ? `Raid #${raid.eventId} • Creado con ❤️ por Chuny` : 'Creado con ❤️ por Chuny',
-    iconURL: BRAND_ICON,
-  });
-  embed.setTimestamp();
 
   const fields = [];
 
@@ -348,16 +377,19 @@ function renderRaidEmbed(raid, state) {
 
   fields.push(...buildSocialFields());
 
-  embed.addFields(
-    fitFields(
-      embed,
-      fields,
-      inicioGrupos,
-      blockFields.length,
-      useAttendance ? avisoAsistencia : avisoGrupos
-    )
+  return fitRaidEmbeds(
+    raid,
+    isClosed,
+    fields,
+    inicioGrupos,
+    blockFields.length,
+    useAttendance ? avisoAsistencia : avisoGrupos,
   );
-  return embed;
+}
+
+/** Compatibilidad para paneles y pruebas que solo necesitan la carátula. */
+function renderRaidEmbed(raid, state) {
+  return renderRaidEmbeds(raid, state)[0];
 }
 
 function optionFromSlot(state, slot) {
@@ -795,6 +827,7 @@ function renderAttendanceRows(raid, roster, absentIds, requestedPage = 0) {
 module.exports = {
   safeFieldValue,
   renderRaidEmbed,
+  renderRaidEmbeds,
   renderRaidComponents,
   renderThreadDeleteRow,
   renderGroupBrowser,
