@@ -8,260 +8,260 @@
   "weapons": {
     "group_0": {
       "displayName": "Íncubo caller",
-      "defaultEmoji": "1543135194494533682",
+      "defaultEmoji": "1543135218427363379",
       "data": [
         {
           "name": "Maza íncubo",
           "units": 1,
           "image": "",
-          "emoji": "1543135194494533682"
+          "emoji": "1543135218427363379"
         }
       ],
       "max_players": 1
     },
     "group_1": {
       "displayName": "Íncubo off",
-      "defaultEmoji": "1543135194494533682",
+      "defaultEmoji": "1543135218427363379",
       "data": [
         {
           "name": "Maza íncubo",
           "units": 1,
           "image": "",
-          "emoji": "1543135194494533682"
+          "emoji": "1543135218427363379"
         }
       ],
       "max_players": 1
     },
     "group_2": {
       "displayName": "Monarca",
-      "defaultEmoji": "1543135193521717308",
+      "defaultEmoji": "1543135217102094348",
       "data": [
         {
           "name": "Dreadstorm Monarch",
           "units": 1,
           "image": "",
-          "emoji": "1543135193521717308"
+          "emoji": "1543135217102094348"
         }
       ],
       "max_players": 1
     },
     "group_3": {
       "displayName": "Enigmático",
-      "defaultEmoji": "1543135265877663834",
+      "defaultEmoji": "1543135299687809094",
       "data": [
         {
           "name": "Bastón enigmático",
           "units": 1,
           "image": "",
-          "emoji": "1543135265877663834"
+          "emoji": "1543135299687809094"
         }
       ],
       "max_players": 1
     },
     "group_4": {
       "displayName": "Caído principal",
-      "defaultEmoji": "1543135181693657148",
+      "defaultEmoji": "1543135201754878042",
       "data": [
         {
           "name": "Bastón caído",
           "units": 1,
           "image": "",
-          "emoji": "1543135181693657148"
+          "emoji": "1543135201754878042"
         }
       ],
       "max_players": 1
     },
     "group_5": {
       "displayName": "Caído party 1",
-      "defaultEmoji": "1543135181693657148",
+      "defaultEmoji": "1543135201754878042",
       "data": [
         {
           "name": "Bastón caído",
           "units": 1,
           "image": "",
-          "emoji": "1543135181693657148"
+          "emoji": "1543135201754878042"
         }
       ],
       "max_players": 1
     },
     "group_6": {
       "displayName": "Caído party 2",
-      "defaultEmoji": "1543135181693657148",
+      "defaultEmoji": "1543135201754878042",
       "data": [
         {
           "name": "Bastón caído",
           "units": 1,
           "image": "",
-          "emoji": "1543135181693657148"
+          "emoji": "1543135201754878042"
         }
       ],
       "max_players": 1
     },
     "group_7": {
       "displayName": "Raíz healer",
-      "defaultEmoji": "1543135162571821116",
+      "defaultEmoji": "1543135184851959809",
       "data": [
         {
           "name": "Bastón enraizado",
           "units": 1,
           "image": "",
-          "emoji": "1543135162571821116"
+          "emoji": "1543135184851959809"
         }
       ],
       "max_players": 1
     },
     "group_8": {
       "displayName": "Forjacorteza",
-      "defaultEmoji": "1543135170390007848",
+      "defaultEmoji": "1543135190438912031",
       "data": [
         {
           "name": "Bastón de forjacorteza",
           "units": 1,
           "image": "",
-          "emoji": "1543135170390007848"
+          "emoji": "1543135190438912031"
         }
       ],
       "max_players": 1
     },
     "group_9": {
       "displayName": "Shadowcaller",
-      "defaultEmoji": "1543135252258496543",
+      "defaultEmoji": "1543135285066473543",
       "data": [
         {
           "name": "Invocador oscuro",
           "units": 1,
           "image": "",
-          "emoji": "1543135252258496543"
+          "emoji": "1543135285066473543"
         }
       ],
       "max_players": 1
     },
     "group_10": {
       "displayName": "Flamígero",
-      "defaultEmoji": "1543135213264175154",
+      "defaultEmoji": "1543135235338797106",
       "data": [
         {
           "name": "Bastón flamígero",
           "units": 1,
           "image": "",
-          "emoji": "1543135213264175154"
+          "emoji": "1543135235338797106"
         }
       ],
       "max_players": 1
     },
     "group_11": {
       "displayName": "Perfora 1",
-      "defaultEmoji": "1543135259518959727",
+      "defaultEmoji": "1543135294453190656",
       "data": [
         {
           "name": "Perforador de niebla",
           "units": 1,
           "image": "",
-          "emoji": "1543135259518959727"
+          "emoji": "1543135294453190656"
         }
       ],
       "max_players": 1
     },
     "group_12": {
       "displayName": "Perfora 2",
-      "defaultEmoji": "1543135259518959727",
+      "defaultEmoji": "1543135294453190656",
       "data": [
         {
           "name": "Perforador de niebla",
           "units": 1,
           "image": "",
-          "emoji": "1543135259518959727"
+          "emoji": "1543135294453190656"
         }
       ],
       "max_players": 1
     },
     "group_13": {
       "displayName": "Perfora 3",
-      "defaultEmoji": "1543135259518959727",
+      "defaultEmoji": "1543135294453190656",
       "data": [
         {
           "name": "Perforador de niebla",
           "units": 1,
           "image": "",
-          "emoji": "1543135259518959727"
+          "emoji": "1543135294453190656"
         }
       ],
       "max_players": 1
     },
     "group_14": {
       "displayName": "Repetidora",
-      "defaultEmoji": "1543135245589680180",
+      "defaultEmoji": "1543135267727085579",
       "data": [
         {
           "name": "Repetidora de desconsuelo",
           "units": 1,
           "image": "",
-          "emoji": "1543135245589680180"
+          "emoji": "1543135267727085579"
         }
       ],
       "max_players": 1
     },
     "group_15": {
       "displayName": "Grito gélido",
-      "defaultEmoji": "1543135229034893322",
+      "defaultEmoji": "1543135250446549023",
       "data": [
         {
           "name": "Grito gélido",
           "units": 1,
           "image": "",
-          "emoji": "1543135229034893322"
+          "emoji": "1543135250446549023"
         }
       ],
       "max_players": 1
     },
     "group_16": {
       "displayName": "Invocador de luz",
-      "defaultEmoji": "1543135155458277417",
+      "defaultEmoji": "1543135178443071518",
       "data": [
         {
           "name": "Invocador de luz",
           "units": 1,
           "image": "",
-          "emoji": "1543135155458277417"
+          "emoji": "1543135178443071518"
         }
       ],
       "max_players": 1
     },
     "group_17": {
       "displayName": "Perfora 4",
-      "defaultEmoji": "1543135259518959727",
+      "defaultEmoji": "1543135294453190656",
       "data": [
         {
           "name": "Perforador de niebla",
           "units": 1,
           "image": "",
-          "emoji": "1543135259518959727"
+          "emoji": "1543135294453190656"
         }
       ],
       "max_players": 1
     },
     "group_18": {
       "displayName": "Perfora 5",
-      "defaultEmoji": "1543135259518959727",
+      "defaultEmoji": "1543135294453190656",
       "data": [
         {
           "name": "Perforador de niebla",
           "units": 1,
           "image": "",
-          "emoji": "1543135259518959727"
+          "emoji": "1543135294453190656"
         }
       ],
       "max_players": 1
     },
     "group_19": {
       "displayName": "Perfora 6",
-      "defaultEmoji": "1543135259518959727",
+      "defaultEmoji": "1543135294453190656",
       "data": [
         {
           "name": "Perforador de niebla",
           "units": 1,
           "image": "",
-          "emoji": "1543135259518959727"
+          "emoji": "1543135294453190656"
         }
       ],
       "max_players": 1
