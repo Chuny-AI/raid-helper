@@ -56,12 +56,17 @@ const resolveLiveAllowedIds = async (guild, raid) => {
   return requested.filter((id) => guild.members.cache.has(id));
 };
 
-const buildPermissionOverwrites = (guild, allowedIds) => {
+const buildPermissionOverwrites = (guild, allowedIds, visibilityRoleId = null) => {
   const overwrites = [{
     id: guild.id,
     type: OverwriteType.Role,
-    allow: [PermissionFlagsBits.ViewChannel],
-    deny: [PermissionFlagsBits.Connect],
+    // La sala no debe delatar que un raid está en curso. Los participantes y
+    // el bot reciben permisos explícitos debajo; el resto ni la ve ni puede
+    // conectarse.
+    deny: [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.Connect,
+    ],
   }];
 
   if (guild.members.me?.id) {
@@ -69,6 +74,17 @@ const buildPermissionOverwrites = (guild, allowedIds) => {
       id: guild.members.me.id,
       type: OverwriteType.Member,
       allow: botPermissions,
+    });
+  }
+
+  // Este rol puede detectar que el raid está activo, pero no entrar: Connect
+  // sigue denegado por el overwrite de @everyone. Solo los inscritos reciben
+  // Connect como permiso individual.
+  if (visibilityRoleId && visibilityRoleId !== guild.id) {
+    overwrites.push({
+      id: visibilityRoleId,
+      type: OverwriteType.Role,
+      allow: [PermissionFlagsBits.ViewChannel],
     });
   }
 
@@ -89,7 +105,7 @@ const fetchRaidVoiceChannel = async (guild, channelId) => {
     || await guild.channels.fetch(channelId).catch(() => null);
 };
 
-const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
+const createRaidVoiceChannel = async ({ guild, raid, actorId, visibilityRoleId = null }) => {
   if (raid.voiceChannelId) {
     const existing = await fetchRaidVoiceChannel(guild, raid.voiceChannelId);
     if (existing?.type === ChannelType.GuildVoice) {
@@ -125,7 +141,7 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
       name: buildRaidVoiceName(raid),
       type: ChannelType.GuildVoice,
       parent: category.id,
-      permissionOverwrites: buildPermissionOverwrites(guild, allowedIds),
+      permissionOverwrites: buildPermissionOverwrites(guild, allowedIds, visibilityRoleId),
       reason: `Canal privado para el raid #${raid.eventId}`,
     });
     await TemporaryVoiceChannel.findOneAndUpdate(

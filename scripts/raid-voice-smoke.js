@@ -10,7 +10,7 @@ const RaidVoiceConfig = require('../src/database/models/RaidVoiceConfig');
 const raidVoiceConfig = require('../src/services/raidVoiceConfigService');
 const raidVoice = require('../src/utils/raidVoice');
 const raidRegistry = require('../src/services/raidRegistry');
-const { handleStartEvent, routeRaidInteraction } = require('../src/utils/raidInteractions');
+const { handleStartEvent, routeRaidInteraction, resolveVisibilityRole } = require('../src/utils/raidInteractions');
 const { sendRaidStartNotice } = require('../src/utils/raidStartNotice');
 const { renderRaidEmbed, renderRaidComponents } = require('../src/utils/raidRender');
 
@@ -74,6 +74,7 @@ const raid = {
   };
   const guild = {
     id: 'guild-1',
+    roles: { cache: new Map([['guild-1', { id: 'guild-1', name: '@everyone' }]]) },
     members: {
       me: { id: 'bot-1' },
       cache: memberCache,
@@ -139,13 +140,18 @@ const raid = {
 
   const overwriteById = new Map(createdOptions.permissionOverwrites.map((overwrite) => [overwrite.id, overwrite]));
   assert.equal(overwriteById.get(guild.id).type, OverwriteType.Role);
-  assert(overwriteById.get(guild.id).allow.includes(PermissionFlagsBits.ViewChannel));
+  assert(overwriteById.get(guild.id).deny.includes(PermissionFlagsBits.ViewChannel));
   assert(overwriteById.get(guild.id).deny.includes(PermissionFlagsBits.Connect));
   for (const id of ['leader', 'user-1', 'user-2', 'looter-1']) {
     assert(overwriteById.get(id).allow.includes(PermissionFlagsBits.Connect), `${id} debe poder entrar`);
   }
   assert.equal(overwriteById.has('waiting-1'), false);
   assert.equal(overwriteById.has('absent-1'), false);
+
+  const visibilityOverwrites = raidVoice.buildPermissionOverwrites(guild, ['leader'], 'viewer-role');
+  const visibilityRole = visibilityOverwrites.find((overwrite) => overwrite.id === 'viewer-role');
+  assert(visibilityRole.allow.includes(PermissionFlagsBits.ViewChannel));
+  assert.equal(visibilityRole.allow.includes(PermissionFlagsBits.Connect), false, 'el rol de visibilidad no puede entrar');
 
   raid.voiceChannelId = createdChannel.id;
   let disconnected = false;
@@ -237,6 +243,23 @@ const raid = {
     .every((component) => component.data.custom_id !== `raid:finish:${flowRaid.eventId}`),
   'el mensaje iniciado no debe mostrar Finalizar evento');
   raidRegistry.unregister(flowRaid.eventId);
+
+  const modalRaid = { ...raid, eventId: 'VOICEMODAL', voiceChannelId: null, status: 'active' };
+  raidRegistry.register({ raidId: modalRaid.eventId, raid: modalRaid, message: { id: 'message-modal' }, templateName: 'T' });
+  let startModal;
+  await routeRaidInteraction({
+    customId: `raid:start:${modalRaid.eventId}`,
+    guild,
+    message: { id: 'message-modal' },
+    member: { id: 'leader', permissions: { has: () => false } },
+    user: { id: 'leader' },
+    showModal: async (modal) => { startModal = modal; },
+  });
+  assert.equal(startModal.data.custom_id, `raid:startsubmit:${modalRaid.eventId}`);
+  assert.equal(startModal.components[0].components[0].data.custom_id, 'visibility-role');
+  assert.equal(startModal.components[0].components[0].data.required, false);
+  assert.equal(resolveVisibilityRole(guild, '@everyone').error.includes('@everyone'), true);
+  raidRegistry.unregister(modalRaid.eventId);
 
   // Si alguien confirma un arma a la vez que el líder inicia, el orden del
   // lock manda: una inscripción que queda detrás del inicio debe rechazarse.

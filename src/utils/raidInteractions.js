@@ -63,6 +63,29 @@ function replyGone(interaction) {
   return ephemeralReply(interaction, 'No se encontró el evento correspondiente. Puede que ya no exista.');
 }
 
+/**
+ * Los modales de Discord no incluyen un selector nativo de roles, así que el
+ * líder puede indicar el rol por mención, ID o nombre exacto. Un valor vacío
+ * conserva el canal completamente oculto salvo para los inscritos.
+ */
+function resolveVisibilityRole(guild, input) {
+  const value = String(input || '').trim();
+  if (!value) return { role: null };
+
+  const id = value.match(/^<@&(\d+)>$/)?.[1] || (value.match(/^\d+$/) ? value : null);
+  const roles = [...(guild?.roles?.cache?.values?.() || [])];
+  const role = id
+    ? guild.roles.cache.get(id)
+    : roles.filter((candidate) => candidate.name?.toLocaleLowerCase() === value.toLocaleLowerCase())[0];
+
+  if (!role) return { error: 'No encontré ese rol. Indica su mención, ID o nombre exacto.' };
+  if (role.id === guild.id) return { error: '`@everyone` no puede ver la sala del raid.' };
+  if (!id && roles.filter((candidate) => candidate.name?.toLocaleLowerCase() === value.toLocaleLowerCase()).length > 1) {
+    return { error: 'Hay varios roles con ese nombre. Indica la mención o el ID del rol.' };
+  }
+  return { role };
+}
+
 function parseCustomId(customId) {
   if (customId.startsWith('raid:')) {
     const parts = customId.split(':');
@@ -722,7 +745,7 @@ function attendancePanelPayload(runtime, requestedPage = 0) {
  * dejar de estar `active` tampoco se recalculan permisos ni se desconecta a
  * nadie que ya haya entrado.
  */
-async function handleStartEvent(interaction, raidId) {
+async function handleStartEvent(interaction, raidId, visibilityRoleId = null) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
   if (runtime.raid.status !== 'active') return replyClosed(interaction);
@@ -747,6 +770,7 @@ async function handleStartEvent(interaction, raidId) {
         guild: interaction.guild,
         raid: runtime.raid,
         actorId: interaction.user.id,
+        visibilityRoleId,
       });
       if (!created.ok) {
         // createRaidVoiceChannel limpia una referencia obsoleta antes de
@@ -818,6 +842,36 @@ async function handleStartEvent(interaction, raidId) {
   });
   raidRegistry.unregister(runtime.raidId);
   return reply;
+}
+
+async function handleStartEventOpen(interaction, raidId) {
+  const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
+  if (!runtime) return replyGone(interaction);
+  if (runtime.raid.status !== 'active') return replyClosed(interaction);
+  if (!raidState.canManageRaid(runtime.raid, interaction.member)) {
+    return ephemeralReply(interaction, 'Solo el líder del raid o un administrador puede iniciar el evento.');
+  }
+  return interaction.showModal(new ModalBuilder()
+    .setCustomId(`raid:startsubmit:${runtime.raidId}`)
+    .setTitle('Visibilidad de la sala')
+    .addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('visibility-role')
+        .setLabel('Rol que puede ver la sala (opcional)')
+        .setPlaceholder('Mención, ID o nombre exacto del rol')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(100)
+    )));
+}
+
+async function handleStartEventSubmit(interaction, raidId) {
+  const resolved = resolveVisibilityRole(
+    interaction.guild,
+    interaction.fields.getTextInputValue('visibility-role'),
+  );
+  if (resolved.error) return ephemeralReply(interaction, `⚠️ ${resolved.error}`);
+  return handleStartEvent(interaction, raidId, resolved.role?.id || null);
 }
 
 /** Botón "Registrar asistencia" desde que el evento está en curso. */
@@ -1125,7 +1179,10 @@ async function routeRaidInteraction(interaction) {
         await handleFinishCancel(interaction);
         break;
       case 'start':
-        await handleStartEvent(interaction, raidId);
+        await handleStartEventOpen(interaction, raidId);
+        break;
+      case 'startsubmit':
+        await handleStartEventSubmit(interaction, raidId);
         break;
       case 'att':
         await handleAttendanceOpen(interaction, raidId);
@@ -1177,4 +1234,7 @@ module.exports = {
   finishRaid,
   attendancePanelPayload,
   handleStartEvent,
+  handleStartEventOpen,
+  handleStartEventSubmit,
+  resolveVisibilityRole,
 };
