@@ -89,7 +89,20 @@ async function renderAndEdit(raidId) {
         entry._dirty = false;
         const embeds = renderRaidEmbeds(entry.raid, entry.raid);
         const components = renderRaidComponents(entry.raid, entry.raid);
-        entry.message = await entry.message.edit({ embeds, components });
+        const spacer = entry._imageSpacerFile;
+        entry.message = await entry.message.edit({
+          embeds,
+          components,
+          ...(spacer ? { files: [{ attachment: spacer.attachment, name: spacer.name }] } : {}),
+        });
+        if (spacer) {
+          const uploaded = entry.message.attachments.find((attachment) => attachment.name === spacer.name);
+          if (uploaded?.url) {
+            entry.raid.imageSpacerUrl = uploaded.url;
+            await entry.raid.save();
+          }
+          entry._imageSpacerFile = null;
+        }
       } while (entry._dirty);
       return true;
     } catch (error) {

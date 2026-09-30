@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, MessageFlags, InteractionContextType, PermissionFlagsBits } = require("discord.js");
 const { createMassNotificationEmbed } = require("../../utils/embed");
 const { renderRaidEmbeds, renderRaidComponents } = require("../../utils/raidRender");
+const { createRaidImageSpacer } = require('../../utils/raidImageSpacer');
 const { parseUTCTime, parseMinutes } = require("../../utils/time");
 const { isValidHex } = require("../../utils/regex");
 const {
@@ -918,11 +919,22 @@ async function handleConfirmRaidCreate(interaction) {
   // Registrar ANTES de publicar para que los botones puedan resolverlo en cuanto exista el mensaje.
   raidRegistry.register({ raidId, raid: raidDoc, message: null, templateName });
 
-  const embeds = renderRaidEmbeds(raidDoc, raidDoc);
+  const initialEmbeds = renderRaidEmbeds(raidDoc, raidDoc);
+  const imageSpacer = createRaidImageSpacer({
+    eventId: raidDoc.eventId,
+    imageUrl: raidDoc.image,
+    embedCount: initialEmbeds.length,
+  });
+  if (imageSpacer) raidDoc.imageSpacerUrl = imageSpacer.url;
+  const embeds = imageSpacer ? renderRaidEmbeds(raidDoc, raidDoc) : initialEmbeds;
   const components = renderRaidComponents(raidDoc, raidDoc);
 
   // Publicar el raid en el canal.
-  const contenidoBase = { embeds, components };
+  const contenidoBase = {
+    embeds,
+    components,
+    ...(imageSpacer ? { files: [{ attachment: imageSpacer.attachment, name: imageSpacer.name }] } : {}),
+  };
   const notificationContent =
     mentionRoles.length > 0 ? `${mentionRoles.map((id) => `<@&${id}>`).join(' ')}\n` : '';
 
@@ -961,6 +973,10 @@ async function handleConfirmRaidCreate(interaction) {
 
   raidRegistry.setMessage(raidId, raidMessage);
   raidDoc.messageId = raidMessage.id;
+  if (imageSpacer) {
+    const uploaded = raidMessage.attachments.find((attachment) => attachment.name === imageSpacer.name);
+    raidDoc.imageSpacerUrl = uploaded?.url || null;
+  }
 
   // Hilo privado de coordinación: solo lo ven y escriben los anotados en el
   // embed (participantes y looters) más el líder. Si no se puede crear, el raid
@@ -1198,6 +1214,7 @@ async function handleConfirmRaidEdit(interaction) {
       runtime.raid.eventTimestamp = pending.eventTimestamp;
       runtime.raid.color = pending.color || null;
       runtime.raid.image = pending.image || null;
+      runtime.raid.imageSpacerUrl = null;
       runtime.raid.reminder = pending.finalReminder || null;
       runtime.raid.rolesToNotify = roles;
       if (!runtime.raid.looters) runtime.raid.looters = { max: 0, users: [] };
@@ -1218,6 +1235,17 @@ async function handleConfirmRaidEdit(interaction) {
         runtime.raid.fullNotificationSent = false;
         runtime.raid.disabledWeapons = toDisabledWeapons(pending.weaponOverrides);
         runtime.raid.weaponOverrides = pending.weaponOverrides;
+      }
+
+      const previewEmbeds = renderRaidEmbeds(runtime.raid, runtime.raid);
+      const imageSpacer = createRaidImageSpacer({
+        eventId: runtime.raid.eventId,
+        imageUrl: runtime.raid.image,
+        embedCount: previewEmbeds.length,
+      });
+      if (imageSpacer) {
+        runtime.raid.imageSpacerUrl = imageSpacer.url;
+        runtime._imageSpacerFile = imageSpacer;
       }
 
       // Desactivar esta opción nunca borra un hilo existente: su eliminación

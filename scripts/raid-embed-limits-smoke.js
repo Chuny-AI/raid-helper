@@ -19,6 +19,7 @@ const {
   renderGroupBrowser,
   renderGroupPickPanel,
 } = require('../src/utils/raidRender');
+const { createRaidImageSpacer } = require('../src/utils/raidImageSpacer');
 
 let passed = 0;
 const test = (name, fn) => {
@@ -108,15 +109,33 @@ test('los 20 grupos aparecen completos en varios embeds', () => {
   assert.ok(!fields.some((f) => f.name.includes('no mostrados')), 'se recortaron grupos que sí cabían');
 });
 
-test('los embeds paginados se equilibran y dejan la imagen al final', () => {
-  const raidConImagen = { ...raid, image: 'https://example.com/raid.png' };
-  const embeds = renderedJson(raidConImagen, fullState(20, 1));
+test('los embeds paginados llenan el primero, no repiten título y dejan la imagen al final', () => {
+  const raidConImagen = {
+    ...raid,
+    image: 'https://example.com/raid.png?width=720',
+    imageSpacerUrl: 'attachment://raid-AB3K9F-spacer.png',
+  };
+  const embeds = renderedJson(raidConImagen, fullState(40, 1));
   const fieldCounts = embeds.map((embed) => embed.fields.length);
 
   assert.ok(embeds.length > 1, 'no se creó el embed de continuación');
-  assert.ok(Math.max(...fieldCounts) - Math.min(...fieldCounts) <= 1, `campos desbalanceados: ${fieldCounts}`);
-  assert.ok(!embeds[0].image, 'la imagen quedó en el primer embed');
+  assert.strictEqual(fieldCounts[0], 25, `el primer embed no se llenó: ${fieldCounts}`);
+  assert.strictEqual(embeds[0].image?.url, raidConImagen.imageSpacerUrl, 'falta el separador transparente inicial');
   assert.strictEqual(embeds.at(-1).image?.url, raidConImagen.image, 'la imagen no quedó al final');
+  assert.ok(embeds.slice(1).every((embed) => !embed.title), 'un embed de continuación conserva título');
+});
+
+test('el separador transparente conserva el ancho de la imagen sin alto visible', () => {
+  const spacer = createRaidImageSpacer({
+    eventId: 'AB3K9F',
+    imageUrl: 'https://cdn.example.com/raid.png?width=720&height=480',
+    embedCount: 2,
+  });
+  assert.ok(spacer, 'no se creó el separador');
+  assert.strictEqual(spacer.width, 720);
+  assert.strictEqual(spacer.attachment.readUInt32BE(16), 720, 'el PNG no conserva el ancho');
+  assert.strictEqual(spacer.attachment.readUInt32BE(20), 1, 'el PNG debe medir un píxel de alto');
+  assert.strictEqual(spacer.url, 'attachment://raid-AB3K9F-spacer.png');
 });
 
 test('con 16 grupos cabe todo y no se avisa de nada', () => {

@@ -35,6 +35,10 @@ const RaidEventSchema = new mongoose.Schema({
   eventTimestamp: Number,
   color: String,
   image: String,
+  // URL del PNG transparente que mantiene el ancho del primer embed cuando
+  // la composición ocupa varias páginas. La imagen real se conserva en
+  // `image` y solo aparece en el último embed.
+  imageSpacerUrl: String,
   reminder: String,
   rolesToNotify: [String],
   leaderId: {
