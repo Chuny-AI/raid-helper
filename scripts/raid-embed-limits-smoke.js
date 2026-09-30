@@ -108,6 +108,17 @@ test('los 20 grupos aparecen completos en varios embeds', () => {
   assert.ok(!fields.some((f) => f.name.includes('no mostrados')), 'se recortaron grupos que sí cabían');
 });
 
+test('los embeds paginados se equilibran y dejan la imagen al final', () => {
+  const raidConImagen = { ...raid, image: 'https://example.com/raid.png' };
+  const embeds = renderedJson(raidConImagen, fullState(20, 1));
+  const fieldCounts = embeds.map((embed) => embed.fields.length);
+
+  assert.ok(embeds.length > 1, 'no se creó el embed de continuación');
+  assert.ok(Math.max(...fieldCounts) - Math.min(...fieldCounts) <= 1, `campos desbalanceados: ${fieldCounts}`);
+  assert.ok(!embeds[0].image, 'la imagen quedó en el primer embed');
+  assert.strictEqual(embeds.at(-1).image?.url, raidConImagen.image, 'la imagen no quedó al final');
+});
+
 test('con 16 grupos cabe todo y no se avisa de nada', () => {
   const fields = allFields(renderedJson(raid, fullState(16, 1)));
   assert.ok(!fields.some((f) => f.name.includes('no mostrados')), 'avisa sin haber recortado');

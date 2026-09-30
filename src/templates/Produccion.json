@@ -1,0 +1,207 @@
+{
+  "title": "Producción",
+  "description": "Composición de producción para 32 jugadores.",
+  "image": "",
+  "color": "",
+  "url": "",
+  "roles": [],
+  "weapons": {
+    "group_0": {
+      "displayName": "Bastón terrúnico",
+      "defaultEmoji": "1543135181358108752",
+      "data": [{ "name": "Bastón terrúnico", "units": 1, "emoji": "1543135181358108752" }],
+      "max_players": 1
+    },
+    "group_1": {
+      "displayName": "Bastón arcano",
+      "defaultEmoji": "1543135306503684117",
+      "data": [{ "name": "Bastón arcano", "units": 1, "emoji": "1543135306503684117" }],
+      "max_players": 1
+    },
+    "group_2": {
+      "displayName": "Gran bastón arcano",
+      "defaultEmoji": "1543135289994641469",
+      "data": [{ "name": "Gran bastón arcano", "units": 1, "emoji": "1543135289994641469" }],
+      "max_players": 1
+    },
+    "group_3": {
+      "displayName": "Maza de lecho",
+      "defaultEmoji": "1543135219488526346",
+      "data": [{ "name": "Maza de lecho", "units": 1, "emoji": "1543135219488526346" }],
+      "max_players": 1
+    },
+    "group_4": {
+      "displayName": "Bastón de carámbanos",
+      "defaultEmoji": "1543135203902619698",
+      "data": [{ "name": "Bastón de carámbanos", "units": 1, "emoji": "1543135203902619698" }],
+      "max_players": 1
+    },
+    "group_5": {
+      "displayName": "Bastón enraizado",
+      "defaultEmoji": "1543135184851959809",
+      "data": [{ "name": "Bastón enraizado", "units": 1, "emoji": "1543135184851959809" }],
+      "max_players": 1
+    },
+    "group_6": {
+      "displayName": "Juradores",
+      "defaultEmoji": "1543135194062651442",
+      "data": [{ "name": "Juradores", "units": 1, "emoji": "1543135194062651442" }],
+      "max_players": 1
+    },
+    "group_7": {
+      "displayName": "Bastón de maldiciones",
+      "defaultEmoji": "1543135261083308032",
+      "data": [{ "name": "Bastón de maldiciones", "units": 1, "emoji": "1543135261083308032" }],
+      "max_players": 1
+    },
+    "group_8": {
+      "displayName": "Bastón oculto",
+      "defaultEmoji": "1543135290913198100",
+      "data": [{ "name": "Bastón oculto", "units": 1, "emoji": "1543135290913198100" }],
+      "max_players": 1
+    },
+    "group_9": {
+      "displayName": "Bastón putrefacto",
+      "defaultEmoji": "1543135286307848302",
+      "data": [{ "name": "Bastón putrefacto", "units": 1, "emoji": "1543135286307848302" }],
+      "max_players": 1
+    },
+    "group_10": {
+      "displayName": "Romperreinos",
+      "defaultEmoji": "1543135291907248212",
+      "data": [{ "name": "Romperreinos", "units": 1, "emoji": "1543135291907248212" }],
+      "max_players": 1
+    },
+    "group_11": {
+      "displayName": "Cazaespíritus",
+      "defaultEmoji": "1543135156104069180",
+      "data": [{ "name": "Cazaespíritus", "units": 1, "emoji": "1543135156104069180" }],
+      "max_players": 1
+    },
+    "group_12": {
+      "displayName": "Guanteletes de púas",
+      "defaultEmoji": "1543135206133858325",
+      "data": [{ "name": "Guanteletes de púas", "units": 1, "emoji": "1543135206133858325" }],
+      "max_players": 1
+    },
+    "group_13": {
+      "displayName": "Prisma de hielos",
+      "defaultEmoji": "1543135232658776144",
+      "data": [{ "name": "Prisma de hielos", "units": 1, "emoji": "1543135232658776144" }],
+      "max_players": 1
+    },
+    "group_14": {
+      "displayName": "Canción de despertar",
+      "defaultEmoji": "1543135226459332608",
+      "data": [{ "name": "Canción de despertar", "units": 1, "emoji": "1543135226459332608" }],
+      "max_players": 1
+    },
+    "group_15": {
+      "displayName": "Bastón de brujería",
+      "defaultEmoji": "1543135307531030548",
+      "data": [{ "name": "Bastón de brujería", "units": 1, "emoji": "1543135307531030548" }],
+      "max_players": 1
+    },
+    "group_16": {
+      "displayName": "Bastón exaltado",
+      "defaultEmoji": "1543135200811425873",
+      "data": [{ "name": "Bastón exaltado", "units": 1, "emoji": "1543135200811425873" }],
+      "max_players": 1
+    },
+    "group_17": {
+      "displayName": "Santificador 1",
+      "defaultEmoji": "1543135213691994192",
+      "data": [{ "name": "Santificador", "units": 1, "emoji": "1543135213691994192" }],
+      "max_players": 1
+    },
+    "group_18": {
+      "displayName": "Santificador 2",
+      "defaultEmoji": "1543135213691994192",
+      "data": [{ "name": "Santificador", "units": 1, "emoji": "1543135213691994192" }],
+      "max_players": 1
+    },
+    "group_19": {
+      "displayName": "Bastón de infortunio / desenfrenado",
+      "defaultEmoji": "1543135176010502256",
+      "data": [
+        { "name": "Bastón de infortunio", "units": 1, "emoji": "1543135176010502256" },
+        { "name": "Bastón desenfrenado", "units": 1, "emoji": "1543135177411137546" }
+      ],
+      "max_players": 1
+    },
+    "group_20": {
+      "displayName": "Martillo largo",
+      "defaultEmoji": "1543135208822542336",
+      "data": [{ "name": "Martillo largo", "units": 1, "emoji": "1543135208822542336" }],
+      "max_players": 1
+    },
+    "group_21": {
+      "displayName": "Bastón de escarcha",
+      "defaultEmoji": "1543135251906428998",
+      "data": [{ "name": "Bastón de escarcha", "units": 1, "emoji": "1543135251906428998" }],
+      "max_players": 1
+    },
+    "group_22": {
+      "displayName": "Juradores 2",
+      "defaultEmoji": "1543135194062651442",
+      "data": [{ "name": "Juradores", "units": 1, "emoji": "1543135194062651442" }],
+      "max_players": 1
+    },
+    "group_23": {
+      "displayName": "Romperreinos 2",
+      "defaultEmoji": "1543135291907248212",
+      "data": [{ "name": "Romperreinos", "units": 1, "emoji": "1543135291907248212" }],
+      "max_players": 1
+    },
+    "group_24": {
+      "displayName": "Canción de despertar 2",
+      "defaultEmoji": "1543135226459332608",
+      "data": [{ "name": "Canción de despertar", "units": 1, "emoji": "1543135226459332608" }],
+      "max_players": 1
+    },
+    "group_25": {
+      "displayName": "Guja fisurante 1",
+      "defaultEmoji": "1543135173527474246",
+      "data": [{ "name": "Guja fisurante", "units": 1, "emoji": "1543135173527474246" }],
+      "max_players": 1
+    },
+    "group_26": {
+      "displayName": "Guja fisurante 2",
+      "defaultEmoji": "1543135173527474246",
+      "data": [{ "name": "Guja fisurante", "units": 1, "emoji": "1543135173527474246" }],
+      "max_players": 1
+    },
+    "group_27": {
+      "displayName": "Bastón de forjacorteza",
+      "defaultEmoji": "1543135190438912031",
+      "data": [{ "name": "Bastón de forjacorteza", "units": 1, "emoji": "1543135190438912031" }],
+      "max_players": 1
+    },
+    "group_28": {
+      "displayName": "Torre móvil / Gallardo",
+      "defaultEmoji": "⚔️",
+      "data": [{ "name": "Torre móvil / Gallardo", "units": 1, "emoji": "⚔️" }],
+      "max_players": 1
+    },
+    "group_29": {
+      "displayName": "Bastión itinerante / Gallardo",
+      "defaultEmoji": "⚔️",
+      "data": [{ "name": "Bastión itinerante / Gallardo", "units": 1, "emoji": "⚔️" }],
+      "max_players": 1
+    },
+    "group_30": {
+      "displayName": "Escarabajo coloso / Gallardo",
+      "defaultEmoji": "⚔️",
+      "data": [{ "name": "Escarabajo coloso / Gallardo", "units": 1, "emoji": "⚔️" }],
+      "max_players": 1
+    },
+    "group_31": {
+      "displayName": "Locus malévolo",
+      "defaultEmoji": "1543135140782415893",
+      "data": [{ "name": "Locus malévolo", "units": 1, "emoji": "1543135140782415893" }],
+      "max_players": 1
+    }
+  },
+  "notifyAll": false,
+  "reminder": "5m"
+}

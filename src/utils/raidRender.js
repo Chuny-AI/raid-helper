@@ -183,8 +183,8 @@ const avisoAsistencia = (ocultos) => ({
 });
 
 /**
- * Construye la carátula del raid. Los embeds de continuación solo llevan los
- * campos restantes para no repetir descripción, imagen ni redes sociales.
+ * Construye la carátula del raid. La imagen se asigna al último embed durante
+ * el paginado, para que no quede separada de la parte final del anuncio.
  */
 function buildRaidEmbedShell(raid, isClosed) {
   const embed = new EmbedBuilder();
@@ -192,7 +192,6 @@ function buildRaidEmbedShell(raid, isClosed) {
   embed.setTitle(isClosed ? `🔒 [FINALIZADO] ${baseTitle}` : baseTitle);
   embed.setColor(isClosed ? '#808080' : raid.color || '#00FFFF');
   if (raid.description) embed.setDescription(raid.description);
-  if (raid.image) embed.setImage(raid.image);
   embed.setAuthor({ name: 'Chuny', iconURL: BRAND_ICON, url: 'https://www.linkedin.com/in/edwinjpa/' });
   embed.setFooter({
     text: raid.eventId ? `Raid #${raid.eventId} • Creado con ❤️ por Chuny` : 'Creado con ❤️ por Chuny',
@@ -208,19 +207,32 @@ function buildContinuationEmbed(raid, isClosed, page) {
     .setColor(isClosed ? '#808080' : raid.color || '#00FFFF');
 }
 
-/** Divide los campos entre varios embeds, conservando su orden. */
+/**
+ * Divide los campos entre varios embeds, conservando su orden.
+ *
+ * En vez de llenar el primero hasta 25 campos, reparte el contenido de forma
+ * uniforme. Así, cuando un raid requiere dos embeds, ambos muestran la misma
+ * cantidad de campos (o una diferencia máxima de uno).
+ */
 function paginateRaidFields(raid, isClosed, fields) {
+  const totalChunks = Math.max(1, Math.ceil(fields.length / MAX_EMBED_FIELDS));
+  const fieldsPerChunk = Math.floor(fields.length / totalChunks);
+  const chunksWithOneExtraField = fields.length % totalChunks;
   const chunks = [];
-  for (let index = 0; index < fields.length; index += MAX_EMBED_FIELDS) {
-    chunks.push(fields.slice(index, index + MAX_EMBED_FIELDS));
+  let offset = 0;
+
+  for (let index = 0; index < totalChunks; index++) {
+    const length = fieldsPerChunk + (index < chunksWithOneExtraField ? 1 : 0);
+    chunks.push(fields.slice(offset, offset + length));
+    offset += length;
   }
-  if (chunks.length === 0) chunks.push([]);
 
   return chunks.map((chunk, index) => {
     const embed = index === 0
       ? buildRaidEmbedShell(raid, isClosed)
       : buildContinuationEmbed(raid, isClosed, index + 1);
     if (chunk.length > 0) embed.addFields(chunk);
+    if (raid.image && index === chunks.length - 1) embed.setImage(raid.image);
     return embed;
   });
 }
