@@ -64,12 +64,13 @@ const newSession = (customTemplate = template, extra = {}) => {
 };
 
 /** Interacción simulada; registra la última llamada a update/reply/showModal. */
-const makeInteraction = (customId, { values, modalValue, modalValues, user = LEADER } = {}) => {
+const makeInteraction = (customId, { values, modalValue, modalValues, user = LEADER, roleIds = [] } = {}) => {
   const calls = { update: null, reply: null, modal: null };
+  const roles = new Map(roleIds.map((id) => [id, { id, name: id }]));
   return {
     customId,
     user,
-    guild: { id: '1', roles: { cache: new Map() } },
+    guild: { id: '1', roles: { cache: roles } },
     values,
     replied: false,
     deferred: false,
@@ -198,6 +199,26 @@ const run = async (customId, options) => {
     assert.strictEqual(pending.looters, 3);
     assert.strictEqual(pending.threadEnabled, true);
     assert.ok(calls.update.components.length > 0, 'debe regresar al panel navegable');
+  });
+
+  await test('muestra el selector nativo de roles y guarda su selección', async () => {
+    newSession();
+    const firstPanel = await run(`raidcfg-home-${PENDING_ID}`);
+    const rolePicker = firstPanel.update.components
+      .flatMap((row) => row.components)
+      .find((component) => component.data.custom_id === `raidcfg-roles-${PENDING_ID}`);
+    assert.ok(rolePicker, 'debe incluir un selector de roles');
+    assert.strictEqual(rolePicker.data.type, 6, 'debe usar RoleSelectMenu de Discord');
+    assert.strictEqual(rolePicker.data.max_values, 20);
+
+    const calls = await run(`raidcfg-roles-${PENDING_ID}`, {
+      values: ['tank-role', 'healer-role'],
+      roleIds: ['tank-role', 'healer-role'],
+    });
+    const pending = raid.pendingRaids.get(PENDING_ID);
+    assert.deepStrictEqual(pending.finalNotificationRoles, ['tank-role', 'healer-role']);
+    assert.strictEqual(pending.shouldSendMassDm, true);
+    assert.ok(calls.update, 'debe redibujar el panel tras seleccionar roles');
   });
 
   await test('Un grupo inexistente devuelve al panel principal sin romperse', async () => {

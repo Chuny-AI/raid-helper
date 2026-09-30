@@ -4,6 +4,7 @@ const {
   ButtonStyle,
   EmbedBuilder,
   ModalBuilder,
+  RoleSelectMenuBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   TextInputBuilder,
@@ -323,6 +324,16 @@ const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
   }
 
   if (options.draft) {
+    // Este selector nativo abre la lista de roles del servidor y evita que el
+    // líder tenga que copiar nombres o IDs para notificar el raid.
+    components.push(new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder()
+        .setCustomId(buildId('roles', pendingId))
+        .setPlaceholder('Selecciona los roles que recibirán el aviso')
+        .setMinValues(0)
+        .setMaxValues(options.maxRolesToNotify || 20)
+    ));
+
     components.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(buildId('basic', pendingId))

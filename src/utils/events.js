@@ -487,7 +487,8 @@ const getEvents = () => {
       }
     }
 
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith(RAID_CONFIG_PREFIX)) {
+    if ((interaction.isStringSelectMenu() || interaction.isRoleSelectMenu())
+      && interaction.customId.startsWith(RAID_CONFIG_PREFIX)) {
       await raidCommand.handleWeaponConfigInteraction(interaction);
       return;
     }

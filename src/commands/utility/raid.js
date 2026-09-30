@@ -61,6 +61,7 @@ const panelOptions = (pending, page = 0) => ({
   draft: pending,
   mode: pending.mode || 'create',
   weaponsLocked: !!pending.weaponsLocked,
+  maxRolesToNotify: MAX_ROLES_TO_NOTIFY,
 });
 
 const overviewFor = (pending, pendingId, page = 0) => buildOverviewPanel(
@@ -482,6 +483,36 @@ async function handleWeaponConfigInteraction(interaction) {
 
       case 'gback':
         return await interaction.update(groupFor(pending, pendingId, groupKey, weaponIndex));
+
+      case 'roles': {
+        const selectedRoleIds = [...new Set(interaction.values || [])];
+        if (selectedRoleIds.includes(interaction.guild.id)) {
+          return await interaction.reply({
+            content: '⚠️ `@everyone` no está permitido.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        if (selectedRoleIds.length > MAX_ROLES_TO_NOTIFY) {
+          return await interaction.reply({
+            content: `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        // Discord sólo muestra roles existentes, pero uno puede borrarse
+        // mientras el selector permanece abierto.
+        const missing = selectedRoleIds.filter((roleId) => !interaction.guild.roles.cache.has(roleId));
+        if (missing.length > 0) {
+          return await interaction.reply({
+            content: '⚠️ Uno de los roles seleccionados ya no existe. Abre la lista de nuevo.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        pending.finalNotificationRoles = selectedRoleIds;
+        pending.shouldSendMassDm = shouldNotifyRolesByDefault(selectedRoleIds);
+        return await interaction.update(overviewFor(pending, pendingId));
+      }
 
       case 'wpage':
         return await interaction.update(groupFor(pending, pendingId, groupKey, weaponIndex));
@@ -1401,7 +1432,7 @@ module.exports = {
           option
             .setName("roles_to_notify")
             .setDescription(
-              "Roles a notificar separados por coma: menciones, IDs o nombres (opcional)"
+              "Roles a notificar: escribe un nombre o ID, o selecciónalos en la lista posterior (opcional)"
             )
             .setRequired(false)
             .setMaxLength(1000)
