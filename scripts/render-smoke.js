@@ -1,4 +1,5 @@
 /** Prueba de humo de raidRender.js (embed + components). No requiere BD ni bot. */
+const assert = require('assert');
 const { buildInitialState, joinSlot } = require('../src/services/raidState');
 const { renderRaidEmbed, renderRaidComponents } = require('../src/utils/raidRender');
 
@@ -48,3 +49,11 @@ const closedRaid = { ...raid, status: 'closed', closedBy: 'L1', closedAt: new Da
 const closedEmbed = renderRaidEmbed(closedRaid, state);
 console.log('closed title:', closedEmbed.data.title);
 console.log('closed components:', renderRaidComponents(closedRaid, state).length);
+
+// La lista "No puedo ir" debe conservar y mostrar la hora UTC de la baja.
+state.cannotGo = [{ userId: 'U2', username: 'u2', at: new Date('2026-09-30T18:07:00.000Z') }];
+const cannotGoEmbed = renderRaidEmbed(raid, state);
+const cannotGoField = cannotGoEmbed.data.fields.find((field) => field.name === '🚫 No puedo ir');
+assert.ok(cannotGoField, 'debe incluir el campo de no puedo ir');
+assert.equal(cannotGoField.value, '<@U2> — 18:07 UTC');
+console.log('cannot-go UTC timestamp: OK');

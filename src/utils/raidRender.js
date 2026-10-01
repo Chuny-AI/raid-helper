@@ -56,6 +56,16 @@ function safeFieldValue(value) {
   return result + '\n*(truncado)*';
 }
 
+/** Formatea una fecha como hora UTC para los registros del raid. */
+function formatUtcTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${hours}:${minutes} UTC`;
+}
+
 function groupDisplayName(state, groupKey) {
   const g = state.groups.find((g) => g.groupKey === groupKey);
   return g ? g.displayName : groupKey;
@@ -371,7 +381,10 @@ function renderRaidEmbeds(raid, state) {
   }
 
   if (state.cannotGo && state.cannotGo.length > 0) {
-    const lines = state.cannotGo.map((c) => `<@${c.userId}>`);
+    const lines = state.cannotGo.map((c) => {
+      const time = formatUtcTime(c.at);
+      return `<@${c.userId}>${time ? ` — ${time}` : ''}`;
+    });
     fields.push({ name: CANNOTGO_FIELD_NAME, value: safeFieldValue(lines.join('\n')), inline: false });
   }
 

@@ -273,8 +273,13 @@ function removeCannotGo(state, userId) {
 }
 
 function toggleCannotGo(state, user) {
-  const already = state.cannotGo.some((c) => c.userId === user.userId);
-  if (already) return { ...removeCannotGo(state, user.userId), toggled: 'removed' };
+  const existing = state.cannotGo.find((c) => c.userId === user.userId);
+  // Un segundo clic no quita a la persona: renueva la hora del aviso.
+  if (existing) {
+    existing.username = user.username;
+    existing.at = new Date();
+    return { ok: true, toggled: 'updated', freedSlotIds: [] };
+  }
   return { ...setCannotGo(state, user), toggled: 'added' };
 }
 

@@ -529,7 +529,7 @@ async function handleWaitlistPick(interaction, raidId) {
   });
 }
 
-/** Botón "No puedo ir": toggle. Libera el slot y promueve desde waitlist si aplica. */
+/** Botón "No puedo ir": registra la baja o actualiza la hora del aviso. */
 async function handleCannotGo(interaction, raidId) {
   await safeDeferUpdate(interaction);
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });

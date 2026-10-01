@@ -76,6 +76,17 @@ function run(unitsPerItem, label) {
   const cannotGoResult = setCannotGo(state, u('2'));
   assert.strictEqual(cannotGoResult.ok, true);
   assert.deepStrictEqual(cannotGoResult.freedSlotIds, ['group_1~1']);
+  state.cannotGo[0].at = new Date(0);
+  const repeatedCannotGo = toggleCannotGo(state, u('2'));
+  assert.strictEqual(repeatedCannotGo.toggled, 'updated', 'un segundo clic debe renovar la hora de la baja');
+  assert.strictEqual(state.cannotGo.length, 1, 'la baja debe permanecer en la lista');
+  assert.ok(state.cannotGo[0].at > new Date(0), 'debe actualizarse la hora de la baja');
+
+  const rejoinState = buildInitialState({ template: makeTemplate(1), leaderId: '1' });
+  setCannotGo(rejoinState, u('rejoin'));
+  assert.strictEqual(joinSlot(rejoinState, 'group_1~0', u('rejoin')).ok, true, 'puede reinscribirse después de avisar');
+  assert.deepStrictEqual(rejoinState.cannotGo, [], 'al reinscribirse deja la lista de bajas');
+  assert.strictEqual(toggleCannotGo(rejoinState, u('rejoin')).toggled, 'added', 'un nuevo aviso registra una hora nueva');
   // Con units=1 por arma, solo la build liberada tiene hueco propio (1 opción).
   // Con units=3 por arma, las 3 builds tenían hueco individual y solo esperaban
   // cupo de GRUPO, así que las 3 reaparecen al liberarse 1 cupo de grupo.
