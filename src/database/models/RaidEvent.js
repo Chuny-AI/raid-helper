@@ -44,10 +44,9 @@ const RaidEventSchema = new mongoose.Schema({
   // Si contiene roles, solo los miembros que tengan al menos uno de ellos
   // pueden anotarse en el raid. Una lista vacía mantiene el raid abierto.
   rolesToJoin: [String],
-  // Estas exclusiones aplican únicamente a este raid y tienen prioridad sobre
-  // rolesToJoin: un miembro o rol excluido no puede participar.
+  // Esta exclusión aplica únicamente a este raid y tiene prioridad sobre
+  // rolesToJoin: un miembro con alguno de estos roles no puede participar.
   excludedRoleIds: [String],
-  excludedUserIds: [String],
   leaderId: {
     type: String,
     required: false

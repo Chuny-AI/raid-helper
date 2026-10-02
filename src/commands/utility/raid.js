@@ -268,7 +268,6 @@ async function executeEditSubcommand(interaction) {
   const requestedRoles = interaction.options.getString('roles_to_notify');
   const requestedJoinRoles = interaction.options.getString('roles_to_join');
   const requestedExcludedRoles = interaction.options.getString('excluded_roles');
-  const requestedExcludedUser = interaction.options.getUser('excluded_user');
 
   const time = requestedTime || runtime.raid.time;
   let eventTimestamp = runtime.raid.eventTimestamp;
@@ -338,9 +337,6 @@ async function executeEditSubcommand(interaction) {
     excludedRoleIds = parsed.roleIds;
   }
 
-  let excludedUserIds = Array.from(runtime.raid.excludedUserIds || []);
-  if (requestedExcludedUser) excludedUserIds = [requestedExcludedUser.id];
-
   let template = await getTemplateByName(runtime.raid.templateName, interaction.guild.id);
   if (!template) {
     const weapons = {};
@@ -385,7 +381,6 @@ async function executeEditSubcommand(interaction) {
     finalNotificationRoles,
     finalJoinRoles,
     excludedRoleIds,
-    excludedUserIds,
     shouldSendMassDm: false,
     looters: requestedLooters ?? runtime.raid.looters?.max ?? 0,
     currentLooterCount: (runtime.raid.looters?.users || []).length,
@@ -873,7 +868,7 @@ async function handleConfirmRaidCreate(interaction) {
 
   const {
     templateName, template, eventTimestamp, title, color, image, description,
-    finalReminder, finalNotificationRoles, finalJoinRoles, excludedRoleIds, excludedUserIds, shouldSendMassDm, looters, threadEnabled, guildId, user,
+    finalReminder, finalNotificationRoles, finalJoinRoles, excludedRoleIds, shouldSendMassDm, looters, threadEnabled, guildId, user,
   } = pending;
 
   const weaponOverrides = pending.weaponOverrides || emptyOverrides();
@@ -971,7 +966,6 @@ async function handleConfirmRaidCreate(interaction) {
     rolesToNotify: mentionRoles,
     rolesToJoin: joinRoles,
     excludedRoleIds: excludedRoles,
-    excludedUserIds,
     leaderId: user.id,
     threadEnabled: !!threadEnabled,
     threadId: null,
@@ -1301,7 +1295,6 @@ async function handleConfirmRaidEdit(interaction) {
       runtime.raid.rolesToNotify = roles;
       runtime.raid.rolesToJoin = joinRoles;
       runtime.raid.excludedRoleIds = excludedRoles;
-      runtime.raid.excludedUserIds = pending.excludedUserIds;
       if (!runtime.raid.looters) runtime.raid.looters = { max: 0, users: [] };
       runtime.raid.looters.max = pending.looters || 0;
 
@@ -1569,12 +1562,6 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
-        .addUserOption((option) =>
-          option
-            .setName('excluded_user')
-            .setDescription('Persona que no puede participar en este raid (opcional)')
-            .setRequired(false)
-        )
         .addIntegerOption((option) =>
           option
             .setName("looters")
@@ -1687,12 +1674,6 @@ module.exports = {
             .setRequired(false)
             .setMaxLength(1000)
             .setAutocomplete(true)
-        )
-        .addUserOption((option) =>
-          option
-            .setName('excluded_user')
-            .setDescription('Nueva persona excluida; búscala y selecciónala')
-            .setRequired(false)
         )
         .addIntegerOption((option) =>
           option
@@ -1840,7 +1821,6 @@ module.exports = {
       const rolesToNotifyInput = interaction.options.getString("roles_to_notify");
       const rolesToJoinInput = interaction.options.getString("roles_to_join");
       const excludedRolesInput = interaction.options.getString('excluded_roles');
-      const excludedUser = interaction.options.getUser('excluded_user');
       const looters = interaction.options.getInteger("looters");
       const threadEnabled = interaction.options.getBoolean("thread") ?? false;
       const user = interaction.user;
@@ -2128,7 +2108,6 @@ module.exports = {
         finalNotificationRoles,
         finalJoinRoles: parsedJoinRoles,
         excludedRoleIds: parsedExcludedRoles,
-        excludedUserIds: excludedUser ? [excludedUser.id] : [],
         shouldSendMassDm,
         looters,
         threadEnabled,

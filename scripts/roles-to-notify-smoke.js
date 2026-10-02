@@ -236,15 +236,11 @@ test('Sin un rol permitido no se puede inscribir', () => {
   assert.strictEqual(canJoinRaid({ rolesToJoin: ['200000000000000001'] }, null), false);
 });
 
-test('Las exclusiones por rol o miembro tienen prioridad sobre los roles permitidos', () => {
+test('Las exclusiones por rol tienen prioridad sobre los roles permitidos', () => {
   const member = { roles: { cache: new Map([['allowed-role', {}], ['excluded-role', {}]]) } };
-  const raid = { rolesToJoin: ['allowed-role'], excludedRoleIds: ['excluded-role'], excludedUserIds: ['blocked-user'] };
-  assert.strictEqual(canJoinRaid(raid, member, 'any-user'), false);
-  assert.strictEqual(getJoinRestrictionReason(raid, member, 'any-user'), 'excluded');
-  assert.strictEqual(
-    canJoinRaid({ rolesToJoin: ['allowed-role'], excludedUserIds: ['blocked-user'] }, { roles: { cache: new Map([['allowed-role', {}]]) } }, 'blocked-user'),
-    false
-  );
+  const raid = { rolesToJoin: ['allowed-role'], excludedRoleIds: ['excluded-role'] };
+  assert.strictEqual(canJoinRaid(raid, member), false);
+  assert.strictEqual(getJoinRestrictionReason(raid, member), 'excluded');
 });
 
 console.log(`\n${process.exitCode ? '❌ Fallos detectados' : `✅ ${passed} comprobaciones OK`}\n`);

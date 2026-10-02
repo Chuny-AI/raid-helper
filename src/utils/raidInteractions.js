@@ -67,10 +67,7 @@ function replyGone(interaction) {
  * Comprueba el requisito de inscripción del raid. Los raids anteriores y los
  * que no hayan elegido roles siguen abiertos para todo el servidor.
  */
-function getJoinRestrictionReason(raid, member, userId) {
-  const excludedUserIds = new Set(Array.isArray(raid?.excludedUserIds) ? raid.excludedUserIds.filter(Boolean) : []);
-  if (userId && excludedUserIds.has(userId)) return 'excluded';
-
+function getJoinRestrictionReason(raid, member) {
   const memberRoles = member?.roles?.cache;
   const excludedRoleIds = Array.isArray(raid?.excludedRoleIds) ? raid.excludedRoleIds.filter(Boolean) : [];
   if (excludedRoleIds.length > 0 && memberRoles && typeof memberRoles.has === 'function'
@@ -83,12 +80,12 @@ function getJoinRestrictionReason(raid, member, userId) {
   return allowedRoleIds.some((roleId) => memberRoles.has(roleId)) ? null : 'role_required';
 }
 
-function canJoinRaid(raid, member, userId) {
-  return getJoinRestrictionReason(raid, member, userId) === null;
+function canJoinRaid(raid, member) {
+  return getJoinRestrictionReason(raid, member) === null;
 }
 
-function replyJoinRoleRequired(interaction, raid, userId) {
-  if (getJoinRestrictionReason(raid, interaction.member, userId) === 'excluded') {
+function replyJoinRoleRequired(interaction, raid) {
+  if (getJoinRestrictionReason(raid, interaction.member) === 'excluded') {
     return ephemeralReply(
       interaction,
       '⛔ No puedes participar en esta actividad porque el líder te excluyó de este contenido.'
@@ -318,7 +315,7 @@ async function handleJoin(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
   if (runtime.raid.status !== 'active') return replyClosed(interaction);
-  if (!canJoinRaid(runtime.raid, interaction.member, interaction.user.id)) return replyJoinRoleRequired(interaction, runtime.raid, interaction.user.id);
+  if (!canJoinRaid(runtime.raid, interaction.member)) return replyJoinRoleRequired(interaction, runtime.raid);
 
   const slotId = interaction.values[0];
   const user = { userId: interaction.user.id, username: interaction.user.username };
@@ -468,9 +465,9 @@ async function handleJoinPick(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
   if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
-  if (!canJoinRaid(runtime.raid, interaction.member, interaction.user.id)) {
+  if (!canJoinRaid(runtime.raid, interaction.member)) {
     return interaction.update({
-      content: getJoinRestrictionReason(runtime.raid, interaction.member, interaction.user.id) === 'excluded'
+      content: getJoinRestrictionReason(runtime.raid, interaction.member) === 'excluded'
         ? '⛔ No puedes participar en esta actividad porque el líder te excluyó de este contenido.'
         : '⛔ No puedes inscribirte en este raid porque no tienes uno de los roles requeridos.',
       components: [],
@@ -528,9 +525,9 @@ async function handleWaitlistPick(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
   if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
-  if (!canJoinRaid(runtime.raid, interaction.member, interaction.user.id)) {
+  if (!canJoinRaid(runtime.raid, interaction.member)) {
     return interaction.update({
-      content: getJoinRestrictionReason(runtime.raid, interaction.member, interaction.user.id) === 'excluded'
+      content: getJoinRestrictionReason(runtime.raid, interaction.member) === 'excluded'
         ? '⛔ No puedes participar en esta actividad porque el líder te excluyó de este contenido.'
         : '⛔ No puedes anotarte en la lista de espera porque no tienes uno de los roles requeridos.',
       components: [],
@@ -598,8 +595,8 @@ async function handleCannotGo(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
   if (runtime.raid.status !== 'active') return replyClosed(interaction);
-  if (!isAssociatedWithRaid(runtime.raid, interaction.user.id) && !canJoinRaid(runtime.raid, interaction.member, interaction.user.id)) {
-    return replyJoinRoleRequired(interaction, runtime.raid, interaction.user.id);
+  if (!isAssociatedWithRaid(runtime.raid, interaction.user.id) && !canJoinRaid(runtime.raid, interaction.member)) {
+    return replyJoinRoleRequired(interaction, runtime.raid);
   }
 
   const user = { userId: interaction.user.id, username: interaction.user.username };
@@ -633,8 +630,8 @@ async function handleLooter(interaction, raidId) {
 
   const user = { userId: interaction.user.id, username: interaction.user.username };
   const already = (runtime.raid.looters?.users || []).some((u) => u.userId === user.userId);
-  if (!already && !canJoinRaid(runtime.raid, interaction.member, interaction.user.id)) {
-    return replyJoinRoleRequired(interaction, runtime.raid, interaction.user.id);
+  if (!already && !canJoinRaid(runtime.raid, interaction.member)) {
+    return replyJoinRoleRequired(interaction, runtime.raid);
   }
 
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
