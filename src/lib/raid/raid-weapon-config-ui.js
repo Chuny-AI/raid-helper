@@ -271,7 +271,8 @@ const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
         name: 'Avisos y capacidad',
         value: [
           `**Recordatorio:** ${draft.finalReminder || 'Desactivado'}`,
-          `**Roles:** ${(draft.finalNotificationRoles || []).length}`,
+          `**Roles a notificar:** ${(draft.finalNotificationRoles || []).length}`,
+          `**Roles para inscribirse:** ${(draft.finalJoinRoles || []).length || 'Cualquiera'}`,
           `**Looters:** ${draft.looters || 0}`,
           `**Hilo privado:** ${draft.threadEnabled ? 'Sí' : 'No'}`,
         ].join('\n'),
@@ -326,12 +327,28 @@ const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
   if (options.draft) {
     // Este selector nativo abre la lista de roles del servidor y evita que el
     // líder tenga que copiar nombres o IDs para notificar el raid.
+    const notificationRoles = (options.draft.finalNotificationRoles || []).slice(0, options.maxRolesToNotify || 20);
+    const joinRoles = (options.draft.finalJoinRoles || []).slice(0, options.maxRolesToNotify || 20);
+
     components.push(new ActionRowBuilder().addComponents(
       new RoleSelectMenuBuilder()
         .setCustomId(buildId('roles', pendingId))
-        .setPlaceholder('Selecciona los roles que recibirán el aviso')
+        .setPlaceholder('Roles que recibirán el aviso')
         .setMinValues(0)
         .setMaxValues(options.maxRolesToNotify || 20)
+        .setDefaultRoles(...notificationRoles)
+    ));
+
+    // Un selector de roles sí conserva nombres, colores y jerarquía del
+    // servidor; en cambio, los modales de Discord solo admiten texto y
+    // terminarían mostrando IDs poco legibles.
+    components.push(new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder()
+        .setCustomId(buildId('joinroles', pendingId))
+        .setPlaceholder('Roles que pueden inscribirse (vacío = cualquiera)')
+        .setMinValues(0)
+        .setMaxValues(options.maxRolesToNotify || 20)
+        .setDefaultRoles(...joinRoles)
     ));
 
     components.push(new ActionRowBuilder().addComponents(
@@ -640,10 +657,6 @@ const buildRaidSettingsModal = (pendingId, draft) => new ModalBuilder()
     new ActionRowBuilder().addComponents(setOptionalValue(
       new TextInputBuilder().setCustomId('reminder').setLabel('Recordatorio: 10m, 1h o vacío').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(10),
       draft.finalReminder
-    )),
-    new ActionRowBuilder().addComponents(setOptionalValue(
-      new TextInputBuilder().setCustomId('roles').setLabel('Roles: menciones, IDs o nombres').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(1000),
-      (draft.finalNotificationRoles || []).join(', ')
     )),
     new ActionRowBuilder().addComponents(setOptionalValue(
       new TextInputBuilder().setCustomId('looters').setLabel('Máximo de looters (0 desactiva)').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3),

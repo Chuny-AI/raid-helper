@@ -15,6 +15,7 @@ const {
   parseRolesToNotify,
   buildRolesAutocompleteChoices,
 } = require('../src/utils/roleMentions');
+const { canJoinRaid } = require('../src/utils/raidInteractions');
 
 let passed = 0;
 const test = (name, fn) => {
@@ -215,6 +216,24 @@ test('Descarta sugerencias que superen los 100 caracteres de valor', () => {
   const longGuild = makeGuild([{ id: '400000000000000001', name: 'R'.repeat(90) }]);
   const choices = buildRolesAutocompleteChoices(`${'A'.repeat(50)}, `, longGuild);
   assert.deepStrictEqual(choices, []);
+});
+
+console.log('\n── Roles de inscripción');
+
+test('Sin roles configurados cualquiera puede inscribirse', () => {
+  assert.strictEqual(canJoinRaid({ rolesToJoin: [] }, { roles: { cache: new Map() } }), true);
+  assert.strictEqual(canJoinRaid({}, null), true);
+});
+
+test('Basta con uno de los roles configurados para poder inscribirse', () => {
+  const member = { roles: { cache: new Map([['200000000000000002', {}]]) } };
+  assert.strictEqual(canJoinRaid({ rolesToJoin: ['200000000000000001', '200000000000000002'] }, member), true);
+});
+
+test('Sin un rol permitido no se puede inscribir', () => {
+  const member = { roles: { cache: new Map([['otro-rol', {}]]) } };
+  assert.strictEqual(canJoinRaid({ rolesToJoin: ['200000000000000001'] }, member), false);
+  assert.strictEqual(canJoinRaid({ rolesToJoin: ['200000000000000001'] }, null), false);
 });
 
 console.log(`\n${process.exitCode ? '❌ Fallos detectados' : `✅ ${passed} comprobaciones OK`}\n`);

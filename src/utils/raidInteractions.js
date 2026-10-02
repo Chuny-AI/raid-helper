@@ -64,6 +64,35 @@ function replyGone(interaction) {
 }
 
 /**
+ * Comprueba el requisito de inscripción del raid. Los raids anteriores y los
+ * que no hayan elegido roles siguen abiertos para todo el servidor.
+ */
+function canJoinRaid(raid, member) {
+  const allowedRoleIds = [...new Set(Array.isArray(raid?.rolesToJoin) ? raid.rolesToJoin.filter(Boolean) : [])];
+  if (allowedRoleIds.length === 0) return true;
+
+  const memberRoles = member?.roles?.cache;
+  if (!memberRoles || typeof memberRoles.has !== 'function') return false;
+  return allowedRoleIds.some((roleId) => memberRoles.has(roleId));
+}
+
+function replyJoinRoleRequired(interaction, raid) {
+  const roles = [...new Set(Array.isArray(raid?.rolesToJoin) ? raid.rolesToJoin.filter(Boolean) : [])];
+  const roleList = roles.map((roleId) => `<@&${roleId}>`).join(', ');
+  return ephemeralReply(
+    interaction,
+    `⛔ No puedes inscribirte en este raid. Necesitas al menos uno de estos roles: ${roleList}.`
+  );
+}
+
+function isAssociatedWithRaid(raid, userId) {
+  return (raid?.slots || []).some((slot) => (slot.users || []).some((user) => user.userId === userId))
+    || (raid?.waitlist || []).some((user) => user.userId === userId)
+    || (raid?.cannotGo || []).some((user) => user.userId === userId)
+    || (raid?.looters?.users || []).some((user) => user.userId === userId);
+}
+
+/**
  * Los modales de Discord no incluyen un selector nativo de roles, así que el
  * líder puede indicar el rol por mención, ID o nombre exacto. Un valor vacío
  * conserva el canal completamente oculto salvo para los inscritos.
@@ -272,6 +301,7 @@ async function handleJoin(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
   if (runtime.raid.status !== 'active') return replyClosed(interaction);
+  if (!canJoinRaid(runtime.raid, interaction.member)) return replyJoinRoleRequired(interaction, runtime.raid);
 
   const slotId = interaction.values[0];
   const user = { userId: interaction.user.id, username: interaction.user.username };
@@ -421,6 +451,12 @@ async function handleJoinPick(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
   if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
+  if (!canJoinRaid(runtime.raid, interaction.member)) {
+    return interaction.update({
+      content: '⛔ No puedes inscribirte en este raid porque no tienes uno de los roles requeridos.',
+      components: [],
+    });
+  }
 
   const slotId = interaction.values[0];
   const user = { userId: interaction.user.id, username: interaction.user.username };
@@ -473,6 +509,12 @@ async function handleWaitlistPick(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: null, guild: interaction.guild });
   if (!runtime) return interaction.update({ content: 'No se encontró el evento correspondiente.', components: [] });
   if (runtime.raid.status !== 'active') return interaction.update({ content: '🔒 Las inscripciones de este evento ya están cerradas.', components: [] });
+  if (!canJoinRaid(runtime.raid, interaction.member)) {
+    return interaction.update({
+      content: '⛔ No puedes anotarte en la lista de espera porque no tienes uno de los roles requeridos.',
+      components: [],
+    });
+  }
 
   const slotIds = raidState.expandWaitlistSlotIds(runtime.raid, interaction.values);
   const user = { userId: interaction.user.id, username: interaction.user.username };
@@ -535,6 +577,9 @@ async function handleCannotGo(interaction, raidId) {
   const runtime = await getOrLoadRuntime({ raidId, messageId: interaction.message?.id, guild: interaction.guild });
   if (!runtime) return replyGone(interaction);
   if (runtime.raid.status !== 'active') return replyClosed(interaction);
+  if (!isAssociatedWithRaid(runtime.raid, interaction.user.id) && !canJoinRaid(runtime.raid, interaction.member)) {
+    return replyJoinRoleRequired(interaction, runtime.raid);
+  }
 
   const user = { userId: interaction.user.id, username: interaction.user.username };
 
@@ -566,16 +611,20 @@ async function handleLooter(interaction, raidId) {
   if (runtime.raid.status !== 'active') return replyClosed(interaction);
 
   const user = { userId: interaction.user.id, username: interaction.user.username };
+  const already = (runtime.raid.looters?.users || []).some((u) => u.userId === user.userId);
+  if (!already && !canJoinRaid(runtime.raid, interaction.member)) {
+    return replyJoinRoleRequired(interaction, runtime.raid);
+  }
 
   await raidRegistry.withRaidLock(runtime.raidId, async () => {
     if (runtime.raid.status !== 'active') {
       await replyClosed(interaction);
       return;
     }
-    const already = (runtime.raid.looters?.users || []).some((u) => u.userId === user.userId);
-    const result = already ? raidState.leaveLooter(runtime.raid, user.userId) : raidState.joinLooter(runtime.raid, user);
+    const isAlreadyLooter = (runtime.raid.looters?.users || []).some((u) => u.userId === user.userId);
+    const result = isAlreadyLooter ? raidState.leaveLooter(runtime.raid, user.userId) : raidState.joinLooter(runtime.raid, user);
     if (!result.ok) {
-      if (!already) {
+      if (!isAlreadyLooter) {
         await ephemeralReply(interaction, looterFailureMessage(result.reason));
       }
       return;
@@ -1237,4 +1286,5 @@ module.exports = {
   handleStartEventOpen,
   handleStartEventSubmit,
   resolveVisibilityRole,
+  canJoinRaid,
 };

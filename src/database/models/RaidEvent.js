@@ -41,6 +41,9 @@ const RaidEventSchema = new mongoose.Schema({
   imageSpacerUrl: String,
   reminder: String,
   rolesToNotify: [String],
+  // Si contiene roles, solo los miembros que tengan al menos uno de ellos
+  // pueden anotarse en el raid. Una lista vacía mantiene el raid abierto.
+  rolesToJoin: [String],
   leaderId: {
     type: String,
     required: false

@@ -323,10 +323,10 @@ function renderRaidEmbeds(raid, state) {
     value: 'Revisa la lista de armas en el mensaje anclado.',
   });
 
-  if (raid.rolesToNotify && raid.rolesToNotify.length > 0) {
+  if (raid.rolesToJoin && raid.rolesToJoin.length > 0) {
     fields.push({
-      name: 'Roles válidos:',
-      value: raid.rolesToNotify.map((roleId) => `<@&${roleId}>`).join(', '),
+      name: 'Roles que pueden inscribirse:',
+      value: raid.rolesToJoin.map((roleId) => `<@&${roleId}>`).join(', '),
     });
   }
 

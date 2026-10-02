@@ -266,6 +266,7 @@ async function executeEditSubcommand(interaction) {
   const requestedImage = interaction.options.getString('image');
   const requestedReminder = interaction.options.getString('reminder');
   const requestedRoles = interaction.options.getString('roles_to_notify');
+  const requestedJoinRoles = interaction.options.getString('roles_to_join');
 
   const time = requestedTime || runtime.raid.time;
   let eventTimestamp = runtime.raid.eventTimestamp;
@@ -303,6 +304,21 @@ async function executeEditSubcommand(interaction) {
       });
     }
     finalNotificationRoles = parsed.roleIds;
+  }
+
+  let finalJoinRoles = Array.from(runtime.raid.rolesToJoin || []);
+  if (requestedJoinRoles !== null) {
+    const parsed = parseRolesToNotify(requestedJoinRoles, interaction.guild);
+    if (parsed.blockedEveryone || parsed.exceededLimit || parsed.unresolved.length > 0) {
+      return interaction.editReply({
+        content: parsed.blockedEveryone
+          ? '⚠️ `@everyone` no puede usarse para restringir las inscripciones.'
+          : parsed.exceededLimit
+            ? `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles para inscribirse.`
+            : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
+      });
+    }
+    finalJoinRoles = parsed.roleIds;
   }
 
   let template = await getTemplateByName(runtime.raid.templateName, interaction.guild.id);
@@ -347,6 +363,7 @@ async function executeEditSubcommand(interaction) {
     description: interaction.options.getString('description') ?? runtime.raid.description,
     finalReminder,
     finalNotificationRoles,
+    finalJoinRoles,
     shouldSendMassDm: false,
     looters: requestedLooters ?? runtime.raid.looters?.max ?? 0,
     currentLooterCount: (runtime.raid.looters?.users || []).length,
@@ -444,7 +461,7 @@ async function handleWeaponConfigInteraction(interaction) {
   const overrides = pending.weaponOverrides;
 
   // Validar que el grupo/arma referidos sigan existiendo en el template
-  const actionsWithoutGroup = new Set(['home', 'gpage', 'basic', 'settings', 'mbasic', 'msettings', 'cancel', 'resetall']);
+  const actionsWithoutGroup = new Set(['home', 'gpage', 'basic', 'settings', 'mbasic', 'msettings', 'cancel', 'resetall', 'roles', 'joinroles']);
   const group = !actionsWithoutGroup.has(action) && groupKey ? template.weapons?.[groupKey] : null;
   if (!actionsWithoutGroup.has(action) && groupKey && !group) {
     try {
@@ -515,6 +532,32 @@ async function handleWeaponConfigInteraction(interaction) {
         return await interaction.update(overviewFor(pending, pendingId));
       }
 
+      case 'joinroles': {
+        const selectedRoleIds = [...new Set(interaction.values || [])];
+        if (selectedRoleIds.includes(interaction.guild.id)) {
+          return await interaction.reply({
+            content: '⚠️ `@everyone` no puede usarse para restringir las inscripciones.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        if (selectedRoleIds.length > MAX_ROLES_TO_NOTIFY) {
+          return await interaction.reply({
+            content: `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles para inscribirse.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        const missing = selectedRoleIds.filter((roleId) => !interaction.guild.roles.cache.has(roleId));
+        if (missing.length > 0) {
+          return await interaction.reply({
+            content: '⚠️ Uno de los roles seleccionados ya no existe. Abre la lista de nuevo.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        pending.finalJoinRoles = selectedRoleIds;
+        return await interaction.update(overviewFor(pending, pendingId));
+      }
+
       case 'wpage':
         return await interaction.update(groupFor(pending, pendingId, groupKey, weaponIndex));
 
@@ -570,7 +613,6 @@ async function handleWeaponConfigInteraction(interaction) {
 
       case 'msettings': {
         const reminderInput = interaction.fields.getTextInputValue('reminder').trim();
-        const roleInput = interaction.fields.getTextInputValue('roles').trim();
         const lootersInput = interaction.fields.getTextInputValue('looters').trim();
         const threadEnabled = parseYesNo(interaction.fields.getTextInputValue('thread'));
         const shouldSendMassDm = parseYesNo(interaction.fields.getTextInputValue('mass_dm'));
@@ -592,19 +634,6 @@ async function handleWeaponConfigInteraction(interaction) {
           return await interaction.reply({ content: `⚠️ ${error.message}`, flags: MessageFlags.Ephemeral });
         }
 
-        const parsedRoles = parseRolesToNotify(roleInput, interaction.guild);
-        if (parsedRoles.blockedEveryone) {
-          return await interaction.reply({ content: '⚠️ `@everyone` no está permitido.', flags: MessageFlags.Ephemeral });
-        }
-        if (parsedRoles.exceededLimit) {
-          return await interaction.reply({ content: `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles.`, flags: MessageFlags.Ephemeral });
-        }
-        if (parsedRoles.unresolved.length > 0) {
-          return await interaction.reply({
-            content: `⚠️ No se encontraron estos roles: ${parsedRoles.unresolved.join(', ')}`,
-            flags: MessageFlags.Ephemeral,
-          });
-        }
         if (pending.mode === 'edit' && looters < (pending.currentLooterCount || 0)) {
           return await interaction.reply({
             content: `⚠️ Hay ${pending.currentLooterCount} looters inscritos; el máximo no puede ser menor.`,
@@ -613,7 +642,6 @@ async function handleWeaponConfigInteraction(interaction) {
         }
 
         pending.finalReminder = finalReminder;
-        pending.finalNotificationRoles = parsedRoles.roleIds;
         pending.looters = looters;
         pending.threadEnabled = threadEnabled;
         pending.shouldSendMassDm = shouldSendMassDm;
@@ -823,7 +851,7 @@ async function handleConfirmRaidCreate(interaction) {
 
   const {
     templateName, template, eventTimestamp, title, color, image, description,
-    finalReminder, finalNotificationRoles, shouldSendMassDm, looters, threadEnabled, guildId, user,
+    finalReminder, finalNotificationRoles, finalJoinRoles, shouldSendMassDm, looters, threadEnabled, guildId, user,
   } = pending;
 
   const weaponOverrides = pending.weaponOverrides || emptyOverrides();
@@ -856,10 +884,19 @@ async function handleConfirmRaidCreate(interaction) {
     interaction.guild,
     finalNotificationRoles
   );
+  const { valid: joinRoles, missing: missingJoinRoles } = resolveMentionableRoles(
+    interaction.guild,
+    finalJoinRoles
+  );
 
   if (missingRoles.length > 0) {
     console.warn(
       `[WARN] handleConfirmRaidCreate: ${missingRoles.length} rol(es) ya no existen en el servidor, se publica sin mencionarlos: ${missingRoles.join(', ')}`
+    );
+  }
+  if (missingJoinRoles.length > 0) {
+    console.warn(
+      `[WARN] handleConfirmRaidCreate: ${missingJoinRoles.length} rol(es) de inscripción ya no existen y se omitieron: ${missingJoinRoles.join(', ')}`
     );
   }
 
@@ -901,6 +938,7 @@ async function handleConfirmRaidCreate(interaction) {
     image: image || null,
     reminder: finalReminder || null,
     rolesToNotify: mentionRoles,
+    rolesToJoin: joinRoles,
     leaderId: user.id,
     threadEnabled: !!threadEnabled,
     threadId: null,
@@ -1051,6 +1089,9 @@ async function handleConfirmRaidCreate(interaction) {
   } else if (missingRoles.length > 0) {
     avisos.push(`${missingRoles.length} rol(es) ya no existen y no se mencionaron`);
   }
+  if (missingJoinRoles.length > 0) {
+    avisos.push(`${missingJoinRoles.length} rol(es) de inscripción ya no existen y se omitieron`);
+  }
 
   await safeInteractionUpdate(interaction, {
     content: `✅ Raid **#${raidId}** publicado correctamente.${avisos.length > 0 ? ` (${avisos.join('; ')})` : ''}`,
@@ -1172,6 +1213,10 @@ async function handleConfirmRaidEdit(interaction) {
     interaction.guild,
     pending.finalNotificationRoles
   );
+  const { valid: joinRoles, missing: missingJoinRoles } = resolveMentionableRoles(
+    interaction.guild,
+    pending.finalJoinRoles
+  );
 
   if (pending.shouldSendMassDm && roles.length > 0) {
     const permit = consumeNotificationPermit(interaction.guild.id, interaction.user.id);
@@ -1217,6 +1262,7 @@ async function handleConfirmRaidEdit(interaction) {
       runtime.raid.imageSpacerUrl = null;
       runtime.raid.reminder = pending.finalReminder || null;
       runtime.raid.rolesToNotify = roles;
+      runtime.raid.rolesToJoin = joinRoles;
       if (!runtime.raid.looters) runtime.raid.looters = { max: 0, users: [] };
       runtime.raid.looters.max = pending.looters || 0;
 
@@ -1352,6 +1398,7 @@ async function handleConfirmRaidEdit(interaction) {
 
   pendingRaids.delete(pendingId);
   if (missingRoles.length > 0) warnings.push(`${missingRoles.length} rol(es) ya no existen`);
+  if (missingJoinRoles.length > 0) warnings.push(`${missingJoinRoles.length} rol(es) de inscripción ya no existen y se omitieron`);
   await safeInteractionUpdate(interaction, {
     content: `✅ Raid **#${pending.raidId}** actualizado correctamente.${warnings.length ? ` (${warnings.join('; ')})` : ''}`,
     embeds: [],
@@ -1466,6 +1513,14 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
+        .addStringOption((option) =>
+          option
+            .setName('roles_to_join')
+            .setDescription('Roles que pueden inscribirse; vacío permite a cualquiera')
+            .setRequired(false)
+            .setMaxLength(1000)
+            .setAutocomplete(true)
+        )
         .addIntegerOption((option) =>
           option
             .setName("looters")
@@ -1563,6 +1618,14 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
+        .addStringOption((option) =>
+          option
+            .setName('roles_to_join')
+            .setDescription('Nuevos roles que pueden inscribirse; vacío permite a cualquiera')
+            .setRequired(false)
+            .setMaxLength(1000)
+            .setAutocomplete(true)
+        )
         .addIntegerOption((option) =>
           option
             .setName("looters")
@@ -1597,7 +1660,7 @@ module.exports = {
 
     const focusedOption = interaction.options.getFocused(true);
 
-    if (focusedOption.name === 'roles_to_notify') {
+    if (focusedOption.name === 'roles_to_notify' || focusedOption.name === 'roles_to_join') {
       // El autocompletado conserva lo ya escrito y solo completa el último
       // tramo, de modo que cada selección va acumulando roles en el campo.
       try {
@@ -1606,7 +1669,7 @@ module.exports = {
           await interaction.respond(choices);
         }
       } catch (error) {
-        console.error('[ERROR] Error en autocomplete de roles_to_notify:', error.message);
+        console.error(`[ERROR] Error en autocomplete de ${focusedOption.name}:`, error.message);
         try {
           if (!interaction.responded && !interaction.deferred && !interaction.replied) {
             await interaction.respond([]);
@@ -1707,6 +1770,7 @@ module.exports = {
       const description = interaction.options.getString("description");
       const reminder = interaction.options.getString("reminder");
       const rolesToNotifyInput = interaction.options.getString("roles_to_notify");
+      const rolesToJoinInput = interaction.options.getString("roles_to_join");
       const looters = interaction.options.getInteger("looters");
       const threadEnabled = interaction.options.getBoolean("thread") ?? false;
       const user = interaction.user;
@@ -1848,6 +1912,12 @@ module.exports = {
         exceededLimit: tooManyRoles,
         blockedEveryone,
       } = parseRolesToNotify(rolesToNotifyInput, interaction.guild);
+      const {
+        roleIds: parsedJoinRoles,
+        unresolved: unresolvedJoinRoles,
+        exceededLimit: tooManyJoinRoles,
+        blockedEveryone: blockedEveryoneForJoin,
+      } = parseRolesToNotify(rolesToJoinInput, interaction.guild);
       const usesTemplateRoles = !String(rolesToNotifyInput || '').trim();
       const finalNotificationRoles = usesTemplateRoles
         ? [...new Set(Array.isArray(template.roles) ? template.roles : [])]
@@ -1906,6 +1976,36 @@ module.exports = {
         });
       }
 
+      if (blockedEveryoneForJoin) {
+        return await safeReply(interaction, {
+          embeds: [createErrorEmbed(
+            '@everyone No Admitido',
+            'El rol `@everyone` no puede usarse para restringir las inscripciones.'
+          )],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      if (unresolvedJoinRoles.length > 0) {
+        return await safeReply(interaction, {
+          embeds: [createErrorEmbed(
+            'Roles No Encontrados',
+            `No se pudieron identificar estos roles para inscribirse: ${unresolvedJoinRoles.map((role) => `\`${role}\``).join(', ')}`
+          )],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      if (tooManyJoinRoles) {
+        return await safeReply(interaction, {
+          embeds: [createWarningEmbed(
+            'Demasiados Roles',
+            `Solo se pueden elegir hasta ${MAX_ROLES_TO_NOTIFY} roles para inscribirse.`
+          )],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
       if (finalNotificationRoles.length > 0) {
         console.log('[DEBUG RAID] Usando roles del comando:', finalNotificationRoles);
       } else {
@@ -1926,6 +2026,7 @@ module.exports = {
         description,
         finalReminder,
         finalNotificationRoles,
+        finalJoinRoles: parsedJoinRoles,
         shouldSendMassDm,
         looters,
         threadEnabled,

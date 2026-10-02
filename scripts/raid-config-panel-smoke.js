@@ -56,7 +56,7 @@ const newSession = (customTemplate = template, extra = {}) => {
   raid.pendingRaids.set(PENDING_ID, {
     mode: 'create', templateName: 'Raid', template: customTemplate, eventTimestamp: 4_102_444_800, time: '00:00',
     title: 'Raid', color: null, image: null, description: null,
-    finalReminder: null, finalNotificationRoles: [], shouldSendMassDm: false, looters: null,
+    finalReminder: null, finalNotificationRoles: [], finalJoinRoles: [], shouldSendMassDm: false, looters: null,
     guildId: '1', user: LEADER, weaponOverrides,
     ...extra,
   });
@@ -218,6 +218,25 @@ const run = async (customId, options) => {
     const pending = raid.pendingRaids.get(PENDING_ID);
     assert.deepStrictEqual(pending.finalNotificationRoles, ['tank-role', 'healer-role']);
     assert.strictEqual(pending.shouldSendMassDm, true);
+    assert.ok(calls.update, 'debe redibujar el panel tras seleccionar roles');
+  });
+
+  await test('muestra una lista nativa de roles para restringir inscripciones y conserva la selección', async () => {
+    newSession(undefined, { finalJoinRoles: ['tank-role'] });
+    const firstPanel = await run(`raidcfg-home-${PENDING_ID}`);
+    const rolePicker = firstPanel.update.components
+      .flatMap((row) => row.components)
+      .find((component) => component.data.custom_id === `raidcfg-joinroles-${PENDING_ID}`);
+    assert.ok(rolePicker, 'debe incluir un selector de roles para inscribirse');
+    assert.strictEqual(rolePicker.data.type, 6, 'debe usar RoleSelectMenu de Discord');
+    assert.deepStrictEqual(rolePicker.data.default_values.map((role) => role.id), ['tank-role']);
+
+    const calls = await run(`raidcfg-joinroles-${PENDING_ID}`, {
+      values: ['tank-role', 'healer-role'],
+      roleIds: ['tank-role', 'healer-role'],
+    });
+    const pending = raid.pendingRaids.get(PENDING_ID);
+    assert.deepStrictEqual(pending.finalJoinRoles, ['tank-role', 'healer-role']);
     assert.ok(calls.update, 'debe redibujar el panel tras seleccionar roles');
   });
 
