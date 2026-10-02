@@ -56,6 +56,23 @@ const {
  */
 const pendingRaids = new Map();
 const shouldNotifyRolesByDefault = (roleIds) => Array.isArray(roleIds) && roleIds.length > 0;
+const MAX_EXCLUDED_USERS = 20;
+
+/** Acepta menciones de Discord o IDs; los nombres no son únicos ni seguros. */
+function parseExcludedUserIds(input) {
+  const tokens = String(input || '').trim().split(/[\s,]+/).filter(Boolean);
+  const userIds = [];
+  const unresolved = [];
+  for (const token of tokens) {
+    const match = token.match(/^<@!?(\d{15,20})>$/) || token.match(/^(\d{15,20})$/);
+    if (!match) {
+      unresolved.push(token);
+      continue;
+    }
+    if (!userIds.includes(match[1])) userIds.push(match[1]);
+  }
+  return { userIds: userIds.slice(0, MAX_EXCLUDED_USERS), unresolved, exceededLimit: userIds.length > MAX_EXCLUDED_USERS };
+}
 
 const panelOptions = (pending, page = 0) => ({
   page,
@@ -267,6 +284,8 @@ async function executeEditSubcommand(interaction) {
   const requestedReminder = interaction.options.getString('reminder');
   const requestedRoles = interaction.options.getString('roles_to_notify');
   const requestedJoinRoles = interaction.options.getString('roles_to_join');
+  const requestedExcludedRoles = interaction.options.getString('excluded_roles');
+  const requestedExcludedUsers = interaction.options.getString('excluded_users');
 
   const time = requestedTime || runtime.raid.time;
   let eventTimestamp = runtime.raid.eventTimestamp;
@@ -321,6 +340,34 @@ async function executeEditSubcommand(interaction) {
     finalJoinRoles = parsed.roleIds;
   }
 
+  let excludedRoleIds = Array.from(runtime.raid.excludedRoleIds || []);
+  if (requestedExcludedRoles !== null) {
+    const parsed = parseRolesToNotify(requestedExcludedRoles, interaction.guild);
+    if (parsed.blockedEveryone || parsed.exceededLimit || parsed.unresolved.length > 0) {
+      return interaction.editReply({
+        content: parsed.blockedEveryone
+          ? '⚠️ `@everyone` no puede excluirse de un raid.'
+          : parsed.exceededLimit
+            ? `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles excluidos.`
+            : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
+      });
+    }
+    excludedRoleIds = parsed.roleIds;
+  }
+
+  let excludedUserIds = Array.from(runtime.raid.excludedUserIds || []);
+  if (requestedExcludedUsers !== null) {
+    const parsed = parseExcludedUserIds(requestedExcludedUsers);
+    if (parsed.exceededLimit || parsed.unresolved.length > 0) {
+      return interaction.editReply({
+        content: parsed.exceededLimit
+          ? `⚠️ Solo se admiten ${MAX_EXCLUDED_USERS} miembros excluidos.`
+          : `⚠️ Indica menciones o IDs válidos: ${parsed.unresolved.join(', ')}`,
+      });
+    }
+    excludedUserIds = parsed.userIds;
+  }
+
   let template = await getTemplateByName(runtime.raid.templateName, interaction.guild.id);
   if (!template) {
     const weapons = {};
@@ -364,6 +411,8 @@ async function executeEditSubcommand(interaction) {
     finalReminder,
     finalNotificationRoles,
     finalJoinRoles,
+    excludedRoleIds,
+    excludedUserIds,
     shouldSendMassDm: false,
     looters: requestedLooters ?? runtime.raid.looters?.max ?? 0,
     currentLooterCount: (runtime.raid.looters?.users || []).length,
@@ -851,7 +900,7 @@ async function handleConfirmRaidCreate(interaction) {
 
   const {
     templateName, template, eventTimestamp, title, color, image, description,
-    finalReminder, finalNotificationRoles, finalJoinRoles, shouldSendMassDm, looters, threadEnabled, guildId, user,
+    finalReminder, finalNotificationRoles, finalJoinRoles, excludedRoleIds, excludedUserIds, shouldSendMassDm, looters, threadEnabled, guildId, user,
   } = pending;
 
   const weaponOverrides = pending.weaponOverrides || emptyOverrides();
@@ -888,6 +937,10 @@ async function handleConfirmRaidCreate(interaction) {
     interaction.guild,
     finalJoinRoles
   );
+  const { valid: excludedRoles, missing: missingExcludedRoles } = resolveMentionableRoles(
+    interaction.guild,
+    excludedRoleIds
+  );
 
   if (missingRoles.length > 0) {
     console.warn(
@@ -897,6 +950,11 @@ async function handleConfirmRaidCreate(interaction) {
   if (missingJoinRoles.length > 0) {
     console.warn(
       `[WARN] handleConfirmRaidCreate: ${missingJoinRoles.length} rol(es) de inscripción ya no existen y se omitieron: ${missingJoinRoles.join(', ')}`
+    );
+  }
+  if (missingExcludedRoles.length > 0) {
+    console.warn(
+      `[WARN] handleConfirmRaidCreate: ${missingExcludedRoles.length} rol(es) excluidos ya no existen y se omitieron: ${missingExcludedRoles.join(', ')}`
     );
   }
 
@@ -939,6 +997,8 @@ async function handleConfirmRaidCreate(interaction) {
     reminder: finalReminder || null,
     rolesToNotify: mentionRoles,
     rolesToJoin: joinRoles,
+    excludedRoleIds: excludedRoles,
+    excludedUserIds,
     leaderId: user.id,
     threadEnabled: !!threadEnabled,
     threadId: null,
@@ -1217,6 +1277,10 @@ async function handleConfirmRaidEdit(interaction) {
     interaction.guild,
     pending.finalJoinRoles
   );
+  const { valid: excludedRoles, missing: missingExcludedRoles } = resolveMentionableRoles(
+    interaction.guild,
+    pending.excludedRoleIds
+  );
 
   if (pending.shouldSendMassDm && roles.length > 0) {
     const permit = consumeNotificationPermit(interaction.guild.id, interaction.user.id);
@@ -1263,6 +1327,8 @@ async function handleConfirmRaidEdit(interaction) {
       runtime.raid.reminder = pending.finalReminder || null;
       runtime.raid.rolesToNotify = roles;
       runtime.raid.rolesToJoin = joinRoles;
+      runtime.raid.excludedRoleIds = excludedRoles;
+      runtime.raid.excludedUserIds = pending.excludedUserIds;
       if (!runtime.raid.looters) runtime.raid.looters = { max: 0, users: [] };
       runtime.raid.looters.max = pending.looters || 0;
 
@@ -1399,6 +1465,7 @@ async function handleConfirmRaidEdit(interaction) {
   pendingRaids.delete(pendingId);
   if (missingRoles.length > 0) warnings.push(`${missingRoles.length} rol(es) ya no existen`);
   if (missingJoinRoles.length > 0) warnings.push(`${missingJoinRoles.length} rol(es) de inscripción ya no existen y se omitieron`);
+  if (missingExcludedRoles.length > 0) warnings.push(`${missingExcludedRoles.length} rol(es) excluidos ya no existen y se omitieron`);
   await safeInteractionUpdate(interaction, {
     content: `✅ Raid **#${pending.raidId}** actualizado correctamente.${warnings.length ? ` (${warnings.join('; ')})` : ''}`,
     embeds: [],
@@ -1521,6 +1588,21 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
+        .addStringOption((option) =>
+          option
+            .setName('excluded_roles')
+            .setDescription('Roles que no pueden participar en este raid (opcional)')
+            .setRequired(false)
+            .setMaxLength(1000)
+            .setAutocomplete(true)
+        )
+        .addStringOption((option) =>
+          option
+            .setName('excluded_users')
+            .setDescription('Miembros excluidos: menciones o IDs separados por coma (opcional)')
+            .setRequired(false)
+            .setMaxLength(1000)
+        )
         .addIntegerOption((option) =>
           option
             .setName("looters")
@@ -1626,6 +1708,21 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
+        .addStringOption((option) =>
+          option
+            .setName('excluded_roles')
+            .setDescription('Nuevos roles excluidos; vacío elimina la exclusión')
+            .setRequired(false)
+            .setMaxLength(1000)
+            .setAutocomplete(true)
+        )
+        .addStringOption((option) =>
+          option
+            .setName('excluded_users')
+            .setDescription('Nuevos miembros excluidos: menciones o IDs; vacío elimina')
+            .setRequired(false)
+            .setMaxLength(1000)
+        )
         .addIntegerOption((option) =>
           option
             .setName("looters")
@@ -1660,7 +1757,7 @@ module.exports = {
 
     const focusedOption = interaction.options.getFocused(true);
 
-    if (focusedOption.name === 'roles_to_notify' || focusedOption.name === 'roles_to_join') {
+    if (focusedOption.name === 'roles_to_notify' || focusedOption.name === 'roles_to_join' || focusedOption.name === 'excluded_roles') {
       // El autocompletado conserva lo ya escrito y solo completa el último
       // tramo, de modo que cada selección va acumulando roles en el campo.
       try {
@@ -1771,6 +1868,8 @@ module.exports = {
       const reminder = interaction.options.getString("reminder");
       const rolesToNotifyInput = interaction.options.getString("roles_to_notify");
       const rolesToJoinInput = interaction.options.getString("roles_to_join");
+      const excludedRolesInput = interaction.options.getString('excluded_roles');
+      const excludedUsersInput = interaction.options.getString('excluded_users');
       const looters = interaction.options.getInteger("looters");
       const threadEnabled = interaction.options.getBoolean("thread") ?? false;
       const user = interaction.user;
@@ -1918,6 +2017,13 @@ module.exports = {
         exceededLimit: tooManyJoinRoles,
         blockedEveryone: blockedEveryoneForJoin,
       } = parseRolesToNotify(rolesToJoinInput, interaction.guild);
+      const {
+        roleIds: parsedExcludedRoles,
+        unresolved: unresolvedExcludedRoles,
+        exceededLimit: tooManyExcludedRoles,
+        blockedEveryone: blockedEveryoneForExcluded,
+      } = parseRolesToNotify(excludedRolesInput, interaction.guild);
+      const parsedExcludedUsers = parseExcludedUserIds(excludedUsersInput);
       const usesTemplateRoles = !String(rolesToNotifyInput || '').trim();
       const finalNotificationRoles = usesTemplateRoles
         ? [...new Set(Array.isArray(template.roles) ? template.roles : [])]
@@ -2006,6 +2112,42 @@ module.exports = {
         });
       }
 
+      if (blockedEveryoneForExcluded) {
+        return await safeReply(interaction, {
+          embeds: [createErrorEmbed('@everyone No Admitido', 'El rol `@everyone` no puede excluirse de un raid.')],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      if (unresolvedExcludedRoles.length > 0) {
+        return await safeReply(interaction, {
+          embeds: [createErrorEmbed(
+            'Roles No Encontrados',
+            `No se pudieron identificar estos roles excluidos: ${unresolvedExcludedRoles.map((role) => `\`${role}\``).join(', ')}`
+          )],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      if (tooManyExcludedRoles) {
+        return await safeReply(interaction, {
+          embeds: [createWarningEmbed('Demasiados Roles', `Solo se pueden excluir hasta ${MAX_ROLES_TO_NOTIFY} roles en un raid.`)],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      if (parsedExcludedUsers.exceededLimit || parsedExcludedUsers.unresolved.length > 0) {
+        return await safeReply(interaction, {
+          embeds: [createErrorEmbed(
+            'Miembros Excluidos Inválidos',
+            parsedExcludedUsers.exceededLimit
+              ? `Solo se pueden excluir hasta ${MAX_EXCLUDED_USERS} miembros en un raid.`
+              : `Usa menciones o IDs válidos: ${parsedExcludedUsers.unresolved.map((user) => `\`${user}\``).join(', ')}`
+          )],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
       if (finalNotificationRoles.length > 0) {
         console.log('[DEBUG RAID] Usando roles del comando:', finalNotificationRoles);
       } else {
@@ -2027,6 +2169,8 @@ module.exports = {
         finalReminder,
         finalNotificationRoles,
         finalJoinRoles: parsedJoinRoles,
+        excludedRoleIds: parsedExcludedRoles,
+        excludedUserIds: parsedExcludedUsers.userIds,
         shouldSendMassDm,
         looters,
         threadEnabled,
@@ -2065,5 +2209,6 @@ module.exports = {
   resolveMentionableRoles,
   safeInteractionUpdate,
   shouldNotifyRolesByDefault,
+  parseExcludedUserIds,
 };
 

@@ -15,7 +15,8 @@ const {
   parseRolesToNotify,
   buildRolesAutocompleteChoices,
 } = require('../src/utils/roleMentions');
-const { canJoinRaid } = require('../src/utils/raidInteractions');
+const { canJoinRaid, getJoinRestrictionReason } = require('../src/utils/raidInteractions');
+const { parseExcludedUserIds } = require('../src/commands/utility/raid');
 
 let passed = 0;
 const test = (name, fn) => {
@@ -234,6 +235,23 @@ test('Sin un rol permitido no se puede inscribir', () => {
   const member = { roles: { cache: new Map([['otro-rol', {}]]) } };
   assert.strictEqual(canJoinRaid({ rolesToJoin: ['200000000000000001'] }, member), false);
   assert.strictEqual(canJoinRaid({ rolesToJoin: ['200000000000000001'] }, null), false);
+});
+
+test('Las exclusiones por rol o miembro tienen prioridad sobre los roles permitidos', () => {
+  const member = { roles: { cache: new Map([['allowed-role', {}], ['excluded-role', {}]]) } };
+  const raid = { rolesToJoin: ['allowed-role'], excludedRoleIds: ['excluded-role'], excludedUserIds: ['blocked-user'] };
+  assert.strictEqual(canJoinRaid(raid, member, 'any-user'), false);
+  assert.strictEqual(getJoinRestrictionReason(raid, member, 'any-user'), 'excluded');
+  assert.strictEqual(
+    canJoinRaid({ rolesToJoin: ['allowed-role'], excludedUserIds: ['blocked-user'] }, { roles: { cache: new Map([['allowed-role', {}]]) } }, 'blocked-user'),
+    false
+  );
+});
+
+test('Los miembros excluidos solo aceptan menciones o IDs y se deduplican', () => {
+  const parsed = parseExcludedUserIds('<@123456789012345678>, <@!234567890123456789> 123456789012345678');
+  assert.deepStrictEqual(parsed.userIds, ['123456789012345678', '234567890123456789']);
+  assert.deepStrictEqual(parseExcludedUserIds('alguien').unresolved, ['alguien']);
 });
 
 console.log(`\n${process.exitCode ? '❌ Fallos detectados' : `✅ ${passed} comprobaciones OK`}\n`);
