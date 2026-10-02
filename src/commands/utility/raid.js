@@ -56,23 +56,6 @@ const {
  */
 const pendingRaids = new Map();
 const shouldNotifyRolesByDefault = (roleIds) => Array.isArray(roleIds) && roleIds.length > 0;
-const MAX_EXCLUDED_USERS = 20;
-
-/** Acepta menciones de Discord o IDs; los nombres no son únicos ni seguros. */
-function parseExcludedUserIds(input) {
-  const tokens = String(input || '').trim().split(/[\s,]+/).filter(Boolean);
-  const userIds = [];
-  const unresolved = [];
-  for (const token of tokens) {
-    const match = token.match(/^<@!?(\d{15,20})>$/) || token.match(/^(\d{15,20})$/);
-    if (!match) {
-      unresolved.push(token);
-      continue;
-    }
-    if (!userIds.includes(match[1])) userIds.push(match[1]);
-  }
-  return { userIds: userIds.slice(0, MAX_EXCLUDED_USERS), unresolved, exceededLimit: userIds.length > MAX_EXCLUDED_USERS };
-}
 
 const panelOptions = (pending, page = 0) => ({
   page,
@@ -285,7 +268,7 @@ async function executeEditSubcommand(interaction) {
   const requestedRoles = interaction.options.getString('roles_to_notify');
   const requestedJoinRoles = interaction.options.getString('roles_to_join');
   const requestedExcludedRoles = interaction.options.getString('excluded_roles');
-  const requestedExcludedUsers = interaction.options.getString('excluded_users');
+  const requestedExcludedUser = interaction.options.getUser('excluded_user');
 
   const time = requestedTime || runtime.raid.time;
   let eventTimestamp = runtime.raid.eventTimestamp;
@@ -356,17 +339,7 @@ async function executeEditSubcommand(interaction) {
   }
 
   let excludedUserIds = Array.from(runtime.raid.excludedUserIds || []);
-  if (requestedExcludedUsers !== null) {
-    const parsed = parseExcludedUserIds(requestedExcludedUsers);
-    if (parsed.exceededLimit || parsed.unresolved.length > 0) {
-      return interaction.editReply({
-        content: parsed.exceededLimit
-          ? `⚠️ Solo se admiten ${MAX_EXCLUDED_USERS} miembros excluidos.`
-          : `⚠️ Indica menciones o IDs válidos: ${parsed.unresolved.join(', ')}`,
-      });
-    }
-    excludedUserIds = parsed.userIds;
-  }
+  if (requestedExcludedUser) excludedUserIds = [requestedExcludedUser.id];
 
   let template = await getTemplateByName(runtime.raid.templateName, interaction.guild.id);
   if (!template) {
@@ -1596,12 +1569,11 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
-        .addStringOption((option) =>
+        .addUserOption((option) =>
           option
-            .setName('excluded_users')
-            .setDescription('Miembros excluidos: menciones o IDs separados por coma (opcional)')
+            .setName('excluded_user')
+            .setDescription('Persona que no puede participar en este raid (opcional)')
             .setRequired(false)
-            .setMaxLength(1000)
         )
         .addIntegerOption((option) =>
           option
@@ -1716,12 +1688,11 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
-        .addStringOption((option) =>
+        .addUserOption((option) =>
           option
-            .setName('excluded_users')
-            .setDescription('Nuevos miembros excluidos: menciones o IDs; vacío elimina')
+            .setName('excluded_user')
+            .setDescription('Nueva persona excluida; búscala y selecciónala')
             .setRequired(false)
-            .setMaxLength(1000)
         )
         .addIntegerOption((option) =>
           option
@@ -1869,7 +1840,7 @@ module.exports = {
       const rolesToNotifyInput = interaction.options.getString("roles_to_notify");
       const rolesToJoinInput = interaction.options.getString("roles_to_join");
       const excludedRolesInput = interaction.options.getString('excluded_roles');
-      const excludedUsersInput = interaction.options.getString('excluded_users');
+      const excludedUser = interaction.options.getUser('excluded_user');
       const looters = interaction.options.getInteger("looters");
       const threadEnabled = interaction.options.getBoolean("thread") ?? false;
       const user = interaction.user;
@@ -2023,7 +1994,6 @@ module.exports = {
         exceededLimit: tooManyExcludedRoles,
         blockedEveryone: blockedEveryoneForExcluded,
       } = parseRolesToNotify(excludedRolesInput, interaction.guild);
-      const parsedExcludedUsers = parseExcludedUserIds(excludedUsersInput);
       const usesTemplateRoles = !String(rolesToNotifyInput || '').trim();
       const finalNotificationRoles = usesTemplateRoles
         ? [...new Set(Array.isArray(template.roles) ? template.roles : [])]
@@ -2136,18 +2106,6 @@ module.exports = {
         });
       }
 
-      if (parsedExcludedUsers.exceededLimit || parsedExcludedUsers.unresolved.length > 0) {
-        return await safeReply(interaction, {
-          embeds: [createErrorEmbed(
-            'Miembros Excluidos Inválidos',
-            parsedExcludedUsers.exceededLimit
-              ? `Solo se pueden excluir hasta ${MAX_EXCLUDED_USERS} miembros en un raid.`
-              : `Usa menciones o IDs válidos: ${parsedExcludedUsers.unresolved.map((user) => `\`${user}\``).join(', ')}`
-          )],
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
       if (finalNotificationRoles.length > 0) {
         console.log('[DEBUG RAID] Usando roles del comando:', finalNotificationRoles);
       } else {
@@ -2170,7 +2128,7 @@ module.exports = {
         finalNotificationRoles,
         finalJoinRoles: parsedJoinRoles,
         excludedRoleIds: parsedExcludedRoles,
-        excludedUserIds: parsedExcludedUsers.userIds,
+        excludedUserIds: excludedUser ? [excludedUser.id] : [],
         shouldSendMassDm,
         looters,
         threadEnabled,
@@ -2209,6 +2167,5 @@ module.exports = {
   resolveMentionableRoles,
   safeInteractionUpdate,
   shouldNotifyRolesByDefault,
-  parseExcludedUserIds,
 };
 
