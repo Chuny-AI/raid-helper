@@ -80,7 +80,7 @@ const buildPermissionOverwrites = (guild, allowedIds, visibilityRoleId = null) =
   // Este rol puede detectar que el raid está activo, pero no entrar: Connect
   // sigue denegado por el overwrite de @everyone. Solo los inscritos reciben
   // Connect como permiso individual.
-  if (visibilityRoleId && visibilityRoleId !== guild.id) {
+  if (visibilityRoleId && visibilityRoleId !== guild.id && guild.roles?.cache?.has(visibilityRoleId)) {
     overwrites.push({
       id: visibilityRoleId,
       type: OverwriteType.Role,
@@ -105,7 +105,7 @@ const fetchRaidVoiceChannel = async (guild, channelId) => {
     || await guild.channels.fetch(channelId).catch(() => null);
 };
 
-const createRaidVoiceChannel = async ({ guild, raid, actorId, visibilityRoleId = null }) => {
+const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
   if (raid.voiceChannelId) {
     const existing = await fetchRaidVoiceChannel(guild, raid.voiceChannelId);
     if (existing?.type === ChannelType.GuildVoice) {
@@ -141,7 +141,7 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId, visibilityRoleId =
       name: buildRaidVoiceName(raid),
       type: ChannelType.GuildVoice,
       parent: category.id,
-      permissionOverwrites: buildPermissionOverwrites(guild, allowedIds, visibilityRoleId),
+      permissionOverwrites: buildPermissionOverwrites(guild, allowedIds, raid.voiceVisibilityRoleId),
       reason: `Canal privado para el raid #${raid.eventId}`,
     });
     await TemporaryVoiceChannel.findOneAndUpdate(
@@ -192,7 +192,7 @@ const syncRaidVoiceChannelNow = async (guild, raid) => {
 
   const allowedIds = await resolveLiveAllowedIds(guild, raid);
   await channel.permissionOverwrites.set(
-    buildPermissionOverwrites(guild, allowedIds),
+    buildPermissionOverwrites(guild, allowedIds, raid.voiceVisibilityRoleId),
     `Sincronización de participantes del raid #${raid.eventId}`,
   );
   // Quitar Connect no expulsa de inmediato a quien ya está conectado.

@@ -10,7 +10,7 @@ const RaidVoiceConfig = require('../src/database/models/RaidVoiceConfig');
 const raidVoiceConfig = require('../src/services/raidVoiceConfigService');
 const raidVoice = require('../src/utils/raidVoice');
 const raidRegistry = require('../src/services/raidRegistry');
-const { handleStartEvent, routeRaidInteraction, resolveVisibilityRole } = require('../src/utils/raidInteractions');
+const { handleStartEvent, routeRaidInteraction } = require('../src/utils/raidInteractions');
 const { sendRaidStartNotice } = require('../src/utils/raidStartNotice');
 const { renderRaidEmbed, renderRaidComponents } = require('../src/utils/raidRender');
 
@@ -29,6 +29,7 @@ const raid = {
   status: 'active',
   leaderId: 'leader',
   voiceChannelId: null,
+  voiceVisibilityRoleId: 'viewer-role',
   groups: [{ groupKey: 'dps', displayName: 'DPS', emoji: '⚔️', maxPlayers: 3, order: 0 }],
   slots: [{
     slotId: 'dps~0', groupKey: 'dps', itemIndex: 0, label: 'DPS', emoji: '⚔️', units: 3,
@@ -74,7 +75,10 @@ const raid = {
   };
   const guild = {
     id: 'guild-1',
-    roles: { cache: new Map([['guild-1', { id: 'guild-1', name: '@everyone' }]]) },
+    roles: { cache: new Map([
+      ['guild-1', { id: 'guild-1', name: '@everyone' }],
+      ['viewer-role', { id: 'viewer-role', name: 'Espectadores' }],
+    ]) },
     members: {
       me: { id: 'bot-1' },
       cache: memberCache,
@@ -145,6 +149,8 @@ const raid = {
   for (const id of ['leader', 'user-1', 'user-2', 'looter-1']) {
     assert(overwriteById.get(id).allow.includes(PermissionFlagsBits.Connect), `${id} debe poder entrar`);
   }
+  assert(overwriteById.get('viewer-role').allow.includes(PermissionFlagsBits.ViewChannel));
+  assert.equal(overwriteById.get('viewer-role').allow.includes(PermissionFlagsBits.Connect), false);
   assert.equal(overwriteById.has('waiting-1'), false);
   assert.equal(overwriteById.has('absent-1'), false);
 
@@ -243,23 +249,6 @@ const raid = {
     .every((component) => component.data.custom_id !== `raid:finish:${flowRaid.eventId}`),
   'el mensaje iniciado no debe mostrar Finalizar evento');
   raidRegistry.unregister(flowRaid.eventId);
-
-  const modalRaid = { ...raid, eventId: 'VOICEMODAL', voiceChannelId: null, status: 'active' };
-  raidRegistry.register({ raidId: modalRaid.eventId, raid: modalRaid, message: { id: 'message-modal' }, templateName: 'T' });
-  let startModal;
-  await routeRaidInteraction({
-    customId: `raid:start:${modalRaid.eventId}`,
-    guild,
-    message: { id: 'message-modal' },
-    member: { id: 'leader', permissions: { has: () => false } },
-    user: { id: 'leader' },
-    showModal: async (modal) => { startModal = modal; },
-  });
-  assert.equal(startModal.data.custom_id, `raid:startsubmit:${modalRaid.eventId}`);
-  assert.equal(startModal.components[0].components[0].data.custom_id, 'visibility-role');
-  assert.equal(startModal.components[0].components[0].data.required, false);
-  assert.equal(resolveVisibilityRole(guild, '@everyone').error.includes('@everyone'), true);
-  raidRegistry.unregister(modalRaid.eventId);
 
   // Si alguien confirma un arma a la vez que el líder inicia, el orden del
   // lock manda: una inscripción que queda detrás del inicio debe rechazarse.

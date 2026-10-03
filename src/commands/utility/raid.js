@@ -868,7 +868,7 @@ async function handleConfirmRaidCreate(interaction) {
 
   const {
     templateName, template, eventTimestamp, title, color, image, description,
-    finalReminder, finalNotificationRoles, finalJoinRoles, excludedRoleIds, shouldSendMassDm, looters, threadEnabled, guildId, user,
+    finalReminder, finalNotificationRoles, finalJoinRoles, excludedRoleIds, voiceVisibilityRoleId, shouldSendMassDm, looters, threadEnabled, guildId, user,
   } = pending;
 
   const weaponOverrides = pending.weaponOverrides || emptyOverrides();
@@ -966,6 +966,7 @@ async function handleConfirmRaidCreate(interaction) {
     rolesToNotify: mentionRoles,
     rolesToJoin: joinRoles,
     excludedRoleIds: excludedRoles,
+    voiceVisibilityRoleId: voiceVisibilityRoleId || null,
     leaderId: user.id,
     threadEnabled: !!threadEnabled,
     threadId: null,
@@ -1562,6 +1563,12 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
+        .addRoleOption((option) =>
+          option
+            .setName('voice_visibility_role')
+            .setDescription('Rol que podrá ver la sala al iniciar; vacío = solo participantes')
+            .setRequired(false)
+        )
         .addIntegerOption((option) =>
           option
             .setName("looters")
@@ -1821,10 +1828,21 @@ module.exports = {
       const rolesToNotifyInput = interaction.options.getString("roles_to_notify");
       const rolesToJoinInput = interaction.options.getString("roles_to_join");
       const excludedRolesInput = interaction.options.getString('excluded_roles');
+      const voiceVisibilityRole = interaction.options.getRole('voice_visibility_role');
       const looters = interaction.options.getInteger("looters");
       const threadEnabled = interaction.options.getBoolean("thread") ?? false;
       const user = interaction.user;
       const guildId = interaction.guild.id;
+
+      if (voiceVisibilityRole?.id === guildId) {
+        return await safeReply(interaction, {
+          embeds: [createErrorEmbed(
+            '@everyone No Admitido',
+            'El rol `@everyone` no puede usarse para ver la sala del raid.'
+          )],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
 
       /**
        * Asegurar que el servidor existe en la base de datos
@@ -2108,6 +2126,7 @@ module.exports = {
         finalNotificationRoles,
         finalJoinRoles: parsedJoinRoles,
         excludedRoleIds: parsedExcludedRoles,
+        voiceVisibilityRoleId: voiceVisibilityRole?.id || null,
         shouldSendMassDm,
         looters,
         threadEnabled,

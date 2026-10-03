@@ -70,6 +70,13 @@ const RaidEventSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Rol opcional elegido al crear el raid. Puede ver la sala de voz cuando
+  // empieza el evento, pero no conectarse salvo que también sea participante.
+  // Sin rol, la sala queda visible solo para líder y participantes inscritos.
+  voiceVisibilityRoleId: {
+    type: String,
+    default: null
+  },
 
   // --- Estado estructurado (stateVersion 2) ---
   // Versión del formato de estado. 1 = legacy (solo embedSnapshot de texto).

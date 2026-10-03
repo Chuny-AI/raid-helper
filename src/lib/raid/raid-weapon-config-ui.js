@@ -274,6 +274,7 @@ const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
           `**Roles a notificar:** ${(draft.finalNotificationRoles || []).length}`,
           `**Roles para inscribirse:** ${(draft.finalJoinRoles || []).length || 'Cualquiera'}`,
           `**Roles excluidos:** ${(draft.excludedRoleIds || []).length}`,
+          `**Visibilidad de sala:** ${draft.voiceVisibilityRoleId ? `<@&${draft.voiceVisibilityRoleId}>` : 'Solo participantes'}`,
           `**Looters:** ${draft.looters || 0}`,
           `**Hilo privado:** ${draft.threadEnabled ? 'Sí' : 'No'}`,
         ].join('\n'),
