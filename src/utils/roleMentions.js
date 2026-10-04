@@ -13,8 +13,10 @@
  * espacios. La coma es lo que permite usar nombres con espacios.
  */
 
-/** Máximo de roles admitidos en una sola notificación. */
-const MAX_ROLES_TO_NOTIFY = 20;
+/** Máximo de roles que Discord permite seleccionar en una sola tanda. */
+const MAX_ROLE_SELECT_VALUES = 25;
+/** Máximo de roles que Discord permite incluir en allowedMentions por mensaje. */
+const MAX_MENTION_ROLES_PER_MESSAGE = 100;
 
 const ROLE_MENTION_REGEX = /<@&(\d{17,20})>/g;
 const SNOWFLAKE_REGEX = /^\d{17,20}$/;
@@ -91,10 +93,10 @@ function resolveRoleToken(token, guild) {
  *
  * @param {string | null | undefined} input Texto tal cual lo escribió el usuario.
  * @param {import('discord.js').Guild} guild Servidor donde se resuelven los roles.
- * @returns {{ roleIds: string[], unresolved: string[], exceededLimit: boolean, blockedEveryone: boolean }}
+ * @returns {{ roleIds: string[], unresolved: string[], blockedEveryone: boolean }}
  */
 function parseRolesToNotify(input, guild) {
-  const result = { roleIds: [], unresolved: [], exceededLimit: false, blockedEveryone: false };
+  const result = { roleIds: [], unresolved: [], blockedEveryone: false };
 
   if (!input || typeof input !== 'string' || !input.trim()) return result;
 
@@ -106,10 +108,6 @@ function parseRolesToNotify(input, guild) {
     // El rol @everyone comparte id con el servidor.
     if (roleId === guild.id) {
       result.blockedEveryone = true;
-      return;
-    }
-    if (result.roleIds.length >= MAX_ROLES_TO_NOTIFY) {
-      result.exceededLimit = true;
       return;
     }
     seen.add(roleId);
@@ -129,6 +127,41 @@ function parseRolesToNotify(input, guild) {
   }
 
   return result;
+}
+
+/**
+ * Fragmenta las menciones de roles para cumplir tanto el límite de contenido
+ * de Discord como el de `allowedMentions.roles`. Así un raid puede avisar a
+ * tantos roles como necesite, enviando varios mensajes cuando sea necesario.
+ *
+ * @param {string[]} roleIds
+ * @param {{ contentLimit?: number, rolesPerMessage?: number }} options
+ * @returns {{ roleIds: string[], content: string }[]}
+ */
+function buildRoleMentionBatches(roleIds, options = {}) {
+  const contentLimit = options.contentLimit || 2000;
+  const rolesPerMessage = options.rolesPerMessage || MAX_MENTION_ROLES_PER_MESSAGE;
+  const uniqueRoleIds = [...new Set(Array.isArray(roleIds) ? roleIds : [])]
+    .map(String)
+    .filter((id) => SNOWFLAKE_REGEX.test(id));
+  const batches = [];
+  let batchIds = [];
+  let content = '';
+
+  for (const roleId of uniqueRoleIds) {
+    const mention = `<@&${roleId}>`;
+    const nextContent = content ? `${content} ${mention}` : mention;
+    if (batchIds.length > 0 && (batchIds.length >= rolesPerMessage || nextContent.length > contentLimit)) {
+      batches.push({ roleIds: batchIds, content });
+      batchIds = [];
+      content = '';
+    }
+    batchIds.push(roleId);
+    content = content ? `${content} ${mention}` : mention;
+  }
+
+  if (batchIds.length > 0) batches.push({ roleIds: batchIds, content });
+  return batches;
 }
 
 /**
@@ -166,7 +199,9 @@ function buildRolesAutocompleteChoices(value, guild) {
 }
 
 module.exports = {
-  MAX_ROLES_TO_NOTIFY,
+  MAX_ROLE_SELECT_VALUES,
+  MAX_MENTION_ROLES_PER_MESSAGE,
   parseRolesToNotify,
+  buildRoleMentionBatches,
   buildRolesAutocompleteChoices,
 };

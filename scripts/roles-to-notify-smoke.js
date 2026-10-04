@@ -11,8 +11,9 @@
 const assert = require('node:assert');
 
 const {
-  MAX_ROLES_TO_NOTIFY,
+  MAX_MENTION_ROLES_PER_MESSAGE,
   parseRolesToNotify,
+  buildRoleMentionBatches,
   buildRolesAutocompleteChoices,
 } = require('../src/utils/roleMentions');
 const { canJoinRaid, getJoinRestrictionReason } = require('../src/utils/raidInteractions');
@@ -168,17 +169,25 @@ test('Sin @everyone la bandera queda en false', () => {
   assert.strictEqual(parseRolesToNotify('', guild).blockedEveryone, false);
 });
 
-console.log('\n── Límite de roles');
+console.log('\n── Muchos roles y tandas de menciones');
 
-test('Se marca cuando se supera el máximo de roles', () => {
-  const many = Array.from({ length: MAX_ROLES_TO_NOTIFY + 5 }, (_, i) => ({
-    id: '3000000000000000' + String(i).padStart(2, '0'),
+test('No recorta roles aunque superen el máximo del selector nativo', () => {
+  const many = Array.from({ length: 125 }, (_, i) => ({
+    id: '300000000000' + String(i).padStart(6, '0'),
     name: `Rol${i}`,
   }));
   const bigGuild = makeGuild(many);
   const r = parseRolesToNotify(many.map((role) => role.id).join(' '), bigGuild);
-  assert.strictEqual(r.roleIds.length, MAX_ROLES_TO_NOTIFY);
-  assert.strictEqual(r.exceededLimit, true);
+  assert.strictEqual(r.roleIds.length, many.length);
+});
+
+test('Fragmenta los pings sin perder roles ni exceder límites de Discord', () => {
+  const roleIds = Array.from({ length: 250 }, (_, i) => `300000000000${String(i).padStart(6, '0')}`);
+  const batches = buildRoleMentionBatches(roleIds);
+  assert.ok(batches.length > 1);
+  assert.deepStrictEqual(batches.flatMap((batch) => batch.roleIds), roleIds);
+  assert.ok(batches.every((batch) => batch.content.length <= 2000));
+  assert.ok(batches.every((batch) => batch.roleIds.length <= MAX_MENTION_ROLES_PER_MESSAGE));
 });
 
 console.log('\n── Autocompletado');

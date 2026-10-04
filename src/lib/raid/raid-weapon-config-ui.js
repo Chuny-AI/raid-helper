@@ -329,16 +329,15 @@ const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
   if (options.draft) {
     // Este selector nativo abre la lista de roles del servidor y evita que el
     // líder tenga que copiar nombres o IDs para notificar el raid.
-    const notificationRoles = (options.draft.finalNotificationRoles || []).slice(0, options.maxRolesToNotify || 20);
-    const joinRoles = (options.draft.finalJoinRoles || []).slice(0, options.maxRolesToNotify || 20);
+    const maxRoleSelectValues = options.maxRoleSelectValues || 25;
+    const joinRoles = (options.draft.finalJoinRoles || []).slice(0, maxRoleSelectValues);
 
     components.push(new ActionRowBuilder().addComponents(
       new RoleSelectMenuBuilder()
         .setCustomId(buildId('roles', pendingId))
-        .setPlaceholder('Roles que recibirán el aviso')
+        .setPlaceholder(`Añadir hasta ${maxRoleSelectValues} roles al aviso`)
         .setMinValues(0)
-        .setMaxValues(options.maxRolesToNotify || 20)
-        .setDefaultRoles(...notificationRoles)
+        .setMaxValues(maxRoleSelectValues)
     ));
 
     // Un selector de roles sí conserva nombres, colores y jerarquía del
@@ -349,7 +348,7 @@ const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
         .setCustomId(buildId('joinroles', pendingId))
         .setPlaceholder('Roles que pueden inscribirse (vacío = cualquiera)')
         .setMinValues(0)
-        .setMaxValues(options.maxRolesToNotify || 20)
+        .setMaxValues(maxRoleSelectValues)
         .setDefaultRoles(...joinRoles)
     ));
 

@@ -70,7 +70,7 @@ const handleInteraction = async (interaction) => {
     else if (action === 'settings') await screens.showSettings(interaction, sessionId);
     else if (action === 'roles') await screens.showRoles(interaction, sessionId);
     else if (action === 'roles-select') {
-      editor.updateRoles({ ...context(interaction, sessionId), roleIds: interaction.values, guild: interaction.guild });
+      editor.updateRoles({ ...context(interaction, sessionId), roleIds: interaction.values, guild: interaction.guild, append: true });
       await screens.showRoles(interaction, sessionId);
     } else if (action === 'roles-clear') {
       editor.updateRoles({ ...context(interaction, sessionId), roleIds: [], guild: interaction.guild });

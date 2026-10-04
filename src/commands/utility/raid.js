@@ -25,8 +25,9 @@ const {
   buildRaidSettingsModal,
 } = require("../../lib/raid/raid-weapon-config-ui");
 const {
-  MAX_ROLES_TO_NOTIFY,
+  MAX_ROLE_SELECT_VALUES,
   parseRolesToNotify,
+  buildRoleMentionBatches,
   buildRolesAutocompleteChoices,
 } = require("../../utils/roleMentions");
 const { getTemplateNames, getTemplateByName } = require("../../services/templateService");
@@ -62,7 +63,7 @@ const panelOptions = (pending, page = 0) => ({
   draft: pending,
   mode: pending.mode || 'create',
   weaponsLocked: !!pending.weaponsLocked,
-  maxRolesToNotify: MAX_ROLES_TO_NOTIFY,
+  maxRoleSelectValues: MAX_ROLE_SELECT_VALUES,
 });
 
 const overviewFor = (pending, pendingId, page = 0) => buildOverviewPanel(
@@ -295,13 +296,11 @@ async function executeEditSubcommand(interaction) {
   let finalNotificationRoles = Array.from(runtime.raid.rolesToNotify || []);
   if (requestedRoles !== null) {
     const parsed = parseRolesToNotify(requestedRoles, interaction.guild);
-    if (parsed.blockedEveryone || parsed.exceededLimit || parsed.unresolved.length > 0) {
+    if (parsed.blockedEveryone || parsed.unresolved.length > 0) {
       return interaction.editReply({
         content: parsed.blockedEveryone
           ? '⚠️ `@everyone` no está permitido.'
-          : parsed.exceededLimit
-            ? `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles.`
-            : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
+          : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
       });
     }
     finalNotificationRoles = parsed.roleIds;
@@ -310,13 +309,11 @@ async function executeEditSubcommand(interaction) {
   let finalJoinRoles = Array.from(runtime.raid.rolesToJoin || []);
   if (requestedJoinRoles !== null) {
     const parsed = parseRolesToNotify(requestedJoinRoles, interaction.guild);
-    if (parsed.blockedEveryone || parsed.exceededLimit || parsed.unresolved.length > 0) {
+    if (parsed.blockedEveryone || parsed.unresolved.length > 0) {
       return interaction.editReply({
         content: parsed.blockedEveryone
           ? '⚠️ `@everyone` no puede usarse para restringir las inscripciones.'
-          : parsed.exceededLimit
-            ? `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles para inscribirse.`
-            : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
+          : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
       });
     }
     finalJoinRoles = parsed.roleIds;
@@ -325,13 +322,11 @@ async function executeEditSubcommand(interaction) {
   let excludedRoleIds = Array.from(runtime.raid.excludedRoleIds || []);
   if (requestedExcludedRoles !== null) {
     const parsed = parseRolesToNotify(requestedExcludedRoles, interaction.guild);
-    if (parsed.blockedEveryone || parsed.exceededLimit || parsed.unresolved.length > 0) {
+    if (parsed.blockedEveryone || parsed.unresolved.length > 0) {
       return interaction.editReply({
         content: parsed.blockedEveryone
           ? '⚠️ `@everyone` no puede excluirse de un raid.'
-          : parsed.exceededLimit
-            ? `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles excluidos.`
-            : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
+          : `⚠️ No se encontraron estos roles: ${parsed.unresolved.join(', ')}`,
       });
     }
     excludedRoleIds = parsed.roleIds;
@@ -527,13 +522,6 @@ async function handleWeaponConfigInteraction(interaction) {
             flags: MessageFlags.Ephemeral,
           });
         }
-        if (selectedRoleIds.length > MAX_ROLES_TO_NOTIFY) {
-          return await interaction.reply({
-            content: `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles.`,
-            flags: MessageFlags.Ephemeral,
-          });
-        }
-
         // Discord sólo muestra roles existentes, pero uno puede borrarse
         // mientras el selector permanece abierto.
         const missing = selectedRoleIds.filter((roleId) => !interaction.guild.roles.cache.has(roleId));
@@ -544,8 +532,11 @@ async function handleWeaponConfigInteraction(interaction) {
           });
         }
 
-        pending.finalNotificationRoles = selectedRoleIds;
-        pending.shouldSendMassDm = shouldNotifyRolesByDefault(selectedRoleIds);
+        pending.finalNotificationRoles = [...new Set([
+          ...(pending.finalNotificationRoles || []),
+          ...selectedRoleIds,
+        ])];
+        pending.shouldSendMassDm = shouldNotifyRolesByDefault(pending.finalNotificationRoles);
         return await interaction.update(overviewFor(pending, pendingId));
       }
 
@@ -554,12 +545,6 @@ async function handleWeaponConfigInteraction(interaction) {
         if (selectedRoleIds.includes(interaction.guild.id)) {
           return await interaction.reply({
             content: '⚠️ `@everyone` no puede usarse para restringir las inscripciones.',
-            flags: MessageFlags.Ephemeral,
-          });
-        }
-        if (selectedRoleIds.length > MAX_ROLES_TO_NOTIFY) {
-          return await interaction.reply({
-            content: `⚠️ Solo se admiten ${MAX_ROLES_TO_NOTIFY} roles para inscribirse.`,
             flags: MessageFlags.Ephemeral,
           });
         }
@@ -1001,27 +986,30 @@ async function handleConfirmRaidCreate(interaction) {
     components,
     ...(imageSpacer ? { files: [{ attachment: imageSpacer.attachment, name: imageSpacer.name }] } : {}),
   };
-  const notificationContent =
-    mentionRoles.length > 0 ? `${mentionRoles.map((id) => `<@&${id}>`).join(' ')}\n` : '';
+  const mentionBatches = buildRoleMentionBatches(mentionRoles);
+  const firstMentionBatch = mentionBatches[0];
+  let pendingMentionBatches = mentionBatches.slice(1);
 
   let raidMessage;
-  let mencionesOmitidas = false;
+  let failedMentionBatches = 0;
 
   try {
     raidMessage = await channel.send({
       ...contenidoBase,
-      content: notificationContent || undefined,
-      allowedMentions: mentionRoles.length > 0 ? { roles: mentionRoles } : undefined,
+      content: firstMentionBatch?.content,
+      allowedMentions: firstMentionBatch ? { roles: firstMentionBatch.roleIds } : undefined,
     });
   } catch (publishError) {
     logDiscordError('handleConfirmRaidCreate: fallo publicando el raid con menciones', publishError);
 
     // Reintento sin menciones. Que falte el ping es molesto; perder el raid
     // entero porque el bot no puede mencionar un rol lo es mucho más.
-    if (mentionRoles.length > 0) {
+    if (firstMentionBatch) {
       try {
         raidMessage = await channel.send(contenidoBase);
-        mencionesOmitidas = true;
+        // El raid se publicó sin la primera tanda: reintentarlo tras guardar
+        // deja el mensaje interactivo disponible incluso si falla el ping.
+        pendingMentionBatches = mentionBatches;
       } catch (retryError) {
         logDiscordError('handleConfirmRaidCreate: fallo publicando el raid sin menciones', retryError);
       }
@@ -1103,6 +1091,20 @@ async function handleConfirmRaidCreate(interaction) {
     }
   }
 
+  // Discord limita el contenido y allowedMentions de cada mensaje. Las tandas
+  // restantes conservan todos los roles sin truncarlos, en mensajes separados.
+  for (const batch of pendingMentionBatches) {
+    try {
+      await channel.send({
+        content: batch.content,
+        allowedMentions: { roles: batch.roleIds },
+      });
+    } catch (mentionError) {
+      failedMentionBatches++;
+      logDiscordError('handleConfirmRaidCreate: fallo enviando una tanda de menciones', mentionError);
+    }
+  }
+
   // Confirmar al líder que el raid fue publicado (actualiza el mensaje ephemeral).
   // Si esto falla el raid ya está publicado, así que no se revierte nada.
   const avisos = [];
@@ -1112,9 +1114,10 @@ async function handleConfirmRaidCreate(interaction) {
   if (disabledWeaponValues.length > 0) {
     avisos.push(`${disabledWeaponValues.length} arma(s)/grupo(s) deshabilitados`);
   }
-  if (mencionesOmitidas) {
-    avisos.push('publicado sin mencionar a los roles: el bot no tiene permiso para mencionarlos');
-  } else if (missingRoles.length > 0) {
+  if (failedMentionBatches > 0) {
+    avisos.push(`${failedMentionBatches} tanda(s) de menciones no se pudieron enviar`);
+  }
+  if (missingRoles.length > 0) {
     avisos.push(`${missingRoles.length} rol(es) ya no existen y no se mencionaron`);
   }
   if (missingJoinRoles.length > 0) {
@@ -1977,26 +1980,22 @@ module.exports = {
       const {
         roleIds: parsedNotificationRoles,
         unresolved: unresolvedRoles,
-        exceededLimit: tooManyRoles,
         blockedEveryone,
       } = parseRolesToNotify(rolesToNotifyInput, interaction.guild);
       const {
         roleIds: parsedJoinRoles,
         unresolved: unresolvedJoinRoles,
-        exceededLimit: tooManyJoinRoles,
         blockedEveryone: blockedEveryoneForJoin,
       } = parseRolesToNotify(rolesToJoinInput, interaction.guild);
       const {
         roleIds: parsedExcludedRoles,
         unresolved: unresolvedExcludedRoles,
-        exceededLimit: tooManyExcludedRoles,
         blockedEveryone: blockedEveryoneForExcluded,
       } = parseRolesToNotify(excludedRolesInput, interaction.guild);
       const usesTemplateRoles = !String(rolesToNotifyInput || '').trim();
       const finalNotificationRoles = usesTemplateRoles
         ? [...new Set(Array.isArray(template.roles) ? template.roles : [])]
           .filter((roleId) => String(roleId) !== guildId)
-          .slice(0, MAX_ROLES_TO_NOTIFY)
         : parsedNotificationRoles;
       // Si hay roles seleccionados, se mencionan en el canal y sus miembros
       // reciben DM por defecto. El panel del raid permite desactivar los DMs
@@ -2039,17 +2038,6 @@ module.exports = {
         });
       }
 
-      if (tooManyRoles) {
-        const warningEmbed = createWarningEmbed(
-          "Demasiados Roles",
-          `Solo se pueden notificar hasta ${MAX_ROLES_TO_NOTIFY} roles en un mismo raid.`
-        );
-        return await safeReply(interaction, {
-          embeds: [warningEmbed],
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
       if (blockedEveryoneForJoin) {
         return await safeReply(interaction, {
           embeds: [createErrorEmbed(
@@ -2070,16 +2058,6 @@ module.exports = {
         });
       }
 
-      if (tooManyJoinRoles) {
-        return await safeReply(interaction, {
-          embeds: [createWarningEmbed(
-            'Demasiados Roles',
-            `Solo se pueden elegir hasta ${MAX_ROLES_TO_NOTIFY} roles para inscribirse.`
-          )],
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
       if (blockedEveryoneForExcluded) {
         return await safeReply(interaction, {
           embeds: [createErrorEmbed('@everyone No Admitido', 'El rol `@everyone` no puede excluirse de un raid.')],
@@ -2093,13 +2071,6 @@ module.exports = {
             'Roles No Encontrados',
             `No se pudieron identificar estos roles excluidos: ${unresolvedExcludedRoles.map((role) => `\`${role}\``).join(', ')}`
           )],
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      if (tooManyExcludedRoles) {
-        return await safeReply(interaction, {
-          embeds: [createWarningEmbed('Demasiados Roles', `Solo se pueden excluir hasta ${MAX_ROLES_TO_NOTIFY} roles en un raid.`)],
           flags: MessageFlags.Ephemeral,
         });
       }

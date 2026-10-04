@@ -71,7 +71,7 @@ const parseTemplateImport = (jsonContent, templateName) => {
     color: ensureText(source.color || '', 'color', 20),
     url: ensureWebUrl(source.url || '', 'url'),
     roles: Array.isArray(source.roles)
-      ? Array.from(new Set(source.roles.filter((role) => /^\d{15,20}$/.test(String(role))).map(String))).slice(0, 25)
+      ? Array.from(new Set(source.roles.filter((role) => /^\d{15,20}$/.test(String(role))).map(String)))
       : [],
     weapons,
     notifyAll: source.notifyAll === true,

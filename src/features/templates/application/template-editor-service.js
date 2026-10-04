@@ -116,17 +116,17 @@ const updateSettings = ({ sessionId, userId, guildId, color, url, reminder }) =>
   },
 );
 
-const updateRoles = ({ sessionId, userId, guildId, roleIds, guild }) => mutate(
+const updateRoles = ({ sessionId, userId, guildId, roleIds, guild, append = false }) => mutate(
   sessionId,
   userId,
   guildId,
   (data) => {
-    data.roles = [...new Set(roleIds || [])]
+    const requestedRoleIds = append ? [...(data.roles || []), ...(roleIds || [])] : (roleIds || []);
+    data.roles = [...new Set(requestedRoleIds)]
       .filter((roleId) => {
         const role = guild.roles.cache.get(roleId);
         return role && role.id !== guild.id && !role.managed;
       })
-      .slice(0, 25);
     // Los roles configurados siempre se mencionan y reciben DM por defecto.
     // El raid concreto todavía puede desactivar los DMs desde su configuración.
     data.notifyAll = data.roles.length > 0;

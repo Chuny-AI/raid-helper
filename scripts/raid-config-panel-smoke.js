@@ -201,7 +201,7 @@ const run = async (customId, options) => {
     assert.ok(calls.update.components.length > 0, 'debe regresar al panel navegable');
   });
 
-  await test('muestra el selector nativo de roles y guarda su selección', async () => {
+  await test('acumula tandas de roles para notificar sin recortar la lista', async () => {
     newSession();
     const firstPanel = await run(`raidcfg-home-${PENDING_ID}`);
     const rolePicker = firstPanel.update.components
@@ -209,14 +209,17 @@ const run = async (customId, options) => {
       .find((component) => component.data.custom_id === `raidcfg-roles-${PENDING_ID}`);
     assert.ok(rolePicker, 'debe incluir un selector de roles');
     assert.strictEqual(rolePicker.data.type, 6, 'debe usar RoleSelectMenu de Discord');
-    assert.strictEqual(rolePicker.data.max_values, 20);
+    assert.strictEqual(rolePicker.data.max_values, 25);
 
+    const firstBatch = Array.from({ length: 25 }, (_, index) => `rol-${index}`);
+    const secondBatch = Array.from({ length: 25 }, (_, index) => `rol-${index + 25}`);
     const calls = await run(`raidcfg-roles-${PENDING_ID}`, {
-      values: ['tank-role', 'healer-role'],
-      roleIds: ['tank-role', 'healer-role'],
+      values: firstBatch,
+      roleIds: firstBatch,
     });
+    await run(`raidcfg-roles-${PENDING_ID}`, { values: secondBatch, roleIds: secondBatch });
     const pending = raid.pendingRaids.get(PENDING_ID);
-    assert.deepStrictEqual(pending.finalNotificationRoles, ['tank-role', 'healer-role']);
+    assert.deepStrictEqual(pending.finalNotificationRoles, [...firstBatch, ...secondBatch]);
     assert.strictEqual(pending.shouldSendMassDm, true);
     assert.ok(calls.update, 'debe redibujar el panel tras seleccionar roles');
   });

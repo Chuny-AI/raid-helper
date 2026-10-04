@@ -142,10 +142,9 @@ const showRoles = async (interaction, sessionId) => {
   const currentRoles = Array.isArray(template.roles) ? template.roles.filter((id) => interaction.guild.roles.cache.has(id)) : [];
   const select = new RoleSelectMenuBuilder()
     .setCustomId(`te:roles-select:${valid.sessionId}`)
-    .setPlaceholder('Selecciona hasta 25 roles')
+    .setPlaceholder('Añade hasta 25 roles por tanda')
     .setMinValues(0)
     .setMaxValues(25);
-  if (currentRoles.length > 0) select.setDefaultRoles(...currentRoles.slice(0, 25));
 
   const embed = new EmbedBuilder()
     .setTitle('🎭 Roles a notificar')
@@ -153,7 +152,9 @@ const showRoles = async (interaction, sessionId) => {
     .setColor(0x5865f2)
     .addFields({
       name: 'Roles actuales',
-      value: currentRoles.length > 0 ? currentRoles.map((id) => `<@&${id}>`).join('\n') : 'Sin roles configurados',
+      value: currentRoles.length > 0
+        ? `${currentRoles.length} roles configurados. Puedes añadir otra tanda de hasta 25 roles o quitarlos todos.`
+        : 'Sin roles configurados',
     });
   return respondPanel(interaction, {
     embeds: [embed],
