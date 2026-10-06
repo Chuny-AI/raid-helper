@@ -20,6 +20,11 @@ la persona. La sala se conserva mientras tenga participantes y se elimina al
 quedar vacía. Los canales creados se registran para poder limpiarlos después de
 un reinicio del bot.
 
+Las salas de voz de los raids no se configuran en `/setup`: al iniciar el
+evento se crean en la misma categoría del canal donde se publicó el raid, o en
+la raíz del servidor si ese canal no pertenece a una categoría. El parámetro de
+rol de visibilidad del raid controla quién puede ver cada sala.
+
 La sección de economía define los roles de balance para el servidor y el canal
 de auditoría para el canal donde se ejecuta `/setup`. Solo quienes tengan uno
 de esos roles pueden usar `/balance`, incluso para crear contextos. Los

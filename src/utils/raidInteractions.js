@@ -858,9 +858,8 @@ async function handleStartEvent(interaction, raidId) {
   }
 
   const messages = {
-    no_generator: 'Selecciona una categoría en `/setup` → **Voz de raids** antes de iniciar el evento.',
-    invalid_category: 'La categoría de voz para raids ya no existe. Actualízala en `/setup` → **Voz de raids**.',
-    missing_permissions: 'El bot necesita Ver canal, Conectar, Gestionar canales y Mover miembros en la categoría configurada para raids.',
+    source_channel_gone: 'El canal donde se publicó el raid ya no existe. No se puede crear allí la sala de voz.',
+    missing_permissions: 'El bot necesita Ver canal, Conectar, Gestionar canales y Mover miembros donde se publicó el raid.',
     no_participants: 'No hay líder ni participantes del raid que sigan dentro del servidor.',
     registrations_closed: 'Las inscripciones ya están cerradas; el evento no se volverá a iniciar.',
   };

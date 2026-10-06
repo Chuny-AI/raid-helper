@@ -8,10 +8,8 @@ const RaidEvent = require('../database/models/RaidEvent');
 const raidRegistry = require('../services/raidRegistry');
 const {
   deleteTemporaryChannelIfEmpty,
-  getConfiguredGeneratorIds,
 } = require('../services/temporaryVoiceService');
 const { collectAllowedMemberIds } = require('./raidThread');
-const { getRaidVoiceCategory } = require('../services/raidVoiceConfigService');
 
 // Discord reemplaza la lista completa de overwrites en cada sincronización.
 // Serializar por sala impide que una respuesta REST vieja restaure permisos.
@@ -35,16 +33,6 @@ const buildRaidVoiceName = (raid) => {
   const suffix = raid?.eventId ? ` · #${raid.eventId}` : '';
   const title = String(raid?.title || '').trim() || 'Raid';
   return `🔊 ${title.slice(0, Math.max(1, 97 - suffix.length))}${suffix}`.slice(0, 100);
-};
-
-const findGeneratorChannel = async (guild) => {
-  const generatorIds = await getConfiguredGeneratorIds(guild.id);
-  for (const channelId of generatorIds) {
-    const channel = guild.channels.cache.get(channelId)
-      || await guild.channels.fetch(channelId).catch(() => null);
-    if (channel?.type === ChannelType.GuildVoice && channel.parentId) return channel;
-  }
-  return null;
 };
 
 const resolveLiveAllowedIds = async (guild, raid) => {
@@ -105,6 +93,27 @@ const fetchRaidVoiceChannel = async (guild, channelId) => {
     || await guild.channels.fetch(channelId).catch(() => null);
 };
 
+const resolveRaidVoiceLocation = async (guild, raid) => {
+  const sourceChannel = await fetchRaidVoiceChannel(guild, raid.channelId);
+  if (!sourceChannel) return null;
+
+  const parent = sourceChannel.parent
+    || (sourceChannel.parentId
+      ? await fetchRaidVoiceChannel(guild, sourceChannel.parentId)
+      : null);
+  // En un hilo, `parent` es el canal de texto que lo contiene. Subimos una
+  // vez más para usar su categoría; un canal de voz no puede tener un texto
+  // como padre.
+  const category = parent?.type === ChannelType.GuildCategory
+    ? parent
+    : parent?.parent
+      || (parent?.parentId ? await fetchRaidVoiceChannel(guild, parent.parentId) : null);
+  return {
+    parentId: category?.type === ChannelType.GuildCategory ? category.id : null,
+    permissionTarget: category?.type === ChannelType.GuildCategory ? category : sourceChannel,
+  };
+};
+
 const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
   if (raid.voiceChannelId) {
     const existing = await fetchRaidVoiceChannel(guild, raid.voiceChannelId);
@@ -114,16 +123,11 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
     raid.voiceChannelId = null;
   }
 
-  const configuredCategory = await getRaidVoiceCategory(guild);
-  if (configuredCategory.configured && !configuredCategory.category) {
-    return { ok: false, reason: 'invalid_category' };
-  }
-  const generator = configuredCategory.configured ? null : await findGeneratorChannel(guild);
-  if (!configuredCategory.configured && !generator) return { ok: false, reason: 'no_generator' };
+  const location = await resolveRaidVoiceLocation(guild, raid);
+  if (!location) return { ok: false, reason: 'source_channel_gone' };
 
-  const category = configuredCategory.category || generator?.parent;
-  const permissions = category?.permissionsFor?.(guild.members.me);
-  if (!category || !permissions?.has([
+  const permissions = location.permissionTarget?.permissionsFor?.(guild.members.me);
+  if (!permissions?.has([
     PermissionFlagsBits.ViewChannel,
     PermissionFlagsBits.Connect,
     PermissionFlagsBits.ManageChannels,
@@ -140,7 +144,7 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
     channel = await guild.channels.create({
       name: buildRaidVoiceName(raid),
       type: ChannelType.GuildVoice,
-      parent: category.id,
+      ...(location.parentId ? { parent: location.parentId } : {}),
       permissionOverwrites: buildPermissionOverwrites(guild, allowedIds, raid.voiceVisibilityRoleId),
       reason: `Canal privado para el raid #${raid.eventId}`,
     });
@@ -149,7 +153,7 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
       {
         guildId: guild.id,
         channelId: channel.id,
-        generatorChannelId: generator?.id || null,
+        generatorChannelId: null,
         ownerId: actorId || raid.leaderId,
         raidId: raid.eventId,
         createdAt: new Date(),
@@ -285,7 +289,7 @@ module.exports = {
   deleteRaidVoiceChannelIfEmpty,
   discardRaidVoiceChannel,
   fetchRaidVoiceChannel,
-  findGeneratorChannel,
   resolveLiveAllowedIds,
+  resolveRaidVoiceLocation,
   syncRaidVoiceChannel,
 };
