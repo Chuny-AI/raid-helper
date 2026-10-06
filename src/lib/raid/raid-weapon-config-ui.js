@@ -275,6 +275,7 @@ const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
           `**Roles para inscribirse:** ${(draft.finalJoinRoles || []).length || 'Cualquiera'}`,
           `**Roles excluidos:** ${(draft.excludedRoleIds || []).length}`,
           `**Visibilidad de sala:** ${draft.voiceVisibilityRoleId ? `<@&${draft.voiceVisibilityRoleId}>` : 'Solo participantes'}`,
+          `**Canal de actividad:** ${draft.activityChannelId ? `<#${draft.activityChannelId}>` : 'Canal actual'}`,
           `**Looters:** ${draft.looters || 0}`,
           `**Hilo privado:** ${draft.threadEnabled ? 'Sí' : 'No'}`,
         ].join('\n'),
@@ -366,24 +367,36 @@ const buildOverviewPanel = (template, overrides, pendingId, options = {}) => {
       new ButtonBuilder()
         .setCustomId(buildId('cancel', pendingId))
         .setLabel('Cancelar')
-        .setStyle(ButtonStyle.Danger)
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`${options.mode === 'edit' ? 'raid_confirm_edit' : 'raid_confirm_create'}-${pendingId}`)
+        .setLabel(options.mode === 'edit' ? 'Guardar cambios' : 'Confirmar y publicar raid')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('✅')
+        .setDisabled(totalCapacity <= 0),
+      new ButtonBuilder()
+        .setCustomId(buildId('resetall', pendingId))
+        .setLabel('Restablecer todo')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('♻️')
+        .setDisabled(!!options.weaponsLocked)
+    ));
+  } else {
+    components.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${options.mode === 'edit' ? 'raid_confirm_edit' : 'raid_confirm_create'}-${pendingId}`)
+        .setLabel(options.mode === 'edit' ? 'Guardar cambios' : 'Confirmar y publicar raid')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('✅')
+        .setDisabled(totalCapacity <= 0),
+      new ButtonBuilder()
+        .setCustomId(buildId('resetall', pendingId))
+        .setLabel('Restablecer todo')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('♻️')
+        .setDisabled(!!options.weaponsLocked)
     ));
   }
-
-  components.push(new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${options.mode === 'edit' ? 'raid_confirm_edit' : 'raid_confirm_create'}-${pendingId}`)
-      .setLabel(options.mode === 'edit' ? 'Guardar cambios' : 'Confirmar y publicar raid')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('✅')
-      .setDisabled(totalCapacity <= 0),
-    new ButtonBuilder()
-      .setCustomId(buildId('resetall', pendingId))
-      .setLabel('Restablecer todo')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('♻️')
-      .setDisabled(!!options.weaponsLocked)
-  ));
 
   return { embeds: [embed], components };
 };

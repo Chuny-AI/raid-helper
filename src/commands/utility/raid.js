@@ -1,4 +1,10 @@
-const { SlashCommandBuilder, MessageFlags, InteractionContextType, PermissionFlagsBits } = require("discord.js");
+const {
+  ChannelType,
+  SlashCommandBuilder,
+  MessageFlags,
+  InteractionContextType,
+  PermissionFlagsBits,
+} = require("discord.js");
 const { createMassNotificationEmbed } = require("../../utils/embed");
 const { renderRaidEmbeds, renderRaidComponents } = require("../../utils/raidRender");
 const { createRaidImageSpacer } = require('../../utils/raidImageSpacer');
@@ -57,6 +63,29 @@ const {
  */
 const pendingRaids = new Map();
 const shouldNotifyRolesByDefault = (roleIds) => Array.isArray(roleIds) && roleIds.length > 0;
+
+const getCategoryIdForChannel = (guild, channel) => {
+  if (!channel) return null;
+  if (channel.parent?.type === ChannelType.GuildCategory) return channel.parent.id;
+  const parent = channel.parentId ? guild.channels.cache.get(channel.parentId) : null;
+  if (parent?.type === ChannelType.GuildCategory) return parent.id;
+  if (parent?.parent?.type === ChannelType.GuildCategory) return parent.parent.id;
+  return null;
+};
+
+const resolveActivityChannel = ({ guild, invokedChannel, selectedCategory, selectedChannel }) => {
+  const channel = selectedChannel || invokedChannel;
+  if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
+    throw new Error('Selecciona un canal de texto válido para publicar el raid.');
+  }
+  if (selectedCategory && selectedCategory.type !== ChannelType.GuildCategory) {
+    throw new Error('Selecciona una categoría válida para la actividad.');
+  }
+  if (selectedCategory && getCategoryIdForChannel(guild, channel) !== selectedCategory.id) {
+    throw new Error('El canal de actividad debe pertenecer a la categoría seleccionada.');
+  }
+  return channel;
+};
 
 const panelOptions = (pending, page = 0) => ({
   page,
@@ -868,9 +897,11 @@ async function handleConfirmRaidCreate(interaction) {
     return;
   }
 
-  // Sin canal no hay dónde publicar (hilo archivado, canal borrado o permisos
-  // retirados entre el /raid create y la confirmación).
-  const channel = interaction.channel;
+  // El canal se valida al abrir el panel. Se vuelve a resolver aquí porque
+  // puede haberse borrado o el bot puede haber perdido permisos mientras el
+  // líder configuraba armas.
+  const channel = interaction.guild.channels.cache.get(pending.activityChannelId)
+    || await interaction.guild.channels.fetch(pending.activityChannelId).catch(() => null);
   if (!channel || typeof channel.send !== 'function') {
     await safeInteractionUpdate(interaction, {
       content: '❌ No se puede publicar el raid en este canal. Vuelve a ejecutar `/raid create` en un canal de texto donde el bot pueda escribir.',
@@ -1550,6 +1581,20 @@ module.exports = {
             .setMaxLength(1000)
             .setAutocomplete(true)
         )
+        .addChannelOption((option) =>
+          option
+            .setName('activity_category')
+            .setDescription('Categoría donde se realizará la actividad (opcional)')
+            .addChannelTypes(ChannelType.GuildCategory)
+            .setRequired(false)
+        )
+        .addChannelOption((option) =>
+          option
+            .setName('activity_channel')
+            .setDescription('Canal donde se publicará el ping; debe estar en esa categoría')
+            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+            .setRequired(false)
+        )
         .addStringOption((option) =>
           option
             .setName('roles_to_join')
@@ -1832,10 +1877,27 @@ module.exports = {
       const rolesToJoinInput = interaction.options.getString("roles_to_join");
       const excludedRolesInput = interaction.options.getString('excluded_roles');
       const voiceVisibilityRole = interaction.options.getRole('voice_visibility_role');
+      const activityCategory = interaction.options.getChannel('activity_category');
+      const activityChannel = interaction.options.getChannel('activity_channel');
       const looters = interaction.options.getInteger("looters");
       const threadEnabled = interaction.options.getBoolean("thread") ?? false;
       const user = interaction.user;
       const guildId = interaction.guild.id;
+
+      let targetActivityChannel;
+      try {
+        targetActivityChannel = resolveActivityChannel({
+          guild: interaction.guild,
+          invokedChannel: interaction.channel,
+          selectedCategory: activityCategory,
+          selectedChannel: activityChannel,
+        });
+      } catch (channelError) {
+        return await safeReply(interaction, {
+          embeds: [createErrorEmbed('Ubicación de actividad inválida', channelError.message)],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
 
       if (voiceVisibilityRole?.id === guildId) {
         return await safeReply(interaction, {
@@ -2101,6 +2163,8 @@ module.exports = {
         shouldSendMassDm,
         looters,
         threadEnabled,
+        activityChannelId: targetActivityChannel.id,
+        activityCategoryId: activityCategory?.id || getCategoryIdForChannel(interaction.guild, targetActivityChannel),
         guildId,
         user,
         weaponOverrides,
@@ -2134,6 +2198,7 @@ module.exports = {
   handleConfirmRaidCreate,
   handleConfirmRaidEdit,
   resolveMentionableRoles,
+  resolveActivityChannel,
   safeInteractionUpdate,
   shouldNotifyRolesByDefault,
 };

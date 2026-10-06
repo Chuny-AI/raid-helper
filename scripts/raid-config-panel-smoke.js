@@ -50,6 +50,12 @@ const template = {
 const LEADER = { id: '999', toString: () => '<@999>' };
 const PENDING_ID = '1234567890123456789';
 
+const createDefinition = raid.data.toJSON().options.find((option) => option.name === 'create');
+const activityCategoryOption = createDefinition.options.find((option) => option.name === 'activity_category');
+const activityChannelOption = createDefinition.options.find((option) => option.name === 'activity_channel');
+assert.deepStrictEqual(activityCategoryOption.channel_types, [4]);
+assert.deepStrictEqual(activityChannelOption.channel_types, [0, 5]);
+
 /** Crea una sesión pendiente limpia y devuelve sus overrides. */
 const newSession = (customTemplate = template, extra = {}) => {
   const weaponOverrides = cfg.emptyOverrides();
@@ -147,6 +153,20 @@ const run = async (customId, options) => {
     const select = calls.update.components[0].components[0];
     assert.strictEqual(select.options.length, 5);
     assert.strictEqual(select.options[0].data.value, 'group_26');
+    assert.ok(calls.update.components.length <= 5, 'el panel nunca supera las cinco filas de Discord');
+  });
+
+  await test('la categoría de actividad exige que el canal elegido le pertenezca', () => {
+    const category = { id: 'category-1', type: 4 };
+    const activity = { id: 'channel-1', parentId: category.id, isTextBased: () => true, send: async () => {} };
+    const other = { id: 'channel-2', parentId: 'other-category', isTextBased: () => true, send: async () => {} };
+    const guild = { channels: { cache: new Map([[category.id, category]]) } };
+    assert.strictEqual(raid.resolveActivityChannel({
+      guild, invokedChannel: other, selectedCategory: category, selectedChannel: activity,
+    }), activity);
+    assert.throws(() => raid.resolveActivityChannel({
+      guild, invokedChannel: other, selectedCategory: category, selectedChannel: other,
+    }), /debe pertenecer/);
   });
 
   await test('pagina todas las armas y vuelve a la página correcta', async () => {
