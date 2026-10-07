@@ -21,9 +21,11 @@ quedar vacía. Los canales creados se registran para poder limpiarlos después d
 un reinicio del bot.
 
 Las salas de voz de los raids no se configuran en `/setup`: al iniciar el
-evento se crean en la misma categoría del canal donde se publicó el raid, o en
-la raíz del servidor si ese canal no pertenece a una categoría. El parámetro de
-rol de visibilidad del raid controla quién puede ver cada sala.
+evento se crean en la categoría elegida con el parámetro `activity_category`.
+El canal elegido con `activity_channel` solo determina dónde se publica el raid
+y se envían las menciones; puede pertenecer a otra categoría. Si no se indica
+una categoría de voz, se usa la del canal de publicación o la raíz del servidor.
+El parámetro de rol de visibilidad del raid controla quién puede ver cada sala.
 
 La sección de economía define los roles de balance para el servidor y el canal
 de auditoría para el canal donde se ejecuta `/setup`. Solo quienes tengan uno

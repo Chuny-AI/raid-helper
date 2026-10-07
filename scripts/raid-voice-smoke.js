@@ -105,6 +105,22 @@ const raid = {
   assert.match(createdOptions.name, /Avaloniana 8\.3/);
   assert.equal(tracked.raidId, raid.eventId);
 
+  const configuredCategory = {
+    id: 'voice-category-2',
+    type: ChannelType.GuildCategory,
+    permissionsFor: () => ({ has: (values) => values.every((value) => granted.includes(value)) }),
+  };
+  channelCache.set(configuredCategory.id, configuredCategory);
+  const separateVoiceRaid = {
+    ...raid,
+    eventId: 'VOICE-CATEGORY',
+    voiceChannelId: null,
+    voiceCategoryId: configuredCategory.id,
+  };
+  const separateVoiceResult = await raidVoice.createRaidVoiceChannel({ guild, raid: separateVoiceRaid, actorId: 'leader' });
+  assert.equal(separateVoiceResult.ok, true, 'la sala debe crearse en la categoría configurada');
+  assert.equal(createdOptions.parent, configuredCategory.id, 'la categoría de voz debe prevalecer sobre la del canal de menciones');
+
   const rootTextChannel = {
     id: 'root-text-1',
     type: ChannelType.GuildText,
@@ -124,6 +140,13 @@ const raid = {
     actorId: 'leader',
   });
   assert.equal(missingSourceResult.reason, 'source_channel_gone');
+
+  const missingCategoryResult = await raidVoice.createRaidVoiceChannel({
+    guild,
+    raid: { ...raid, eventId: 'VOICE4', voiceChannelId: null, voiceCategoryId: 'missing-category' },
+    actorId: 'leader',
+  });
+  assert.equal(missingCategoryResult.reason, 'voice_category_gone');
 
   const overwriteById = new Map(createdOptions.permissionOverwrites.map((overwrite) => [overwrite.id, overwrite]));
   assert.equal(overwriteById.get(guild.id).type, OverwriteType.Role);

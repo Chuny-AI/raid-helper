@@ -79,10 +79,7 @@ const resolveActivityChannel = ({ guild, invokedChannel, selectedCategory, selec
     throw new Error('Selecciona un canal de texto válido para publicar el raid.');
   }
   if (selectedCategory && selectedCategory.type !== ChannelType.GuildCategory) {
-    throw new Error('Selecciona una categoría válida para la actividad.');
-  }
-  if (selectedCategory && getCategoryIdForChannel(guild, channel) !== selectedCategory.id) {
-    throw new Error('El canal de actividad debe pertenecer a la categoría seleccionada.');
+    throw new Error('Selecciona una categoría válida para la sala de voz.');
   }
   return channel;
 };
@@ -983,6 +980,7 @@ async function handleConfirmRaidCreate(interaction) {
     rolesToJoin: joinRoles,
     excludedRoleIds: excludedRoles,
     voiceVisibilityRoleId: voiceVisibilityRoleId || null,
+    voiceCategoryId: pending.voiceCategoryId || null,
     leaderId: user.id,
     threadEnabled: !!threadEnabled,
     threadId: null,
@@ -1584,14 +1582,14 @@ module.exports = {
         .addChannelOption((option) =>
           option
             .setName('activity_category')
-            .setDescription('Categoría donde se realizará la actividad (opcional)')
+            .setDescription('Categoría donde se creará la sala de voz (opcional)')
             .addChannelTypes(ChannelType.GuildCategory)
             .setRequired(false)
         )
         .addChannelOption((option) =>
           option
             .setName('activity_channel')
-            .setDescription('Canal donde se publicará el ping; debe estar en esa categoría')
+            .setDescription('Canal donde se publicará el ping (opcional)')
             .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
             .setRequired(false)
         )
@@ -2165,6 +2163,7 @@ module.exports = {
         threadEnabled,
         activityChannelId: targetActivityChannel.id,
         activityCategoryId: activityCategory?.id || getCategoryIdForChannel(interaction.guild, targetActivityChannel),
+        voiceCategoryId: activityCategory?.id || null,
         guildId,
         user,
         weaponOverrides,

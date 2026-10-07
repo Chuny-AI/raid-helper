@@ -94,6 +94,22 @@ const fetchRaidVoiceChannel = async (guild, channelId) => {
 };
 
 const resolveRaidVoiceLocation = async (guild, raid) => {
+  // La categoría seleccionada en /raid create es el destino explícito de la
+  // sala. El canal de publicación solo define dónde se muestra el raid y se
+  // envían sus menciones; no necesita pertenecer a esta categoría.
+  if (raid.voiceCategoryId) {
+    const category = await fetchRaidVoiceChannel(guild, raid.voiceCategoryId);
+    if (category?.type !== ChannelType.GuildCategory) {
+      return { error: 'voice_category_gone' };
+    }
+    return {
+      parentId: category.id,
+      permissionTarget: category,
+    };
+  }
+
+  // Compatibilidad con raids creados antes de que se pudiera elegir la
+  // categoría de voz: toman la categoría del canal de publicación.
   const sourceChannel = await fetchRaidVoiceChannel(guild, raid.channelId);
   if (!sourceChannel) return null;
 
@@ -125,6 +141,7 @@ const createRaidVoiceChannel = async ({ guild, raid, actorId }) => {
 
   const location = await resolveRaidVoiceLocation(guild, raid);
   if (!location) return { ok: false, reason: 'source_channel_gone' };
+  if (location.error) return { ok: false, reason: location.error };
 
   const permissions = location.permissionTarget?.permissionsFor?.(guild.members.me);
   if (!permissions?.has([

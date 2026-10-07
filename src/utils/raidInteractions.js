@@ -859,7 +859,8 @@ async function handleStartEvent(interaction, raidId) {
 
   const messages = {
     source_channel_gone: 'El canal donde se publicó el raid ya no existe. No se puede crear allí la sala de voz.',
-    missing_permissions: 'El bot necesita Ver canal, Conectar, Gestionar canales y Mover miembros donde se publicó el raid.',
+    voice_category_gone: 'La categoría configurada para la sala de voz ya no existe. Selecciona otra al crear el raid.',
+    missing_permissions: 'El bot necesita Ver canal, Conectar, Gestionar canales y Mover miembros en el destino de la sala de voz.',
     no_participants: 'No hay líder ni participantes del raid que sigan dentro del servidor.',
     registrations_closed: 'Las inscripciones ya están cerradas; el evento no se volverá a iniciar.',
   };

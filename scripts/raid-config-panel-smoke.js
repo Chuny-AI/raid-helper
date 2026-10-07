@@ -156,7 +156,7 @@ const run = async (customId, options) => {
     assert.ok(calls.update.components.length <= 5, 'el panel nunca supera las cinco filas de Discord');
   });
 
-  await test('la categoría de actividad exige que el canal elegido le pertenezca', () => {
+  await test('la categoría de voz puede ser distinta del canal de menciones', () => {
     const category = { id: 'category-1', type: 4 };
     const activity = { id: 'channel-1', parentId: category.id, isTextBased: () => true, send: async () => {} };
     const other = { id: 'channel-2', parentId: 'other-category', isTextBased: () => true, send: async () => {} };
@@ -164,9 +164,9 @@ const run = async (customId, options) => {
     assert.strictEqual(raid.resolveActivityChannel({
       guild, invokedChannel: other, selectedCategory: category, selectedChannel: activity,
     }), activity);
-    assert.throws(() => raid.resolveActivityChannel({
+    assert.strictEqual(raid.resolveActivityChannel({
       guild, invokedChannel: other, selectedCategory: category, selectedChannel: other,
-    }), /debe pertenecer/);
+    }), other);
   });
 
   await test('pagina todas las armas y vuelve a la página correcta', async () => {

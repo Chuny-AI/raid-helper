@@ -70,6 +70,13 @@ const RaidEventSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Categoría opcional elegida al crear el raid para su sala de voz. Si no
+  // se indica, se conserva el comportamiento histórico: usar la categoría
+  // del canal donde se publicó el raid.
+  voiceCategoryId: {
+    type: String,
+    default: null
+  },
   // Rol opcional elegido al crear el raid. Puede ver la sala de voz cuando
   // empieza el evento, pero no conectarse salvo que también sea participante.
   // Sin rol, la sala queda visible solo para líder y participantes inscritos.
