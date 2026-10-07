@@ -7,7 +7,9 @@ const economyTransactionSchema = new mongoose.Schema({
     index: true,
   },
   channelId: { type: String, required: true },
-  contextId: { type: String, required: true, default: 'general' },
+  // Mantener la misma regla que EconomyBalance: todo movimiento debe indicar
+  // explícitamente el contexto al que pertenece.
+  contextId: { type: String, required: true },
   type: {
     type: String,
     enum: ['add', 'remove', 'reset'],

@@ -12,7 +12,10 @@ const economyBalanceSchema = new mongoose.Schema({
     index: true,
   },
   channelId: { type: String, required: true },
-  contextId: { type: String, required: true, default: 'general' },
+  // Un saldo nunca debe caer silenciosamente en un contexto genérico. El
+  // servicio de economía exige este valor y lo usa como parte de su clave de
+  // aislamiento junto con el servidor y el canal.
+  contextId: { type: String, required: true },
   balance: {
     type: Number,
     required: true,

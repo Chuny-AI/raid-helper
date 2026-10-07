@@ -30,6 +30,8 @@ const saved = {
   assert.ok(EconomyBalance.schema.indexes().some(([keys, options]) =>
     keys.guildId === 1 && keys.channelId === 1 && keys.contextId === 1 && keys.userId === 1 && options.unique));
   assert.ok(EconomyTransaction.schema.path('channelId'));
+  assert.equal(EconomyBalance.schema.path('contextId').options.default, undefined);
+  assert.equal(EconomyTransaction.schema.path('contextId').options.default, undefined);
   assert.ok(EconomyContext.schema.indexes().some(([keys, options]) =>
     keys.guildId === 1 && keys.channelId === 1 && keys.slug === 1 && options.unique));
   assert.ok(EconomyLogChannel.schema.indexes().some(([keys, options]) =>
