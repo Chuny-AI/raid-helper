@@ -35,16 +35,34 @@ const ensureUserId = (userId) => {
   if (!userId) throw new UserError('Selecciona un usuario.');
 };
 
+const isTransactionUnsupported = (error) => (
+  error?.code === 20
+  || /transaction numbers are only allowed on a replica set member or mongos|transactions are not supported/i.test(error?.message || '')
+);
+
+const withSession = (options, session) => (session ? { ...options, session } : options);
+const createWithSession = (documents, session) => (
+  session ? EconomyTransaction.create(documents, { session }) : EconomyTransaction.create(documents)
+);
+
 const runInTransaction = async (work) => {
-  const session = await mongoose.startSession();
+  let session;
   try {
+    session = await mongoose.startSession();
     let result;
     await session.withTransaction(async () => {
       result = await work(session);
     });
     return result;
+  } catch (error) {
+    // MongoDB independiente no admite transacciones. El saldo sigue estando
+    // aislado por su clave compuesta; solo se pierde la agrupación atómica con
+    // el historial, que sí se mantiene cuando hay replica set.
+    if (!isTransactionUnsupported(error)) throw error;
+    console.warn('[WARN] MongoDB no admite transacciones; se guardará el movimiento sin sesión.');
+    return await work(null);
   } finally {
-    await session.endSession();
+    if (session) await session.endSession();
   }
 };
 
@@ -95,15 +113,15 @@ const addMoney = async ({ guildId, channelId, contextId, userId, executorId, amo
         $set: { updatedAt: new Date() },
         $setOnInsert: { guildId, channelId, contextId, userId },
       },
-      { upsert: true, new: false, session },
+      withSession({ upsert: true, new: false }, session),
     );
     const previousBalance = oldDoc?.balance || 0;
     const newBalance = previousBalance + amount;
     ensureSafeBalance(newBalance);
-    await EconomyTransaction.create([{
+    await createWithSession([{
       guildId, channelId, contextId, type: 'add', userId, affectedUserIds: [userId], executorId, amount,
       description: String(description || '').trim(),
-    }], { session });
+    }], session);
     return { previousBalance, newBalance };
   });
 };
@@ -127,15 +145,15 @@ const removeMoney = async ({ guildId, channelId, contextId, userId, executorId, 
         $set: { updatedAt: new Date() },
         $setOnInsert: { guildId, channelId, contextId, userId },
       },
-      { upsert: true, new: false, session },
+      withSession({ upsert: true, new: false }, session),
     );
     const previousBalance = oldDoc?.balance || 0;
     const newBalance = previousBalance - amount;
     ensureSafeBalance(newBalance);
-    await EconomyTransaction.create([{
+    await createWithSession([{
       guildId, channelId, contextId, type: 'remove', userId, affectedUserIds: [userId], executorId, amount,
       description: String(description || '').trim(),
-    }], { session });
+    }], session);
     return { previousBalance, newBalance };
   });
 };
@@ -147,13 +165,13 @@ const resetBalance = async ({ guildId, channelId, contextId, userId, executorId 
     const oldDoc = await EconomyBalance.findOneAndUpdate(
       { guildId, channelId, contextId, userId },
       { $set: { balance: 0, updatedAt: new Date() } },
-      { new: false, session },
+      withSession({ new: false }, session),
     );
     const previousBalance = oldDoc?.balance || 0;
-    await EconomyTransaction.create([{
+    await createWithSession([{
       guildId, channelId, contextId, type: 'reset', userId, affectedUserIds: [userId], executorId,
       amount: previousBalance, description: 'Reset de balance',
-    }], { session });
+    }], session);
     return { previousBalance };
   });
 };

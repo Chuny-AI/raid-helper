@@ -38,6 +38,24 @@ const originals = {
   assert.strictEqual(balanceOptions.session, fakeSession);
   assert.strictEqual(transactionOptions.session, fakeSession);
   assert.strictEqual(fakeSession.ended, true);
+
+  const standaloneSession = {
+    ended: false,
+    async withTransaction() {
+      const error = new Error('Transaction numbers are only allowed on a replica set member or mongos');
+      error.code = 20;
+      throw error;
+    },
+    async endSession() { this.ended = true; },
+  };
+  mongoose.startSession = async () => standaloneSession;
+  const standaloneResult = await addMoney({
+    guildId: 'guild', channelId: 'channel-a', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: 5,
+  });
+  assert.deepStrictEqual(standaloneResult, { previousBalance: 10, newBalance: 15 });
+  assert.deepStrictEqual(balanceOptions, { upsert: true, new: false });
+  assert.equal(transactionOptions, undefined);
+  assert.strictEqual(standaloneSession.ended, true);
   await assert.rejects(
     require('../src/services/economy/economyService').addMoney({
       guildId: 'guild', channelId: 'channel-a', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: Number.MAX_SAFE_INTEGER + 1,
@@ -50,7 +68,7 @@ const originals = {
     /saldo resultante excede/i,
   );
 
-  console.log('✅ Atomicidad de economía verificada');
+  console.log('✅ Transacciones y fallback de economía verificados');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
