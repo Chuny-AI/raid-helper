@@ -97,10 +97,16 @@ const execute = async (interaction) => {
     if (action === 'contextos') {
       const available = await contexts.listContexts(interaction.guildId, interaction.channelId);
       if (!available.length) return reply(interaction, 'Aún no hay contextos. Usa `/balance crear-contexto` para crear uno.');
+      const debtTotals = await economy.getDebtTotalsByContext(
+        interaction.guildId,
+        interaction.channelId,
+        available.map((context) => context.slug),
+      );
       let content = `**Contextos de balance (${available.length})**`;
       let shown = 0;
       for (const context of available) {
-        const line = `\n• ${safeText(context.name)}`;
+        const totalDebt = debtTotals.get(context.slug) || 0;
+        const line = `\n• ${safeText(context.name)} — Debe: **${formatAmount(totalDebt)}**`;
         if (content.length + line.length > 1750) break;
         content += line;
         shown++;
