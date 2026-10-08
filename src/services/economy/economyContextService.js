@@ -31,8 +31,9 @@ const createContext = async ({ guildId, channelId, name, createdBy }) => {
 
 const listContexts = (guildId, channelId) => {
   requireGuildId(guildId);
-  requireChannelId(channelId);
-  return EconomyContext.find({ guildId, channelId }).sort({ name: 1 });
+  const filter = { guildId };
+  if (channelId) filter.channelId = channelId;
+  return EconomyContext.find(filter).sort({ name: 1, channelId: 1 });
 };
 
 const searchContexts = (guildId, channelId, search = '') => {

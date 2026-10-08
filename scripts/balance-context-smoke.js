@@ -18,6 +18,7 @@ const saved = {
   contextsCreate: EconomyContext.create,
   balanceFind: EconomyBalance.findOne,
   balanceFindMany: EconomyBalance.find,
+  balanceAggregate: EconomyBalance.aggregate,
   balanceUpdate: EconomyBalance.findOneAndUpdate,
   transactionsCreate: EconomyTransaction.create,
   transactionsFind: EconomyTransaction.find,
@@ -53,7 +54,7 @@ const saved = {
     context.guildId === filter.guildId && context.channelId === filter.channelId && context.slug === filter.slug) || null;
   EconomyContext.find = (filter) => {
     const matches = contexts.filter((context) => {
-      if (context.guildId !== filter.guildId || context.channelId !== filter.channelId) return false;
+      if (context.guildId !== filter.guildId || (filter.channelId && context.channelId !== filter.channelId)) return false;
       if (!filter.$or) return true;
       return filter.$or.some((condition) => {
         const [field, expression] = Object.entries(condition)[0];
@@ -73,6 +74,21 @@ const saved = {
         && (filter.balance.$gt !== undefined ? balance > 0 : balance < 0))
       .map(([key, balance]) => ({ userId: key.split(':')[3], balance })) }) }),
   });
+  EconomyBalance.aggregate = async (pipeline) => {
+    const match = pipeline[0].$match;
+    const totals = new Map();
+    for (const [key, balance] of balances.entries()) {
+      const [guildId, channelId, contextId] = key.split(':');
+      if (guildId !== match.guildId || balance >= 0
+        || !match.$or.some((scope) => scope.channelId === channelId && scope.contextId === contextId)) continue;
+      const totalKey = `${channelId}:${contextId}`;
+      totals.set(totalKey, (totals.get(totalKey) || 0) + Math.abs(balance));
+    }
+    return Array.from(totals, ([key, totalDebt]) => {
+      const [channelId, contextId] = key.split(':');
+      return { _id: { channelId, contextId }, totalDebt };
+    });
+  };
   EconomyBalance.findOneAndUpdate = async (filter, update, options) => {
     assert.ok(options.session);
     const key = `${filter.guildId}:${filter.channelId}:${filter.contextId}:${filter.userId}`;
@@ -155,7 +171,11 @@ const saved = {
   assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /7/);
   assert.match(await run('ranking', { contexto: 'avalonianas' }, true, 'channel-b'), /7/);
   assert.doesNotMatch(await run('ranking', { contexto: 'avalonianas' }, true, 'channel-b'), /100/);
-  assert.doesNotMatch(await run('contextos', {}, true, 'channel-b'), /Gremio/);
+  const globalContexts = await run('contextos', {}, true, 'channel-b');
+  assert.match(globalContexts, /Contextos de balance del servidor \(3\)/);
+  assert.match(globalContexts, /Avalonianas · <#channel-a> — Debe: \*\*0\*\*/);
+  assert.match(globalContexts, /Gremio · <#channel-a> — Debe: \*\*0\*\*/);
+  assert.match(globalContexts, /Avalonianas · <#channel-b> — Debe: \*\*0\*\*/);
   assert.match(await run('ver', { contexto: 'gremio', usuario: 'member' }, true, 'channel-b'), /no existe en este canal/);
   assert.equal(transactions.length, 3);
   assert.deepEqual(transactions.map((item) => [item.channelId, item.contextId]), [
@@ -173,12 +193,14 @@ const saved = {
   await run('reiniciar', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b');
   assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /0/);
   assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }), /100/);
+  await run('quitar', { contexto: 'gremio', usuario: 'member', cantidad: 50, motivo: 'Deuda' });
+  assert.match(await run('contextos'), /Gremio · <#channel-a> — Debe: \*\*10\*\*/);
   assert.match(await run('agregar', { contexto: 'gremio', usuario: 'member', cantidad: 1, motivo: 'No' }, false), /Solo quienes tengan/);
-  assert.equal(transactions.length, 5);
+  assert.equal(transactions.length, 6);
   await assert.rejects(economyService.getBalance('guild', undefined, 'avalonianas', 'member'), /canal/);
   await assert.rejects(economyService.getBalance('guild', 'channel-a', undefined, 'member'), /contexto/);
   await assert.rejects(economyService.getBalance(undefined, 'channel-a', 'avalonianas', 'member'), /servidor/);
-  assert.throws(() => contextService.listContexts('guild', undefined), /canal/);
+  assert.equal((await contextService.listContexts('guild')).length, 3);
   assert.throws(() => contextService.listContexts(undefined, 'channel-a'), /servidor/);
   assert.throws(() => economyService.getTransactions('guild', undefined, 'avalonianas', 'member'), /canal/);
   assert.throws(() => economyService.getTransactions('guild', 'channel-a', undefined, 'member'), /contexto/);
@@ -215,6 +237,7 @@ const saved = {
   EconomyContext.create = saved.contextsCreate;
   EconomyBalance.findOne = saved.balanceFind;
   EconomyBalance.find = saved.balanceFindMany;
+  EconomyBalance.aggregate = saved.balanceAggregate;
   EconomyBalance.findOneAndUpdate = saved.balanceUpdate;
   EconomyTransaction.create = saved.transactionsCreate;
   EconomyTransaction.find = saved.transactionsFind;

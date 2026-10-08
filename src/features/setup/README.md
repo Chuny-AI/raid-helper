@@ -44,7 +44,7 @@ pertenecen sin una asignación explícita.
 Comandos de balance:
 
 - `/balance crear-contexto nombre:<nombre>`: crea un libro de saldos en el canal actual.
-- `/balance contextos`: lista los libros del canal actual.
+- `/balance contextos`: lista todos los libros del servidor, su canal y el total adeudado de cada uno.
 - `/balance ver contexto:<nombre> usuario:<miembro>`: consulta el saldo.
 - `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: modifica el saldo y registra la transacción.
 - `/balance reiniciar contexto:<nombre> usuario:<miembro>`: deja el saldo en cero y registra la transacción.

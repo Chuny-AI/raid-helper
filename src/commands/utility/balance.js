@@ -28,7 +28,7 @@ const data = new SlashCommandBuilder()
     .addStringOption((option) => option.setName('nombre')
       .setDescription('Nombre del nuevo contexto').setRequired(true).setMaxLength(60)))
   .addSubcommand((sub) => sub.setName('contextos')
-    .setDescription('Lista los contextos disponibles en este canal'))
+    .setDescription('Lista los contextos del servidor y el total adeudado'))
   .addSubcommand((sub) => sub.setName('ver')
     .setDescription('Consulta el saldo de un miembro')
     .addStringOption(contextOption).addUserOption(userOption))
@@ -95,12 +95,16 @@ const execute = async (interaction) => {
       return reply(interaction, `✅ Contexto **${safeText(context.name)}** creado. Ya puedes usarlo en los comandos de balance.`);
     }
     if (action === 'contextos') {
-      const available = await contexts.listContexts(interaction.guildId, interaction.channelId);
+      const available = await contexts.listContexts(interaction.guildId);
       if (!available.length) return reply(interaction, 'Aún no hay contextos. Usa `/balance crear-contexto` para crear uno.');
-      let content = `**Contextos de balance (${available.length})**`;
+      const debtTotals = await economy.getDebtTotalsByContext(interaction.guildId, available.map((context) => ({
+        channelId: context.channelId, contextId: context.slug,
+      })));
+      let content = `**Contextos de balance del servidor (${available.length})**`;
       let shown = 0;
       for (const context of available) {
-        const line = `\n• ${safeText(context.name)}`;
+        const totalDebt = debtTotals.get(context.channelId)?.get(context.slug) || 0;
+        const line = `\n• ${safeText(context.name)} · <#${context.channelId}> — Debe: **${formatAmount(totalDebt)}**`;
         if (content.length + line.length > 1750) break;
         content += line;
         shown++;
