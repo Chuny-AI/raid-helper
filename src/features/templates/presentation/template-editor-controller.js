@@ -21,12 +21,15 @@ const field = (interaction, name) => interaction.fields.getTextInputValue(name);
 const groupIndexFromToken = (token) => (token === 'new' ? null : Number(token));
 
 const executeEdit = async (interaction) => {
-  if (!await checkAuthorizedAccess(interaction)) return deny(interaction);
+  // Discord exige reconocer el slash command en pocos segundos. La
+  // comprobación de roles puede consultar Mongo, así que se difiere antes de
+  // ella; de otro modo un servidor lento deja el comando sin panel visible.
   if (!interaction.deferred && !interaction.replied) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   }
+  if (!await checkAuthorizedAccess(interaction)) return deny(interaction);
   const sessionId = await editor.start({
-    templateName: interaction.options.getString('template'),
+    templateName: interaction.options.getString('template', true),
     userId: interaction.user.id,
     guildId: interaction.guild.id,
   });
@@ -226,6 +229,11 @@ const handleInteraction = async (interaction) => {
     } else if (action === 'basic-submit') await handleBasicSubmit(interaction, sessionId);
     else if (action === 'settings-submit') await handleSettingsSubmit(interaction, sessionId);
     else if (action === 'save') {
+      // Guardar consulta y escribe en Mongo; responder al botón antes evita
+      // que Discord venza su token y deje el guardado sin confirmación visible.
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferUpdate();
+      }
       const saved = await editor.save(context(interaction, sessionId));
       await screens.respondPanel(interaction, {
         embeds: [createSuccessEmbed(
