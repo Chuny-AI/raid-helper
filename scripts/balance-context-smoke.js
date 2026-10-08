@@ -18,7 +18,6 @@ const saved = {
   contextsCreate: EconomyContext.create,
   balanceFind: EconomyBalance.findOne,
   balanceFindMany: EconomyBalance.find,
-  balanceAggregate: EconomyBalance.aggregate,
   balanceUpdate: EconomyBalance.findOneAndUpdate,
   transactionsCreate: EconomyTransaction.create,
   transactionsFind: EconomyTransaction.find,
@@ -74,18 +73,6 @@ const saved = {
         && (filter.balance.$gt !== undefined ? balance > 0 : balance < 0))
       .map(([key, balance]) => ({ userId: key.split(':')[3], balance })) }) }),
   });
-  EconomyBalance.aggregate = async (pipeline) => {
-    const match = pipeline[0].$match;
-    const totals = new Map();
-    for (const [key, balance] of balances.entries()) {
-      const [guildId, channelId, contextId] = key.split(':');
-      if (guildId === match.guildId && channelId === match.channelId
-        && match.contextId.$in.includes(contextId) && balance < 0) {
-        totals.set(contextId, (totals.get(contextId) || 0) + Math.abs(balance));
-      }
-    }
-    return Array.from(totals, ([_id, totalDebt]) => ({ _id, totalDebt }));
-  };
   EconomyBalance.findOneAndUpdate = async (filter, update, options) => {
     assert.ok(options.session);
     const key = `${filter.guildId}:${filter.channelId}:${filter.contextId}:${filter.userId}`;
@@ -186,10 +173,8 @@ const saved = {
   await run('reiniciar', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b');
   assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /0/);
   assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }), /100/);
-  await run('quitar', { contexto: 'gremio', usuario: 'member', cantidad: 50, motivo: 'Deuda' });
-  assert.match(await run('contextos'), /Gremio — Debe: \*\*10\*\*/);
   assert.match(await run('agregar', { contexto: 'gremio', usuario: 'member', cantidad: 1, motivo: 'No' }, false), /Solo quienes tengan/);
-  assert.equal(transactions.length, 6);
+  assert.equal(transactions.length, 5);
   await assert.rejects(economyService.getBalance('guild', undefined, 'avalonianas', 'member'), /canal/);
   await assert.rejects(economyService.getBalance('guild', 'channel-a', undefined, 'member'), /contexto/);
   await assert.rejects(economyService.getBalance(undefined, 'channel-a', 'avalonianas', 'member'), /servidor/);
@@ -230,7 +215,6 @@ const saved = {
   EconomyContext.create = saved.contextsCreate;
   EconomyBalance.findOne = saved.balanceFind;
   EconomyBalance.find = saved.balanceFindMany;
-  EconomyBalance.aggregate = saved.balanceAggregate;
   EconomyBalance.findOneAndUpdate = saved.balanceUpdate;
   EconomyTransaction.create = saved.transactionsCreate;
   EconomyTransaction.find = saved.transactionsFind;

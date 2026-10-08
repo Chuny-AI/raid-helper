@@ -100,19 +100,6 @@ const getLeaderboard = async (guildId, channelId, contextId, limit = 10) => {
     .select('userId balance');
 };
 
-const getDebtTotalsByContext = async (guildId, channelId, contextIds) => {
-  ensureGuildId(guildId);
-  ensureChannelId(channelId);
-  const uniqueContextIds = [...new Set((contextIds || []).filter(Boolean))];
-  if (!uniqueContextIds.length) return new Map();
-
-  const totals = await EconomyBalance.aggregate([
-    { $match: { guildId, channelId, contextId: { $in: uniqueContextIds }, balance: { $lt: 0 } } },
-    { $group: { _id: '$contextId', totalDebt: { $sum: { $abs: '$balance' } } } },
-  ]);
-  return new Map(totals.map(({ _id, totalDebt }) => [_id, totalDebt]));
-};
-
 const addMoney = async ({ guildId, channelId, contextId, userId, executorId, amount, description = '' }) => {
   ensurePositiveAmount(amount);
   ensureBalanceScope(guildId, channelId, contextId);
@@ -212,7 +199,6 @@ module.exports = {
   clearLogChannel,
   getBalance,
   getLeaderboard,
-  getDebtTotalsByContext,
   getDebtors,
   getTransactions,
   addMoney,
