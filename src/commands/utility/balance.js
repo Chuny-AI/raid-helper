@@ -12,6 +12,9 @@ const contextOption = (option) => option.setName('contexto')
 const userOption = (option) => option.setName('usuario')
   .setDescription('Miembro cuyo saldo se consulta o modifica')
   .setRequired(true);
+const sourceChannelOption = (option) => option.setName('canal')
+  .setDescription('Canal al que pertenece el contexto')
+  .setRequired(false);
 const amountOption = (option) => option.setName('cantidad')
   .setDescription('Cantidad entera positiva')
   .setRequired(true).setMinValue(1);
@@ -31,7 +34,7 @@ const data = new SlashCommandBuilder()
     .setDescription('Lista los contextos del servidor y el total adeudado'))
   .addSubcommand((sub) => sub.setName('ver')
     .setDescription('Consulta el saldo de un miembro')
-    .addStringOption(contextOption).addUserOption(userOption))
+    .addChannelOption(sourceChannelOption).addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('agregar')
     .setDescription('Suma al saldo y registra el movimiento')
     .addStringOption(contextOption).addUserOption(userOption)
@@ -45,10 +48,10 @@ const data = new SlashCommandBuilder()
     .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('historial')
     .setDescription('Muestra los últimos movimientos de un miembro')
-    .addStringOption(contextOption).addUserOption(userOption))
+    .addChannelOption(sourceChannelOption).addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('ranking')
     .setDescription('Muestra los mayores saldos del contexto')
-    .addStringOption(contextOption));
+    .addChannelOption(sourceChannelOption).addStringOption(contextOption));
 
 const formatAmount = (amount) => new Intl.NumberFormat('es-CO').format(amount);
 const reply = (interaction, content) => interaction.editReply({ content, allowedMentions: { parse: [] } });
@@ -113,9 +116,10 @@ const execute = async (interaction) => {
       return reply(interaction, content);
     }
 
-    const context = await contexts.requireContext(interaction.guildId, interaction.channelId, interaction.options.getString('contexto', true));
+    const contextChannelId = interaction.options.getChannel?.('canal')?.id || interaction.channelId;
+    const context = await contexts.requireContext(interaction.guildId, contextChannelId, interaction.options.getString('contexto', true));
     if (action === 'ranking') {
-      const leaders = await economy.getLeaderboard(interaction.guildId, interaction.channelId, context.slug, 10);
+      const leaders = await economy.getLeaderboard(interaction.guildId, contextChannelId, context.slug, 10);
       return reply(interaction, leaders.length
         ? `**Mayores saldos · ${safeText(context.name)}**\n${leaders.map((item, index) => `${index + 1}. <@${item.userId}> — ${formatAmount(item.balance)}`).join('\n')}`
         : `Todavía no hay saldos positivos en **${safeText(context.name)}**.`);
@@ -123,16 +127,16 @@ const execute = async (interaction) => {
 
     const userId = interaction.options.getUser('usuario', true).id;
     if (action === 'ver') {
-      const amount = await economy.getBalance(interaction.guildId, interaction.channelId, context.slug, userId);
-      return reply(interaction, `**${safeText(context.name)}** · <@${userId}>: **${formatAmount(amount)}**`);
+      const amount = await economy.getBalance(interaction.guildId, contextChannelId, context.slug, userId);
+      return reply(interaction, `**${safeText(context.name)}** · <#${contextChannelId}> · <@${userId}>: **${formatAmount(amount)}**`);
     }
     if (action === 'historial') {
-      const movements = await economy.getTransactions(interaction.guildId, interaction.channelId, context.slug, userId, 10);
+      const movements = await economy.getTransactions(interaction.guildId, contextChannelId, context.slug, userId, 10);
       const labels = { add: '➕', remove: '➖', reset: '🔄' };
       if (!movements.length) return reply(interaction, `No hay movimientos de <@${userId}> en **${safeText(context.name)}**.`);
       const embed = new EmbedBuilder()
         .setTitle(`Últimos movimientos · ${context.name}`)
-        .setDescription(`Usuario: <@${userId}> · Canal: <#${interaction.channelId}>`)
+        .setDescription(`Usuario: <@${userId}> · Canal: <#${contextChannelId}>`)
         .setColor(0x5865f2);
       for (const item of movements) {
         const description = safeText(item.description).slice(0, 200);
@@ -200,7 +204,8 @@ const autocomplete = async (interaction) => {
     if (!interaction.guildId || !interaction.channelId || !await hasConfiguredEconomyRole(interaction.member, interaction.guildId)) {
       return interaction.respond([]);
     }
-    const available = await contexts.searchContexts(interaction.guildId, interaction.channelId, interaction.options.getFocused());
+    const contextChannelId = interaction.options.getChannel?.('canal')?.id || interaction.channelId;
+    const available = await contexts.searchContexts(interaction.guildId, contextChannelId, interaction.options.getFocused());
     return interaction.respond(available.map((context) => ({ name: context.name, value: context.slug })));
   } catch (error) {
     console.error('[ERROR] Autocompletado balance:', error);

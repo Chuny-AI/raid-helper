@@ -126,6 +126,7 @@ const saved = {
         getSubcommand: () => action,
         getString: (name) => values[name],
         getInteger: (name) => values[name],
+        getChannel: (name) => values[name] ? { id: values[name] } : null,
         getUser: (name) => ({ id: values[name] }),
       },
       async deferReply() {},
@@ -169,6 +170,7 @@ const saved = {
   assert.match(await run('ver', { contexto: 'Avalonianas', usuario: 'member' }), /100/);
   assert.match(await run('ver', { contexto: 'gremio', usuario: 'member' }), /40/);
   assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /7/);
+  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member', canal: 'channel-a' }, true, 'channel-c'), /100/);
   assert.match(await run('ranking', { contexto: 'avalonianas' }, true, 'channel-b'), /7/);
   assert.doesNotMatch(await run('ranking', { contexto: 'avalonianas' }, true, 'channel-b'), /100/);
   const globalContexts = await run('contextos', {}, true, 'channel-b');

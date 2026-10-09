@@ -45,10 +45,10 @@ Comandos de balance:
 
 - `/balance crear-contexto nombre:<nombre>`: crea un libro de saldos en el canal actual.
 - `/balance contextos`: lista todos los libros del servidor, su canal y el total adeudado de cada uno.
-- `/balance ver contexto:<nombre> usuario:<miembro>`: consulta el saldo.
+- `/balance ver contexto:<nombre> usuario:<miembro> canal:<canal opcional>`: consulta el saldo, incluso desde otro canal.
 - `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: modifica el saldo y registra la transacción.
 - `/balance reiniciar contexto:<nombre> usuario:<miembro>`: deja el saldo en cero y registra la transacción.
-- `/balance historial contexto:<nombre> usuario:<miembro>` y `/balance ranking contexto:<nombre>`: consultan movimientos y mayores saldos.
+- `/balance historial contexto:<nombre> usuario:<miembro> canal:<canal opcional>` y `/balance ranking contexto:<nombre> canal:<canal opcional>`: consultan movimientos y mayores saldos, incluso desde otro canal.
 
 Las respuestas son privadas para el operador. Cada cambio de saldo se registra
 atómicamente en MongoDB y se publica en el canal de auditoría configurado. Si
