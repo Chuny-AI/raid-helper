@@ -100,7 +100,7 @@ const getLeaderboard = async (guildId, channelId, contextId, limit = 10) => {
     .select('userId balance');
 };
 
-const getDebtTotalsByContext = async (guildId, contextScopes) => {
+const getTotalsByContext = async (guildId, contextScopes) => {
   ensureGuildId(guildId);
   const scopes = [...new Map((contextScopes || [])
     .filter(({ channelId, contextId }) => channelId && contextId)
@@ -112,16 +112,19 @@ const getDebtTotalsByContext = async (guildId, contextScopes) => {
     {
       $match: {
         guildId,
-        balance: { $lt: 0 },
         $or: scopes.map(({ channelId, contextId }) => ({ channelId, contextId })),
       },
     },
-    { $group: { _id: { channelId: '$channelId', contextId: '$contextId' }, totalDebt: { $sum: { $abs: '$balance' } } } },
+    { $group: {
+      _id: { channelId: '$channelId', contextId: '$contextId' },
+      totalBalance: { $sum: '$balance' },
+      totalDebt: { $sum: { $cond: [{ $lt: ['$balance', 0] }, { $abs: '$balance' }, 0] } },
+    } },
   ]);
   const totalsByChannel = new Map();
-  for (const { _id, totalDebt } of totals) {
+  for (const { _id, totalBalance, totalDebt } of totals) {
     if (!totalsByChannel.has(_id.channelId)) totalsByChannel.set(_id.channelId, new Map());
-    totalsByChannel.get(_id.channelId).set(_id.contextId, totalDebt);
+    totalsByChannel.get(_id.channelId).set(_id.contextId, { totalBalance, totalDebt });
   }
   return totalsByChannel;
 };
@@ -225,7 +228,7 @@ module.exports = {
   clearLogChannel,
   getBalance,
   getLeaderboard,
-  getDebtTotalsByContext,
+  getTotalsByContext,
   getDebtors,
   getTransactions,
   addMoney,

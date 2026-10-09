@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const { ApplicationCommandOptionType, CommandInteractionOptionResolver } = require('discord.js');
 const EconomyRole = require('../src/database/models/economy/EconomyRole');
 const EconomyContext = require('../src/database/models/economy/EconomyContext');
 const EconomyBalance = require('../src/database/models/economy/EconomyBalance');
@@ -76,24 +77,33 @@ const saved = {
   };
   EconomyBalance.findOne = async (filter) => ({ balance: balances.get(`${filter.guildId}:${filter.channelId}:${filter.contextId}:${filter.userId}`) || 0 });
   EconomyBalance.find = (filter) => ({
-    sort: () => ({ limit: () => ({ select: async () => Array.from(balances.entries())
+    sort: () => ({ limit: (limit) => ({ select: async () => Array.from(balances.entries())
       .filter(([key, balance]) => key.startsWith(`${filter.guildId}:${filter.channelId}:${filter.contextId}:`)
         && (filter.balance.$gt !== undefined ? balance > 0 : balance < 0))
-      .map(([key, balance]) => ({ userId: key.split(':')[3], balance })) }) }),
+      .map(([key, balance]) => ({ userId: key.split(':')[3], balance }))
+      .sort((a, b) => b.balance - a.balance).slice(0, limit) }) }),
   });
   EconomyBalance.aggregate = async (pipeline) => {
     const match = pipeline[0].$match;
+    assert.equal(match.balance, undefined, 'El resumen debe incluir también saldos positivos');
+    assert.deepEqual(pipeline[1].$group.totalBalance, { $sum: '$balance' });
+    assert.deepEqual(pipeline[1].$group.totalDebt, {
+      $sum: { $cond: [{ $lt: ['$balance', 0] }, { $abs: '$balance' }, 0] },
+    });
     const totals = new Map();
     for (const [key, balance] of balances.entries()) {
       const [guildId, channelId, contextId] = key.split(':');
-      if (guildId !== match.guildId || balance >= 0
+      if (guildId !== match.guildId
         || !match.$or.some((scope) => scope.channelId === channelId && scope.contextId === contextId)) continue;
       const totalKey = `${channelId}:${contextId}`;
-      totals.set(totalKey, (totals.get(totalKey) || 0) + Math.abs(balance));
+      const total = totals.get(totalKey) || { totalBalance: 0, totalDebt: 0 };
+      total.totalBalance += balance;
+      total.totalDebt += balance < 0 ? Math.abs(balance) : 0;
+      totals.set(totalKey, total);
     }
-    return Array.from(totals, ([key, totalDebt]) => {
+    return Array.from(totals, ([key, total]) => {
       const [channelId, contextId] = key.split(':');
-      return { _id: { channelId, contextId }, totalDebt };
+      return { _id: { channelId, contextId }, ...total };
     });
   };
   EconomyBalance.findOneAndUpdate = async (filter, update, options) => {
@@ -129,13 +139,17 @@ const saved = {
       guild: { channels: { fetch: async (auditChannelId) => ({ send: async (payload) => published.push({ auditChannelId, payload }) }) } },
       member: { roles: { cache: { some: (fn) => authorized && fn({ id: 'balance-role' }) } } },
       user: { id: 'operator' },
-      options: {
-        getSubcommand: () => action,
-        getString: (name) => values[name],
-        getInteger: (name) => values[name],
-        getChannel: (name) => values[name] ? { id: values[name] } : null,
-        getUser: (name) => ({ id: values[name] }),
-      },
+      options: new CommandInteractionOptionResolver({}, [{
+        name: action, type: ApplicationCommandOptionType.Subcommand,
+        options: Object.entries(values).map(([name, value]) => ({
+          name, value,
+          type: name === 'usuario' ? ApplicationCommandOptionType.User
+            : name === 'canal' ? ApplicationCommandOptionType.Channel
+              : name === 'cantidad' ? ApplicationCommandOptionType.Integer : ApplicationCommandOptionType.String,
+          ...(name === 'usuario' ? { user: { id: value } } : {}),
+          ...(name === 'canal' ? { channel: { id: value } } : {}),
+        })),
+      }]),
       async deferReply() {},
       async editReply(payload) {
         interaction.answer = payload.content || [
@@ -158,18 +172,23 @@ const saved = {
   assert.match(await run('crear-contexto', { nombre: 'Gremio' }), /creado/);
   assert.match(await run('crear-contexto', { nombre: 'Avalonianas' }, true, 'channel-b'), /creado/);
   assert.match(await run('crear-contexto', { nombre: 'AVALONIANAS' }), /Ya existe/);
-  const autocomplete = async (channelId, focused) => {
+  const autocomplete = async (channelId, focused, selectedChannel, authorized = true) => {
     let choices;
     await command.autocomplete({
       guildId: 'guild', channelId,
-      member: { roles: { cache: { some: (fn) => fn({ id: 'balance-role' }) } } },
-      options: { getFocused: () => focused },
+      member: { roles: ['balance-role'].filter(() => authorized) },
+      options: new CommandInteractionOptionResolver({}, [
+        { name: 'contexto', type: ApplicationCommandOptionType.String, value: focused, focused: true },
+        ...(selectedChannel ? [{ name: 'canal', type: ApplicationCommandOptionType.Channel, value: selectedChannel }] : []),
+      ]),
       respond: async (result) => { choices = result; },
     });
     return choices;
   };
   assert.deepEqual((await autocomplete('channel-b', '')).map((choice) => choice.value), ['avalonianas']);
   assert.deepEqual(await autocomplete('channel-b', '(.*'), []);
+  assert.deepEqual((await autocomplete('channel-b', '', 'channel-a')).map((choice) => choice.value), ['avalonianas', 'gremio']);
+  assert.deepEqual(await autocomplete('channel-a', '', 'channel-b', false), []);
   await run('agregar', { contexto: 'avalonianas', usuario: 'member', cantidad: 100, motivo: 'Botín' });
   await run('agregar', { contexto: 'gremio', usuario: 'member', cantidad: 40, motivo: 'Aporte' });
   await run('agregar', { contexto: 'avalonianas', usuario: 'member', cantidad: 7, motivo: 'Otro canal' }, true, 'channel-b');
@@ -182,9 +201,9 @@ const saved = {
   assert.doesNotMatch(await run('ranking', { contexto: 'avalonianas' }, true, 'channel-b'), /100/);
   const globalContexts = await run('contextos', {}, true, 'channel-b');
   assert.match(globalContexts, /Contextos de balance del servidor \(3\)/);
-  assert.match(globalContexts, /Avalonianas · <#channel-a> — Debe: \*\*0\*\*/);
-  assert.match(globalContexts, /Gremio · <#channel-a> — Debe: \*\*0\*\*/);
-  assert.match(globalContexts, /Avalonianas · <#channel-b> — Debe: \*\*0\*\*/);
+  assert.match(globalContexts, /Avalonianas · <#channel-a> — Saldo: \*\*100\*\* · Debe: \*\*0\*\*/);
+  assert.match(globalContexts, /Gremio · <#channel-a> — Saldo: \*\*40\*\* · Debe: \*\*0\*\*/);
+  assert.match(globalContexts, /Avalonianas · <#channel-b> — Saldo: \*\*7\*\* · Debe: \*\*0\*\*/);
   assert.match(await run('ver', { contexto: 'gremio', usuario: 'member' }, true, 'channel-b'), /no existe en este canal/);
   assert.equal(transactions.length, 3);
   assert.deepEqual(transactions.map((item) => [item.channelId, item.contextId]), [
@@ -203,9 +222,46 @@ const saved = {
   assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /0/);
   assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }), /100/);
   await run('quitar', { contexto: 'gremio', usuario: 'member', cantidad: 50, motivo: 'Deuda' });
-  assert.match(await run('contextos'), /Gremio · <#channel-a> — Debe: \*\*10\*\*/);
+  assert.match(await run('contextos'), /Gremio · <#channel-a> — Saldo: \*\*-10\*\* · Debe: \*\*10\*\*/);
   assert.match(await run('agregar', { contexto: 'gremio', usuario: 'member', cantidad: 1, motivo: 'No' }, false), /Solo quienes tengan/);
   assert.equal(transactions.length, 6);
+
+  // Todos los comandos usan el canal seleccionado, incluido su registro de auditoría.
+  const remote = { contexto: 'gremio', usuario: 'member', canal: 'channel-a' };
+  assert.match(await run('agregar', { ...remote, cantidad: 25, motivo: 'Ingreso remoto' }, true, 'channel-c'), /-10 → \*\*15\*\*/);
+  assert.match(await run('ver', remote, true, 'channel-c'), /<#channel-a> · <@member>: \*\*15\*\*/);
+  assert.match(await run('ranking', { contexto: 'gremio', canal: 'channel-a' }, true, 'channel-c'), /<@member> — 15/);
+  assert.match(await run('historial', remote, true, 'channel-c'), /Ingreso remoto/);
+  assert.equal(published.at(-1).auditChannelId, 'logs-channel-a');
+  assert.equal(published.at(-1).payload.embeds[0].data.fields[0].value, '<#channel-a>');
+  assert.equal(transactions.at(-1).channelId, 'channel-a');
+  assert.match(await run('quitar', { ...remote, cantidad: 5, motivo: 'Retiro remoto' }, true, 'channel-c'), /15 → \*\*10\*\*/);
+  assert.match(await run('reiniciar', remote, true, 'channel-c'), /10 → \*\*0\*\*/);
+  assert.match(await run('ver', remote, true, 'channel-c'), /<@member>: \*\*0\*\*/);
+  assert.match(await run('ranking', { contexto: 'gremio', canal: 'channel-a' }, true, 'channel-c'), /no hay saldos positivos/);
+  assert.match(await run('historial', remote, true, 'channel-c'), /Reset de balance/);
+  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }), /<@member>: \*\*100\*\*/);
+  assert.equal([...balances.keys()].some((key) => key.includes(':channel-c:')), false);
+
+  // El total suma varios miembros; la deuda no se cancela con saldos positivos.
+  await run('agregar', { contexto: 'gremio', usuario: 'creditor', cantidad: 30, motivo: 'Crédito' });
+  await run('quitar', { contexto: 'gremio', usuario: 'debtor', cantidad: 12, motivo: 'Deuda' });
+  balances.set('other-guild:channel-a:gremio:member', 999);
+  assert.match(await run('contextos'), /Gremio · <#channel-a> — Saldo: \*\*18\*\* · Debe: \*\*12\*\*/);
+  assert.match(await run('ver', { contexto: 'gremio', usuario: 'unknown' }), /<@unknown>: \*\*0\*\*/);
+  assert.match(await run('historial', { contexto: 'gremio', usuario: 'unknown' }), /No hay movimientos/);
+
+  const beforeInvalid = transactions.length;
+  for (const action of ['agregar', 'quitar', 'reiniciar']) {
+    assert.match(await run(action, { ...remote, cantidad: 3, motivo: 'Sin permiso' }, false), /Solo quienes tengan/);
+    assert.match(await run(action, { ...remote, canal: 'channel-c', cantidad: 3, motivo: 'No existe' }), /no existe en este canal/);
+  }
+  for (const cantidad of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.match(await run('agregar', { ...remote, cantidad, motivo: 'Inválido' }), /entero positivo/);
+    assert.match(await run('quitar', { ...remote, cantidad, motivo: 'Inválido' }), /entero positivo/);
+  }
+  assert.match(await run('agregar', { ...remote, cantidad: 3, motivo: '   ' }), /Escribe un motivo/);
+  assert.equal(transactions.length, beforeInvalid);
   await assert.rejects(economyService.getBalance('guild', undefined, 'avalonianas', 'member'), /canal/);
   await assert.rejects(economyService.getBalance('guild', 'channel-a', undefined, 'member'), /contexto/);
   await assert.rejects(economyService.getBalance(undefined, 'channel-a', 'avalonianas', 'member'), /servidor/);
