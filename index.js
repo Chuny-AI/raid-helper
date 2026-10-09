@@ -10,6 +10,15 @@ const path = require('node:path');
 const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
+const COMMAND_REGISTRATION_TIMEOUT_MS = 20_000;
+
+const withTimeout = (promise, operation) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error(`${operation} superó ${COMMAND_REGISTRATION_TIMEOUT_MS / 1000} segundos.`)), COMMAND_REGISTRATION_TIMEOUT_MS);
+  promise.then(
+    (value) => { clearTimeout(timer); resolve(value); },
+    (error) => { clearTimeout(timer); reject(error); },
+  );
+});
 
 app.get("/", (req, res) => {
   res.json({
@@ -80,10 +89,10 @@ async function registerGlobalCommands() {
 
     console.log(`[INFO] Iniciando registro de ${commands.length} comandos globales...`);
 
-    const data = await rest.put(
+    const data = await withTimeout(rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands },
-    );
+    ), 'El registro global de comandos');
 
     console.log(`[SUCCESS] Se registraron exitosamente ${data.length} comandos slash globalmente.`);
     return true;
@@ -110,10 +119,10 @@ async function registerGuildCommands() {
 
     console.log(`[INFO] Iniciando registro de ${commands.length} comandos en el servidor ${guildId}...`);
 
-    const data = await rest.put(
+    const data = await withTimeout(rest.put(
       Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
       { body: commands },
-    );
+    ), 'El registro de comandos del servidor');
 
     console.log(`[SUCCESS] Se registraron exitosamente ${data.length} comandos slash en el servidor ${guildId}.`);
     return true;
@@ -158,7 +167,10 @@ async function registerCommands() {
         const guildCommand = { ...command };
         delete guildCommand.contexts;
         delete guildCommand.integration_types;
-        await rest.post(Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId), { body: guildCommand });
+        await withTimeout(
+          rest.post(Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId), { body: guildCommand }),
+          `El registro del panel en el servidor ${guildId}`,
+        );
       }
       console.log(`[SUCCESS] Paneles de registro publicados para el servidor ${guildId}.`);
     }
