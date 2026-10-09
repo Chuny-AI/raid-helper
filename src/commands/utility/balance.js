@@ -29,6 +29,12 @@ const data = new SlashCommandBuilder()
       .setDescription('Nombre del nuevo contexto').setRequired(true).setMaxLength(60)))
   .addSubcommand((sub) => sub.setName('contextos')
     .setDescription('Lista los contextos del servidor, sus saldos y deudas'))
+  .addSubcommand((sub) => sub.setName('eliminar-contexto')
+    .setDescription('Elimina una categoría con todos sus saldos e historial')
+    .addStringOption(contextOption)
+    .addBooleanOption((option) => option.setName('confirmar')
+      .setDescription('Confirma la eliminación definitiva de la categoría, sus saldos e historial')
+      .setRequired(true)))
   .addSubcommand((sub) => sub.setName('ver')
     .setDescription('Consulta el saldo de un miembro')
     .addStringOption(contextOption).addUserOption(userOption))
@@ -118,7 +124,10 @@ const execute = async (interaction) => {
         : `Todavía no hay saldos positivos en **${safeText(context.name)}**.`);
     }
 
-    const userId = interaction.options.getUser('usuario', true).id;
+    if (action === 'eliminar-contexto' && interaction.options.getBoolean('confirmar', true) !== true) {
+      return reply(interaction, `No se eliminó **${safeText(context.name)}**. Usa \`confirmar:true\` para borrar la categoría, todos sus saldos e historial.`);
+    }
+    const userId = action === 'eliminar-contexto' ? null : interaction.options.getUser('usuario', true).id;
     if (action === 'ver') {
       const amount = await economy.getBalance(interaction.guildId, context.slug, userId);
       return reply(interaction, `**${safeText(context.name)}** · <@${userId}>: **${formatAmount(amount)}**`);
@@ -158,6 +167,30 @@ const execute = async (interaction) => {
       PermissionFlagsBits.EmbedLinks,
     ])) {
       throw new UserError('El bot necesita permiso para ver, escribir e insertar enlaces en el canal de auditoría.');
+    }
+    if (action === 'eliminar-contexto') {
+      const { balancesDeleted, transactionsDeleted } = await economy.deleteContext({
+        guildId: interaction.guildId, contextId: context.slug,
+      });
+      let published = true;
+      try {
+        await auditChannel.send({
+          embeds: [new EmbedBuilder()
+            .setTitle('🗑️ Contexto de balance eliminado')
+            .setColor(0xed4245)
+            .addFields(
+              { name: 'Contexto', value: safeText(context.name) },
+              { name: 'Responsable', value: `<@${interaction.user.id}>` },
+              { name: 'Saldos eliminados', value: formatAmount(balancesDeleted), inline: true },
+              { name: 'Movimientos eliminados', value: formatAmount(transactionsDeleted), inline: true },
+            ).setTimestamp()],
+          allowedMentions: { parse: [] },
+        });
+      } catch (error) {
+        published = false;
+        console.error('[ERROR] No se pudo publicar la eliminación de contexto:', error);
+      }
+      return reply(interaction, `✅ Contexto **${safeText(context.name)}** eliminado: **${formatAmount(balancesDeleted)}** saldos y **${formatAmount(transactionsDeleted)}** movimientos.${published ? '' : ' ⚠️ La eliminación se completó, pero no se pudo publicar en el canal de auditoría.'}`);
     }
     let result;
     let amount;

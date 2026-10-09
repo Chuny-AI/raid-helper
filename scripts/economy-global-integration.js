@@ -82,6 +82,17 @@ const dbName = `codex_economy_test_${randomUUID().replaceAll('-', '')}`;
   await migrateEconomyGlobalContexts();
   assert.equal(await economy.getBalance('guild', 'resume', 'member'), 50);
   assert.equal(await journal.countDocuments({ complete: false }), 0);
+  const deleted = await economy.deleteContext({ guildId: 'guild', contextId: 'avalonianas' });
+  assert.deepEqual(deleted, { balancesDeleted: 2, transactionsDeleted: 5 });
+  assert.equal(await Context.countDocuments({ guildId: 'guild', slug: 'avalonianas' }), 0);
+  assert.equal(await Balance.countDocuments({ guildId: 'guild', contextId: 'avalonianas' }), 0);
+  assert.equal(await Transaction.countDocuments({ guildId: 'guild', contextId: 'avalonianas' }), 0);
+  assert.equal(await economy.getBalance('other-guild', 'avalonianas', 'member'), 999);
+  assert.equal(await economy.getBalance('guild', 'resume', 'member'), 50);
+  await contexts.createContext({ guildId: 'guild', name: 'Avalonianas', createdBy: 'admin' });
+  await migrateEconomyGlobalContexts();
+  assert.equal(await economy.getBalance('guild', 'avalonianas', 'member'), 0);
+  assert.equal((await economy.getTransactions('guild', 'avalonianas', 'member')).length, 0);
   console.log('✅ MongoDB: migración, respaldo, reanudación, índices y operaciones globales verificados');
 })().catch((error) => {
   console.error(error);

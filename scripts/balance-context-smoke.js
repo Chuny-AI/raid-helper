@@ -26,6 +26,9 @@ const saved = {
   logFind: EconomyLogChannel.findOne,
   logUpdate: EconomyLogChannel.findOneAndUpdate,
   logDelete: EconomyLogChannel.findOneAndDelete,
+  contextsDelete: EconomyContext.deleteOne,
+  balancesDelete: EconomyBalance.deleteMany,
+  transactionsDelete: EconomyTransaction.deleteMany,
 };
 
 (async () => {
@@ -122,6 +125,35 @@ const saved = {
       item.guildId === filter.guildId && item.contextId === filter.contextId
       && item.affectedUserIds.includes(filter.affectedUserIds)).reverse() }),
   });
+  EconomyBalance.deleteMany = async (filter, options) => {
+    assert.ok(options.session);
+    assert.deepEqual(Object.keys(filter).sort(), ['contextId', 'guildId']);
+    let deletedCount = 0;
+    for (const key of balances.keys()) {
+      if (key.startsWith(`${filter.guildId}:${filter.contextId}:`)) {
+        balances.delete(key);
+        deletedCount++;
+      }
+    }
+    return { deletedCount };
+  };
+  EconomyTransaction.deleteMany = async (filter, options) => {
+    assert.ok(options.session);
+    let deletedCount = 0;
+    for (let i = transactions.length - 1; i >= 0; i--) {
+      if (transactions[i].guildId === filter.guildId && transactions[i].contextId === filter.contextId) {
+        transactions.splice(i, 1);
+        deletedCount++;
+      }
+    }
+    return { deletedCount };
+  };
+  EconomyContext.deleteOne = async (filter, options) => {
+    assert.ok(options.session);
+    const index = contexts.findIndex(c => c.guildId === filter.guildId && c.slug === filter.slug);
+    if (index !== -1) contexts.splice(index, 1);
+    return { deletedCount: index === -1 ? 0 : 1 };
+  };
   EconomyLogChannel.findOne = async (filter) => {
     assert.equal(filter.guildId, 'guild');
     assert.deepEqual(filter, { guildId: 'guild' });
@@ -145,7 +177,8 @@ const saved = {
           name, value,
           type: name === 'usuario' ? ApplicationCommandOptionType.User
             : name === 'canal' ? ApplicationCommandOptionType.Channel
-              : name === 'cantidad' ? ApplicationCommandOptionType.Integer : ApplicationCommandOptionType.String,
+              : name === 'cantidad' ? ApplicationCommandOptionType.Integer
+                : name === 'confirmar' ? ApplicationCommandOptionType.Boolean : ApplicationCommandOptionType.String,
           ...(name === 'usuario' ? { user: { id: value } } : {}),
           ...(name === 'canal' ? { channel: { id: value } } : {}),
         })),
@@ -249,6 +282,30 @@ const saved = {
   assert.throws(() => contextService.listContexts(undefined), /servidor/);
   assert.throws(() => economyService.getTransactions('guild', undefined, 'member'), /contexto/);
 
+  const deletion = { contexto: 'gremio', confirmar: true };
+  assert.match(await run('eliminar-contexto', deletion, true, 'thread-c'), /Configura el canal de auditoría/);
+  assert.equal(transactions.length, beforeInvalid);
+  EconomyLogChannel.findOne = async () => ({ channelId: 'logs-server' });
+  assert.match(await run('eliminar-contexto', deletion, false), /Solo quienes tengan/);
+  assert.match(await run('eliminar-contexto', { ...deletion, confirmar: false }), /No se eliminó/);
+  assert.match(await run('eliminar-contexto', { ...deletion, contexto: 'inexistente' }), /no existe en este servidor/);
+  assert.equal(transactions.length, beforeInvalid);
+  const otherTransactions = transactions.filter(t => t.contextId !== 'gremio');
+  const removedTransactions = transactions.length - otherTransactions.length;
+  assert.match(await run('eliminar-contexto', deletion, true, 'thread-c'), new RegExp('eliminado: \\*\\*2\\*\\* saldos y \\*\\*' + removedTransactions + '\\*\\* movimientos'));
+  assert.deepEqual(transactions, otherTransactions);
+  assert.equal(balances.get('other-guild:gremio:member'), 999);
+  assert.equal(balances.has('guild:avalonianas:member'), true);
+  assert.equal([...balances.keys()].some(k => k.startsWith('guild:gremio:')), false);
+  assert.match(published.at(-1).payload.embeds[0].data.title, /Contexto de balance eliminado/);
+  assert.doesNotMatch(await run('contextos'), /Gremio/);
+  assert.deepEqual((await autocomplete('thread-b', '')).map(c => c.value), ['avalonianas']);
+  assert.match(await run('ver', gremio), /no existe en este servidor/);
+  assert.match(await run('crear-contexto', { nombre: 'Gremio' }), /creado/);
+  assert.match(await run('ver', gremio), /<@member>: \*\*0\*\*/);
+  assert.match(await run('historial', gremio), /No hay movimientos/);
+  assert.match(await run('eliminar-contexto', deletion), /\*\*0\*\* saldos y \*\*0\*\* movimientos/);
+
   EconomyLogChannel.findOneAndUpdate = async (filter, update, options) => {
     assert.deepEqual(filter, { guildId: 'guild' });
     assert.equal(update.channelId, 'logs-channel-a');
@@ -288,4 +345,7 @@ const saved = {
   EconomyLogChannel.findOne = saved.logFind;
   EconomyLogChannel.findOneAndUpdate = saved.logUpdate;
   EconomyLogChannel.findOneAndDelete = saved.logDelete;
+  EconomyContext.deleteOne = saved.contextsDelete;
+  EconomyBalance.deleteMany = saved.balancesDelete;
+  EconomyTransaction.deleteMany = saved.transactionsDelete;
 });

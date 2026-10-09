@@ -2,6 +2,7 @@
 const EconomyTransaction = require('../../database/models/economy/EconomyTransaction');
 const mongoose = require('mongoose');
 const EconomyLogChannel = require('../../database/models/economy/EconomyLogChannel');
+const EconomyContext = require('../../database/models/economy/EconomyContext');
 const { UserError } = require('../../utils/userError');
 
 const ensurePositiveAmount = (amount) => {
@@ -204,6 +205,20 @@ const getTransactions = (guildId, contextId, userId, limit = 10) => {
   }).sort({ createdAt: -1, _id: -1 }).limit(Math.min(Math.max(1, limit), 25));
 };
 
+const deleteContext = async ({ guildId, contextId }) => {
+  ensureBalanceScope(guildId, contextId);
+  return runInTransaction(async (session) => {
+    const options = withSession({}, session);
+    const scope = { guildId, contextId };
+    // En standalone, conservar la categoría hasta terminar permite reintentar
+    // si falla el borrado de sus datos. En replica set se confirma todo junto.
+    const balances = await EconomyBalance.deleteMany(scope, options);
+    const transactions = await EconomyTransaction.deleteMany(scope, options);
+    await EconomyContext.deleteOne({ guildId, slug: contextId }, options);
+    return { balancesDeleted: balances.deletedCount, transactionsDeleted: transactions.deletedCount };
+  });
+};
+
 module.exports = {
   getLogChannel,
   setLogChannel,
@@ -216,4 +231,5 @@ module.exports = {
   addMoney,
   removeMoney,
   resetBalance,
+  deleteContext,
 };

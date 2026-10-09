@@ -42,6 +42,7 @@ asignarles una categoría arbitraria.
 Comandos de balance:
 
 - `/balance crear-contexto nombre:<nombre>`: crea una categoría del servidor.
+- `/balance eliminar-contexto contexto:<nombre> confirmar:true`: elimina la categoría, todos sus saldos e historial, y registra la eliminación en auditoría.
 - `/balance contextos`: lista las categorías, el saldo total y la deuda de cada una.
 - `/balance ver contexto:<nombre> usuario:<miembro>`: consulta el saldo.
 - `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: modifica el saldo y registra el movimiento.
