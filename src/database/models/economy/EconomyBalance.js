@@ -11,10 +11,7 @@ const economyBalanceSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
-  channelId: { type: String, required: true },
-  // Un saldo nunca debe caer silenciosamente en un contexto genérico. El
-  // servicio de economía exige este valor y lo usa como parte de su clave de
-  // aislamiento junto con el servidor y el canal.
+  // Cada usuario tiene un saldo por categoría y servidor.
   contextId: { type: String, required: true },
   balance: {
     type: Number,
@@ -25,9 +22,9 @@ const economyBalanceSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-});
+}, { autoIndex: false });
 
-economyBalanceSchema.index({ guildId: 1, channelId: 1, contextId: 1, userId: 1 }, { unique: true });
+economyBalanceSchema.index({ guildId: 1, contextId: 1, userId: 1 }, { unique: true });
 
 economyBalanceSchema.pre('save', function(next) {
   this.updatedAt = Date.now();

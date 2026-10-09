@@ -37,14 +37,14 @@ const saved = {
     }
   }
   assert.ok(EconomyBalance.schema.indexes().some(([keys, options]) =>
-    keys.guildId === 1 && keys.channelId === 1 && keys.contextId === 1 && keys.userId === 1 && options.unique));
-  assert.ok(EconomyTransaction.schema.path('channelId'));
+    keys.guildId === 1 && keys.contextId === 1 && keys.userId === 1 && options.unique));
+  assert.equal(Boolean(EconomyTransaction.schema.path('channelId').isRequired), false);
   assert.equal(EconomyBalance.schema.path('contextId').options.default, undefined);
   assert.equal(EconomyTransaction.schema.path('contextId').options.default, undefined);
   assert.ok(EconomyContext.schema.indexes().some(([keys, options]) =>
-    keys.guildId === 1 && keys.channelId === 1 && keys.slug === 1 && options.unique));
+    keys.guildId === 1 && keys.slug === 1 && options.unique));
   assert.ok(EconomyLogChannel.schema.indexes().some(([keys, options]) =>
-    keys.guildId === 1 && keys.sourceChannelId === 1 && options.unique));
+    keys.guildId === 1 && options.unique));
 
   const contexts = [];
   const balances = new Map();
@@ -52,17 +52,17 @@ const saved = {
   const published = [];
   EconomyRole.find = () => ({ sort: async () => [{ roleId: 'balance-role' }] });
   EconomyContext.create = async (data) => {
-    if (contexts.some((context) => context.guildId === data.guildId && context.channelId === data.channelId && context.slug === data.slug)) {
+    if (contexts.some((context) => context.guildId === data.guildId && context.slug === data.slug)) {
       const error = new Error('duplicate'); error.code = 11000; throw error;
     }
     contexts.push(data);
     return data;
   };
   EconomyContext.findOne = async (filter) => contexts.find((context) =>
-    context.guildId === filter.guildId && context.channelId === filter.channelId && context.slug === filter.slug) || null;
+    context.guildId === filter.guildId && context.slug === filter.slug) || null;
   EconomyContext.find = (filter) => {
     const matches = contexts.filter((context) => {
-      if (context.guildId !== filter.guildId || (filter.channelId && context.channelId !== filter.channelId)) return false;
+      if (context.guildId !== filter.guildId) return false;
       if (!filter.$or) return true;
       return filter.$or.some((condition) => {
         const [field, expression] = Object.entries(condition)[0];
@@ -75,12 +75,12 @@ const saved = {
     };
     return { sort: () => query };
   };
-  EconomyBalance.findOne = async (filter) => ({ balance: balances.get(`${filter.guildId}:${filter.channelId}:${filter.contextId}:${filter.userId}`) || 0 });
+  EconomyBalance.findOne = async (filter) => ({ balance: balances.get(`${filter.guildId}:${filter.contextId}:${filter.userId}`) || 0 });
   EconomyBalance.find = (filter) => ({
     sort: () => ({ limit: (limit) => ({ select: async () => Array.from(balances.entries())
-      .filter(([key, balance]) => key.startsWith(`${filter.guildId}:${filter.channelId}:${filter.contextId}:`)
+      .filter(([key, balance]) => key.startsWith(`${filter.guildId}:${filter.contextId}:`)
         && (filter.balance.$gt !== undefined ? balance > 0 : balance < 0))
-      .map(([key, balance]) => ({ userId: key.split(':')[3], balance }))
+      .map(([key, balance]) => ({ userId: key.split(':')[2], balance }))
       .sort((a, b) => b.balance - a.balance).slice(0, limit) }) }),
   });
   EconomyBalance.aggregate = async (pipeline) => {
@@ -92,23 +92,23 @@ const saved = {
     });
     const totals = new Map();
     for (const [key, balance] of balances.entries()) {
-      const [guildId, channelId, contextId] = key.split(':');
+      const [guildId, contextId] = key.split(':');
       if (guildId !== match.guildId
-        || !match.$or.some((scope) => scope.channelId === channelId && scope.contextId === contextId)) continue;
-      const totalKey = `${channelId}:${contextId}`;
+        || !match.contextId.$in.includes(contextId)) continue;
+      const totalKey = contextId;
       const total = totals.get(totalKey) || { totalBalance: 0, totalDebt: 0 };
       total.totalBalance += balance;
       total.totalDebt += balance < 0 ? Math.abs(balance) : 0;
       totals.set(totalKey, total);
     }
     return Array.from(totals, ([key, total]) => {
-      const [channelId, contextId] = key.split(':');
-      return { _id: { channelId, contextId }, ...total };
+      const contextId = key;
+      return { _id: contextId, ...total };
     });
   };
   EconomyBalance.findOneAndUpdate = async (filter, update, options) => {
     assert.ok(options.session);
-    const key = `${filter.guildId}:${filter.channelId}:${filter.contextId}:${filter.userId}`;
+    const key = `${filter.guildId}:${filter.contextId}:${filter.userId}`;
     const previous = balances.get(key) || 0;
     balances.set(key, update.$inc ? previous + update.$inc.balance : update.$set.balance);
     return { balance: previous };
@@ -119,13 +119,13 @@ const saved = {
   };
   EconomyTransaction.find = (filter) => ({
     sort: () => ({ limit: async () => transactions.filter((item) =>
-      item.guildId === filter.guildId && item.channelId === filter.channelId && item.contextId === filter.contextId
+      item.guildId === filter.guildId && item.contextId === filter.contextId
       && item.affectedUserIds.includes(filter.affectedUserIds)).reverse() }),
   });
   EconomyLogChannel.findOne = async (filter) => {
     assert.equal(filter.guildId, 'guild');
-    assert.ok(filter.sourceChannelId);
-    return { channelId: `logs-${filter.sourceChannelId}` };
+    assert.deepEqual(filter, { guildId: 'guild' });
+    return { channelId: 'logs-server' };
   };
   mongoose.startSession = async () => ({
     withTransaction: async (work) => work(),
@@ -166,117 +166,96 @@ const saved = {
     return interaction.answer;
   };
 
+  for (const sub of command.data.toJSON().options) {
+    assert.equal((sub.options || []).some(option => option.name === 'canal'), false);
+  }
+  assert.match(await run('contextos'), /Aún no hay contextos/);
   assert.match(await run('crear-contexto', { nombre: 'Avalonianas' }, false), /Solo quienes tengan/);
   assert.equal(contexts.length, 0);
   assert.match(await run('crear-contexto', { nombre: 'Avalonianas' }), /creado/);
   assert.match(await run('crear-contexto', { nombre: 'Gremio' }), /creado/);
-  assert.match(await run('crear-contexto', { nombre: 'Avalonianas' }, true, 'channel-b'), /creado/);
-  assert.match(await run('crear-contexto', { nombre: 'AVALONIANAS' }), /Ya existe/);
-  const autocomplete = async (channelId, focused, selectedChannel, authorized = true) => {
+  assert.match(await run('crear-contexto', { nombre: 'AVALONIANAS' }, true, 'thread-b'), /Ya existe/);
+  assert.equal(contexts.length, 2);
+  assert.equal(contexts[0].channelId, undefined);
+  const autocomplete = async (channelId, focused, authorized = true) => {
     let choices;
     await command.autocomplete({
       guildId: 'guild', channelId,
-      member: { roles: ['balance-role'].filter(() => authorized) },
+      member: { roles: authorized ? ['balance-role'] : [] },
       options: new CommandInteractionOptionResolver({}, [
         { name: 'contexto', type: ApplicationCommandOptionType.String, value: focused, focused: true },
-        ...(selectedChannel ? [{ name: 'canal', type: ApplicationCommandOptionType.Channel, value: selectedChannel }] : []),
       ]),
       respond: async (result) => { choices = result; },
     });
     return choices;
   };
-  assert.deepEqual((await autocomplete('channel-b', '')).map((choice) => choice.value), ['avalonianas']);
-  assert.deepEqual(await autocomplete('channel-b', '(.*'), []);
-  assert.deepEqual((await autocomplete('channel-b', '', 'channel-a')).map((choice) => choice.value), ['avalonianas', 'gremio']);
-  assert.deepEqual(await autocomplete('channel-a', '', 'channel-b', false), []);
-  await run('agregar', { contexto: 'avalonianas', usuario: 'member', cantidad: 100, motivo: 'Botín' });
-  await run('agregar', { contexto: 'gremio', usuario: 'member', cantidad: 40, motivo: 'Aporte' });
-  await run('agregar', { contexto: 'avalonianas', usuario: 'member', cantidad: 7, motivo: 'Otro canal' }, true, 'channel-b');
-  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }), /100/);
-  assert.match(await run('ver', { contexto: 'Avalonianas', usuario: 'member' }), /100/);
-  assert.match(await run('ver', { contexto: 'gremio', usuario: 'member' }), /40/);
-  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /7/);
-  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member', canal: 'channel-a' }, true, 'channel-c'), /100/);
-  assert.match(await run('ranking', { contexto: 'avalonianas' }, true, 'channel-b'), /7/);
-  assert.doesNotMatch(await run('ranking', { contexto: 'avalonianas' }, true, 'channel-b'), /100/);
-  const globalContexts = await run('contextos', {}, true, 'channel-b');
-  assert.match(globalContexts, /Contextos de balance del servidor \(3\)/);
-  assert.match(globalContexts, /Avalonianas · <#channel-a> — Saldo: \*\*100\*\* · Debe: \*\*0\*\*/);
-  assert.match(globalContexts, /Gremio · <#channel-a> — Saldo: \*\*40\*\* · Debe: \*\*0\*\*/);
-  assert.match(globalContexts, /Avalonianas · <#channel-b> — Saldo: \*\*7\*\* · Debe: \*\*0\*\*/);
-  assert.match(await run('ver', { contexto: 'gremio', usuario: 'member' }, true, 'channel-b'), /no existe en este canal/);
+  for (const channel of ['channel-a', 'channel-b', 'thread-b', null]) {
+    assert.deepEqual((await autocomplete(channel, '')).map(c => c.value), ['avalonianas', 'gremio']);
+  }
+  assert.deepEqual(await autocomplete('thread-b', '(.*'), []);
+  assert.deepEqual(await autocomplete('thread-b', '', false), []);
+  const avalon = { contexto: 'avalonianas', usuario: 'member' };
+  const gremio = { contexto: 'gremio', usuario: 'member' };
+  assert.match(await run('agregar', { ...avalon, cantidad: 100, motivo: 'Botín' }), /0 → \*\*100\*\*/);
+  assert.match(await run('agregar', { ...gremio, cantidad: 40, motivo: 'Aporte' }), /0 → \*\*40\*\*/);
+  assert.match(await run('agregar', { ...avalon, cantidad: 7, motivo: 'Desde hilo' }, true, 'thread-b'), /100 → \*\*107\*\*/);
+  for (const channel of ['channel-a', 'channel-b', 'thread-b', null]) {
+    assert.match(await run('ver', avalon, true, channel), /<@member>: \*\*107\*\*/);
+    assert.match(await run('ver', gremio, true, channel), /<@member>: \*\*40\*\*/);
+    assert.match(await run('historial', avalon, true, channel), /Botín/);
+    assert.match(await run('historial', avalon, true, channel), /Desde hilo/);
+    assert.match(await run('ranking', { contexto: 'avalonianas' }, true, channel), /<@member> — 107/);
+    const summary = await run('contextos', {}, true, channel);
+    assert.match(summary, /servidor \(2\)/);
+    assert.match(summary, /Avalonianas — Saldo: \*\*107\*\* · Debe: \*\*0\*\*/);
+    assert.match(summary, /Gremio — Saldo: \*\*40\*\*/);
+    assert.doesNotMatch(summary, /<#/);
+  }
+  assert.match(await run('ver', { ...avalon, contexto: 'Avalonianas' }), /107/);
   assert.equal(transactions.length, 3);
-  assert.deepEqual(transactions.map((item) => [item.channelId, item.contextId]), [
-    ['channel-a', 'avalonianas'], ['channel-a', 'gremio'], ['channel-b', 'avalonianas'],
-  ]);
-  assert.equal(published.length, 3);
-  assert.equal(published[0].payload.embeds[0].data.fields[0].value, '<#channel-a>');
-  assert.equal(published[0].payload.embeds[0].data.fields[1].value, 'Avalonianas');
-  assert.equal(published[2].auditChannelId, 'logs-channel-b');
-  assert.match(await run('historial', { contexto: 'avalonianas', usuario: 'member' }), /Botín/);
-  assert.doesNotMatch(await run('historial', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /Botín/);
-  await run('quitar', { contexto: 'avalonianas', usuario: 'member', cantidad: 2, motivo: 'Ajuste' }, true, 'channel-b');
-  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /5/);
-  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }), /100/);
-  await run('reiniciar', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b');
-  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }, true, 'channel-b'), /0/);
-  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }), /100/);
-  await run('quitar', { contexto: 'gremio', usuario: 'member', cantidad: 50, motivo: 'Deuda' });
-  assert.match(await run('contextos'), /Gremio · <#channel-a> — Saldo: \*\*-10\*\* · Debe: \*\*10\*\*/);
-  assert.match(await run('agregar', { contexto: 'gremio', usuario: 'member', cantidad: 1, motivo: 'No' }, false), /Solo quienes tengan/);
-  assert.equal(transactions.length, 6);
-
-  // Todos los comandos usan el canal seleccionado, incluido su registro de auditoría.
-  const remote = { contexto: 'gremio', usuario: 'member', canal: 'channel-a' };
-  assert.match(await run('agregar', { ...remote, cantidad: 25, motivo: 'Ingreso remoto' }, true, 'channel-c'), /-10 → \*\*15\*\*/);
-  assert.match(await run('ver', remote, true, 'channel-c'), /<#channel-a> · <@member>: \*\*15\*\*/);
-  assert.match(await run('ranking', { contexto: 'gremio', canal: 'channel-a' }, true, 'channel-c'), /<@member> — 15/);
-  assert.match(await run('historial', remote, true, 'channel-c'), /Ingreso remoto/);
-  assert.equal(published.at(-1).auditChannelId, 'logs-channel-a');
-  assert.equal(published.at(-1).payload.embeds[0].data.fields[0].value, '<#channel-a>');
-  assert.equal(transactions.at(-1).channelId, 'channel-a');
-  assert.match(await run('quitar', { ...remote, cantidad: 5, motivo: 'Retiro remoto' }, true, 'channel-c'), /15 → \*\*10\*\*/);
-  assert.match(await run('reiniciar', remote, true, 'channel-c'), /10 → \*\*0\*\*/);
-  assert.match(await run('ver', remote, true, 'channel-c'), /<@member>: \*\*0\*\*/);
-  assert.match(await run('ranking', { contexto: 'gremio', canal: 'channel-a' }, true, 'channel-c'), /no hay saldos positivos/);
-  assert.match(await run('historial', remote, true, 'channel-c'), /Reset de balance/);
-  assert.match(await run('ver', { contexto: 'avalonianas', usuario: 'member' }), /<@member>: \*\*100\*\*/);
-  assert.equal([...balances.keys()].some((key) => key.includes(':channel-c:')), false);
-
-  // El total suma varios miembros; la deuda no se cancela con saldos positivos.
-  await run('agregar', { contexto: 'gremio', usuario: 'creditor', cantidad: 30, motivo: 'Crédito' });
-  await run('quitar', { contexto: 'gremio', usuario: 'debtor', cantidad: 12, motivo: 'Deuda' });
-  balances.set('other-guild:channel-a:gremio:member', 999);
-  assert.match(await run('contextos'), /Gremio · <#channel-a> — Saldo: \*\*18\*\* · Debe: \*\*12\*\*/);
-  assert.match(await run('ver', { contexto: 'gremio', usuario: 'unknown' }), /<@unknown>: \*\*0\*\*/);
-  assert.match(await run('historial', { contexto: 'gremio', usuario: 'unknown' }), /No hay movimientos/);
-
+  assert.ok(transactions.every(t => t.channelId === undefined));
+  assert.ok(published.every(p => p.auditChannelId === 'logs-server'));
+  assert.equal(published[2].payload.embeds[0].data.fields[0].value, '<#thread-b>');
+  assert.match(await run('quitar', { ...avalon, cantidad: 12, motivo: 'Retiro' }, true, 'channel-b'), /107 → \*\*95\*\*/);
+  assert.match(await run('ver', avalon), /<@member>: \*\*95\*\*/);
+  assert.match(await run('reiniciar', avalon, true, 'thread-c'), /95 → \*\*0\*\*/);
+  assert.match(await run('ver', avalon), /<@member>: \*\*0\*\*/);
+  assert.match(await run('historial', avalon), /Reset de balance/);
+  assert.match(await run('ranking', { contexto: 'avalonianas' }), /no hay saldos positivos/);
+  assert.match(await run('ver', gremio), /<@member>: \*\*40\*\*/);
+  await run('quitar', { ...gremio, cantidad: 50, motivo: 'Deuda' }, true, 'thread-c');
+  await run('agregar', { ...gremio, usuario: 'creditor', cantidad: 30, motivo: 'Crédito' });
+  balances.set('other-guild:gremio:member', 999);
+  assert.match(await run('contextos'), /Gremio — Saldo: \*\*20\*\* · Debe: \*\*10\*\*/);
+  assert.match(await run('ver', { ...avalon, usuario: 'unknown' }), /<@unknown>: \*\*0\*\*/);
+  assert.match(await run('historial', { ...avalon, usuario: 'unknown' }), /No hay movimientos/);
   const beforeInvalid = transactions.length;
   for (const action of ['agregar', 'quitar', 'reiniciar']) {
-    assert.match(await run(action, { ...remote, cantidad: 3, motivo: 'Sin permiso' }, false), /Solo quienes tengan/);
-    assert.match(await run(action, { ...remote, canal: 'channel-c', cantidad: 3, motivo: 'No existe' }), /no existe en este canal/);
+    assert.match(await run(action, { ...gremio, cantidad: 3, motivo: 'Sin permiso' }, false), /Solo quienes tengan/);
+    assert.match(await run(action, { ...gremio, contexto: 'inexistente', cantidad: 3, motivo: 'No existe' }), /no existe en este servidor/);
   }
   for (const cantidad of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
-    assert.match(await run('agregar', { ...remote, cantidad, motivo: 'Inválido' }), /entero positivo/);
-    assert.match(await run('quitar', { ...remote, cantidad, motivo: 'Inválido' }), /entero positivo/);
+    for (const action of ['agregar', 'quitar']) {
+      assert.match(await run(action, { ...gremio, cantidad, motivo: 'Inválido' }), /entero positivo/);
+    }
   }
-  assert.match(await run('agregar', { ...remote, cantidad: 3, motivo: '   ' }), /Escribe un motivo/);
+  assert.match(await run('agregar', { ...gremio, cantidad: 3, motivo: '   ' }), /Escribe un motivo/);
+  EconomyLogChannel.findOne = async () => null;
+  assert.match(await run('agregar', { ...gremio, cantidad: 3, motivo: 'Sin auditoría' }), /Configura el canal de auditoría/);
   assert.equal(transactions.length, beforeInvalid);
-  await assert.rejects(economyService.getBalance('guild', undefined, 'avalonianas', 'member'), /canal/);
-  await assert.rejects(economyService.getBalance('guild', 'channel-a', undefined, 'member'), /contexto/);
-  await assert.rejects(economyService.getBalance(undefined, 'channel-a', 'avalonianas', 'member'), /servidor/);
-  assert.equal((await contextService.listContexts('guild')).length, 3);
-  assert.throws(() => contextService.listContexts(undefined, 'channel-a'), /servidor/);
-  assert.throws(() => economyService.getTransactions('guild', undefined, 'avalonianas', 'member'), /canal/);
-  assert.throws(() => economyService.getTransactions('guild', 'channel-a', undefined, 'member'), /contexto/);
+  await assert.rejects(economyService.getBalance('guild', undefined, 'member'), /contexto/);
+  await assert.rejects(economyService.getBalance(undefined, 'avalonianas', 'member'), /servidor/);
+  assert.equal((await contextService.listContexts('guild')).length, 2);
+  assert.throws(() => contextService.listContexts(undefined), /servidor/);
+  assert.throws(() => economyService.getTransactions('guild', undefined, 'member'), /contexto/);
 
   EconomyLogChannel.findOneAndUpdate = async (filter, update, options) => {
-    assert.deepEqual(filter, { guildId: 'guild', sourceChannelId: 'channel-a' });
+    assert.deepEqual(filter, { guildId: 'guild' });
     assert.equal(update.channelId, 'logs-channel-a');
     assert.equal(options.upsert, true);
   };
   EconomyLogChannel.findOneAndDelete = async (filter) => {
-    assert.deepEqual(filter, { guildId: 'guild', sourceChannelId: 'channel-a' });
+    assert.deepEqual(filter, { guildId: 'guild' });
   };
   const guild = {
     id: 'guild',
@@ -290,7 +269,7 @@ const saved = {
     guild, sourceChannelId: 'channel-a', channelId: 'logs-channel-a', userId: 'admin',
   });
   await setupService.clearLogChannel('guild', 'channel-a');
-  console.log('✅ Aislamiento por canal, contextos, permisos y auditoría verificados');
+  console.log('✅ Balances globales por categoría, canales, hilos, permisos y auditoría verificados');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

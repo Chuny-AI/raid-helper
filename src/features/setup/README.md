@@ -27,28 +27,26 @@ y se envían las menciones; puede pertenecer a otra categoría. Si no se indica
 una categoría de voz, se usa la del canal de publicación o la raíz del servidor.
 El parámetro de rol de visibilidad del raid controla quién puede ver cada sala.
 
-La sección de economía define los roles de balance para el servidor y el canal
-de auditoría para el canal donde se ejecuta `/setup`. Solo quienes tengan uno
-de esos roles pueden usar `/balance`, incluso para crear contextos. Los
-contextos, saldos, movimientos y rankings se consultan siempre dentro del canal
-donde se ejecuta el comando. «Avalonianas» en dos canales son balances distintos.
-Hay que configurar la auditoría en cada canal antes de modificar sus saldos.
-Quitar la auditoría de un canal no cambia los roles ni otros canales.
-La acción «Quitar roles de balance» revoca el acceso en todos los canales sin
-borrar los saldos ni sus movimientos.
+La sección de economía define los roles de balance y el canal de auditoría del servidor.
+Solo quienes tengan uno de esos roles pueden usar `/balance`, incluso para crear contextos.
+Cada contexto es una categoría única del servidor. Sus saldos, movimientos y rankings
+se comparten en todos los canales e hilos. Configurar una vez la auditoría permite
+modificar balances desde cualquier lugar del servidor.
 
-Los registros antiguos que no tienen identificador de canal permanecen en
-MongoDB. No aparecen en ningún canal porque no se puede determinar a cuál
-pertenecen sin una asignación explícita.
+Al actualizar, los saldos antiguos de la misma categoría y usuario se suman aunque
+procedan de distintos canales. Se conserva todo el historial y una copia de los registros
+originales en `economy_scope_migrations`. Si había varias configuraciones de auditoría,
+se conserva la más reciente. Los registros sin categoría explícita se mantienen sin
+asignarles una categoría arbitraria.
 
 Comandos de balance:
 
-- `/balance crear-contexto nombre:<nombre>`: crea un libro de saldos en el canal actual.
-- `/balance contextos`: lista todos los libros del servidor, su canal y el total adeudado de cada uno.
-- `/balance ver contexto:<nombre> usuario:<miembro> canal:<canal opcional>`: consulta el saldo, incluso desde otro canal.
-- `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: modifica el saldo y registra la transacción.
-- `/balance reiniciar contexto:<nombre> usuario:<miembro>`: deja el saldo en cero y registra la transacción.
-- `/balance historial contexto:<nombre> usuario:<miembro> canal:<canal opcional>` y `/balance ranking contexto:<nombre> canal:<canal opcional>`: consultan movimientos y mayores saldos, incluso desde otro canal.
+- `/balance crear-contexto nombre:<nombre>`: crea una categoría del servidor.
+- `/balance contextos`: lista las categorías, el saldo total y la deuda de cada una.
+- `/balance ver contexto:<nombre> usuario:<miembro>`: consulta el saldo.
+- `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: modifica el saldo y registra el movimiento.
+- `/balance reiniciar contexto:<nombre> usuario:<miembro>`: deja el saldo en cero.
+- `/balance historial contexto:<nombre> usuario:<miembro>` y `/balance ranking contexto:<nombre>`: consultan movimientos y mayores saldos.
 
 Las respuestas son privadas para el operador. Cada cambio de saldo se registra
 atómicamente en MongoDB y se publica en el canal de auditoría configurado. Si

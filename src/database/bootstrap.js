@@ -19,6 +19,7 @@ const AlbionRegistrationConfig = require('../database/models/AlbionRegistrationC
 const AlbionMembershipRule = require('../database/models/AlbionMembershipRule');
 const AlbionRegistration = require('../database/models/AlbionRegistration');
 const UtcClockConfig = require('../database/models/UtcClockConfig');
+const { migrateEconomyGlobalContexts } = require('./migrations/economy-global-contexts');
 
 /**
  * Crea las colecciones en MongoDB si no existen.
@@ -62,14 +63,11 @@ const ensureCollections = async () => {
     }
   }
 
-  // Las entradas antiguas no incluyen canal y no se pueden asignar con
-  // seguridad a uno. Se conservan en MongoDB, pero las consultas nuevas siempre
-  // exigen channelId. Retirar índices globales permite el mismo usuario o
-  // contexto en varios canales sin colisiones.
+  // Los balances y contextos pertenecen al servidor, sin particiones por canal.
   const legacyIndexes = [
-    [EconomyBalance, [['guildId', 'userId'], ['guildId', 'contextId', 'userId']]],
-    [EconomyContext, [['guildId', 'slug']]],
-    [EconomyLogChannel, [['guildId']]],
+    [EconomyBalance, [['guildId', 'userId'], ['guildId', 'channelId', 'contextId', 'userId']]],
+    [EconomyContext, [['guildId', 'channelId', 'slug']]],
+    [EconomyLogChannel, [['guildId', 'sourceChannelId']]],
   ];
   for (const [model, legacyKeySets] of legacyIndexes) {
     for (const index of await model.collection.indexes()) {
@@ -79,6 +77,7 @@ const ensureCollections = async () => {
       }
     }
   }
+  await migrateEconomyGlobalContexts();
   await EconomyBalance.createIndexes();
   await EconomyTransaction.createIndexes();
   await EconomyContext.createIndexes();

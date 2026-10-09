@@ -19,20 +19,20 @@ const originals = {
   let transactionOptions;
   mongoose.startSession = async () => fakeSession;
   EconomyBalance.findOneAndUpdate = async (filter, _update, options) => {
-    assert.deepStrictEqual(filter, { guildId: 'guild', channelId: 'channel-a', contextId: 'avalonianas', userId: 'user' });
+    assert.deepStrictEqual(filter, { guildId: 'guild', contextId: 'avalonianas', userId: 'user' });
     balanceOptions = options;
     return { balance: 10 };
   };
   EconomyTransaction.create = async (docs, options) => {
     assert.ok(Array.isArray(docs));
     assert.strictEqual(docs[0].contextId, 'avalonianas');
-    assert.strictEqual(docs[0].channelId, 'channel-a');
+    assert.equal(docs[0].channelId, undefined);
     transactionOptions = options;
   };
 
   const { addMoney } = require('../src/services/economy/economyService');
   const result = await addMoney({
-    guildId: 'guild', channelId: 'channel-a', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: 5,
+    guildId: 'guild', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: 5,
   });
   assert.deepStrictEqual(result, { previousBalance: 10, newBalance: 15 });
   assert.strictEqual(balanceOptions.session, fakeSession);
@@ -50,7 +50,7 @@ const originals = {
   };
   mongoose.startSession = async () => standaloneSession;
   const standaloneResult = await addMoney({
-    guildId: 'guild', channelId: 'channel-a', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: 5,
+    guildId: 'guild', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: 5,
   });
   assert.deepStrictEqual(standaloneResult, { previousBalance: 10, newBalance: 15 });
   assert.deepStrictEqual(balanceOptions, { upsert: true, new: false });
@@ -58,12 +58,12 @@ const originals = {
   assert.strictEqual(standaloneSession.ended, true);
   await assert.rejects(
     require('../src/services/economy/economyService').addMoney({
-      guildId: 'guild', channelId: 'channel-a', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: Number.MAX_SAFE_INTEGER + 1,
+      guildId: 'guild', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: Number.MAX_SAFE_INTEGER + 1,
     })
   );
   await assert.rejects(
     require('../src/services/economy/economyService').addMoney({
-      guildId: 'guild', channelId: 'channel-a', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: Number.MAX_SAFE_INTEGER,
+      guildId: 'guild', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: Number.MAX_SAFE_INTEGER,
     }),
     /saldo resultante excede/i,
   );

@@ -25,7 +25,7 @@ const navigationRow = (userId, guildId) => new ActionRowBuilder().addComponents(
     .setStyle(ButtonStyle.Secondary),
 );
 
-const buildDashboard = ({ status, userId, guildId, sourceChannelId }) => {
+const buildDashboard = ({ status, userId, guildId }) => {
   const baseStatus = status.baseReady ? '✅ Configurado' : '⚠️ Pendiente';
   const economyStatus = status.economyReady ? '✅ Configurada' : '➖ Opcional';
   const voiceStatus = status.temporaryVoiceReady ? '✅ Configurados' : '➖ Opcional';
@@ -41,7 +41,7 @@ const buildDashboard = ({ status, userId, guildId, sourceChannelId }) => {
           : 'Selecciona al menos un rol que pueda crear raids y plantillas.',
       },
       {
-        name: `${economyStatus} · Economía${sourceChannelId ? ` en <#${sourceChannelId}>` : ''}`,
+        name: `${economyStatus} · Economía`,
         value: [
           `Canal: ${status.economyChannelId ? `<#${status.economyChannelId}>` : 'sin configurar'}`,
           `Roles: ${status.economyRoleIds.length > 0 ? status.economyRoleIds.map((id) => `<@&${id}>`).join(', ') : 'sin configurar'}`,
@@ -129,7 +129,7 @@ const buildRolesScreen = ({ status, userId, guildId }) => {
   };
 };
 
-const buildEconomyScreen = ({ status, userId, guildId, sourceChannelId }) => {
+const buildEconomyScreen = ({ status, userId, guildId }) => {
   const roleSelect = new RoleSelectMenuBuilder()
     .setCustomId(componentId('economy-roles-save', userId, guildId))
     .setPlaceholder('Selecciona roles de balance')
@@ -148,13 +148,13 @@ const buildEconomyScreen = ({ status, userId, guildId, sourceChannelId }) => {
   return {
     embeds: [new EmbedBuilder()
       .setTitle('💰 Configuración de economía')
-      .setDescription(`Esta configuración de auditoría corresponde ${sourceChannelId ? `a <#${sourceChannelId}>` : 'al canal actual'}. Los roles de balance se aplican en todo el servidor; los contextos, saldos y movimientos pertenecen solo a este canal.`)
+      .setDescription('Los contextos son categorías del servidor. Los saldos y movimientos se comparten entre todos los canales e hilos; la auditoría se publica en el canal configurado aquí.')
       .setColor(0xf1c40f)],
     components: [
       new ActionRowBuilder().addComponents(roleSelect),
       new ActionRowBuilder().addComponents(channelSelect),
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(componentId('economy-clear', userId, guildId)).setLabel('Quitar auditoría de este canal').setEmoji('🧹').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(componentId('economy-clear', userId, guildId)).setLabel('Quitar auditoría del servidor').setEmoji('🧹').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId(componentId('economy-roles-clear', userId, guildId)).setLabel('Quitar roles de balance').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId(componentId('home', userId, guildId)).setLabel('Volver al resumen').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
       ),
@@ -185,10 +185,10 @@ const buildPermissionScreen = ({ permissions, userId, guildId }) => {
   };
 };
 
-const buildEconomyClearConfirmation = ({ userId, guildId, sourceChannelId }) => ({
+const buildEconomyClearConfirmation = ({ userId, guildId }) => ({
   embeds: [new EmbedBuilder()
-    .setTitle('⚠️ Quitar auditoría de este canal')
-    .setDescription(`Se quitará la configuración de auditoría ${sourceChannelId ? `de <#${sourceChannelId}>` : 'del canal actual'}. Los roles, balances y movimientos existentes no se borrarán.`)
+    .setTitle('⚠️ Quitar auditoría del servidor')
+    .setDescription('Se quitará la configuración de auditoría del servidor. Los roles, balances y movimientos existentes no se borrarán.')
     .setColor(0xed4245)],
   components: [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(componentId('economy-clear-confirm', userId, guildId)).setLabel('Sí, desactivar').setStyle(ButtonStyle.Danger),

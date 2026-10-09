@@ -1,10 +1,6 @@
 const EconomyContext = require('../../database/models/economy/EconomyContext');
 const { UserError } = require('../../utils/userError');
 
-const requireChannelId = (channelId) => {
-  if (!channelId) throw new UserError('Este comando debe usarse dentro de un canal de Discord.');
-};
-
 const requireGuildId = (guildId) => {
   if (!guildId) throw new UserError('Este comando debe usarse dentro de un servidor de Discord.');
 };
@@ -13,34 +9,31 @@ const slugify = (name) => String(name || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-const createContext = async ({ guildId, channelId, name, createdBy }) => {
+const createContext = async ({ guildId, name, createdBy }) => {
   requireGuildId(guildId);
-  requireChannelId(channelId);
   const cleanName = String(name || '').trim().replace(/\s+/g, ' ');
   const slug = slugify(cleanName);
   if (!slug || cleanName.length > 60) {
     throw new UserError('Escribe un nombre de contexto de hasta 60 caracteres con letras o números.');
   }
   try {
-    return await EconomyContext.create({ guildId, channelId, slug, name: cleanName, createdBy });
+    return await EconomyContext.create({ guildId, slug, name: cleanName, createdBy });
   } catch (error) {
     if (error.code === 11000) throw new UserError('Ya existe un contexto con ese nombre.');
     throw error;
   }
 };
 
-const listContexts = (guildId, channelId) => {
+const listContexts = (guildId) => {
   requireGuildId(guildId);
   const filter = { guildId };
-  if (channelId) filter.channelId = channelId;
-  return EconomyContext.find(filter).sort({ name: 1, channelId: 1 });
+  return EconomyContext.find(filter).sort({ name: 1 });
 };
 
-const searchContexts = (guildId, channelId, search = '') => {
+const searchContexts = (guildId, search = '') => {
   requireGuildId(guildId);
-  requireChannelId(channelId);
   const term = String(search).trim().slice(0, 60).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const filter = { guildId, channelId };
+  const filter = { guildId };
   if (term) filter.$or = [
     { name: { $regex: term, $options: 'i' } },
     { slug: { $regex: term, $options: 'i' } },
@@ -48,12 +41,11 @@ const searchContexts = (guildId, channelId, search = '') => {
   return EconomyContext.find(filter).sort({ name: 1 }).limit(25);
 };
 
-const requireContext = async (guildId, channelId, slug) => {
+const requireContext = async (guildId, slug) => {
   requireGuildId(guildId);
-  requireChannelId(channelId);
   if (!slug) throw new UserError('Selecciona un contexto de balance.');
-  const context = await EconomyContext.findOne({ guildId, channelId, slug: slugify(slug) });
-  if (!context) throw new UserError('El contexto no existe en este canal. Usa `/balance contextos` para ver los disponibles.');
+  const context = await EconomyContext.findOne({ guildId, slug: slugify(slug) });
+  if (!context) throw new UserError('El contexto no existe en este servidor. Usa `/balance contextos` para ver los disponibles.');
   return context;
 };
 

@@ -12,9 +12,6 @@ const contextOption = (option) => option.setName('contexto')
 const userOption = (option) => option.setName('usuario')
   .setDescription('Miembro cuyo saldo se consulta o modifica')
   .setRequired(true);
-const sourceChannelOption = (option) => option.setName('canal')
-  .setDescription('Canal al que pertenece el contexto')
-  .setRequired(false);
 const amountOption = (option) => option.setName('cantidad')
   .setDescription('Cantidad entera positiva')
   .setRequired(true).setMinValue(1);
@@ -34,30 +31,28 @@ const data = new SlashCommandBuilder()
     .setDescription('Lista los contextos del servidor, sus saldos y deudas'))
   .addSubcommand((sub) => sub.setName('ver')
     .setDescription('Consulta el saldo de un miembro')
-    .addStringOption(contextOption).addUserOption(userOption).addChannelOption(sourceChannelOption))
+    .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('agregar')
     .setDescription('Suma al saldo y registra el movimiento')
     .addStringOption(contextOption).addUserOption(userOption)
-    .addIntegerOption(amountOption).addStringOption(reasonOption).addChannelOption(sourceChannelOption))
+    .addIntegerOption(amountOption).addStringOption(reasonOption))
   .addSubcommand((sub) => sub.setName('quitar')
     .setDescription('Resta del saldo y registra el movimiento')
     .addStringOption(contextOption).addUserOption(userOption)
-    .addIntegerOption(amountOption).addStringOption(reasonOption).addChannelOption(sourceChannelOption))
+    .addIntegerOption(amountOption).addStringOption(reasonOption))
   .addSubcommand((sub) => sub.setName('reiniciar')
     .setDescription('Deja el saldo en cero y registra el movimiento')
-    .addStringOption(contextOption).addUserOption(userOption).addChannelOption(sourceChannelOption))
+    .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('historial')
     .setDescription('Muestra los últimos movimientos de un miembro')
-    .addStringOption(contextOption).addUserOption(userOption).addChannelOption(sourceChannelOption))
+    .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('ranking')
     .setDescription('Muestra los mayores saldos del contexto')
-    .addStringOption(contextOption).addChannelOption(sourceChannelOption));
+    .addStringOption(contextOption));
 
 const formatAmount = (amount) => new Intl.NumberFormat('es-CO').format(amount);
 const reply = (interaction, content) => interaction.editReply({ content, allowedMentions: { parse: [] } });
 const safeText = (value) => escapeMarkdown(String(value || '').replace(/\s+/g, ' '));
-// En autocompletado Discord entrega el ID, sin resolver el objeto del canal.
-const selectedChannelId = (interaction) => interaction.options.get('canal')?.value || interaction.channelId;
 
 const auditMovement = async (interaction, channel, { context, type, userId, amount, previousBalance, newBalance, reason }) => {
   try {
@@ -66,7 +61,7 @@ const auditMovement = async (interaction, channel, { context, type, userId, amou
       .setTitle(`💰 ${labels[type]} de balance`)
       .setColor(type === 'add' ? 0x57f287 : type === 'remove' ? 0xfee75c : 0xed4245)
       .addFields(
-        { name: 'Canal de origen', value: `<#${context.channelId}>`, inline: true },
+        { name: 'Canal de origen', value: interaction.channelId ? `<#${interaction.channelId}>` : 'No disponible', inline: true },
         { name: 'Contexto', value: safeText(context.name), inline: true },
         { name: 'Usuario', value: `<@${userId}>`, inline: true },
         { name: 'Responsable', value: `<@${interaction.user.id}>`, inline: true },
@@ -86,14 +81,13 @@ const auditMovement = async (interaction, channel, { context, type, userId, amou
 const execute = async (interaction) => {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    if (!interaction.guildId || !interaction.channelId || !await hasConfiguredEconomyRole(interaction.member, interaction.guildId)) {
+    if (!interaction.guildId || !await hasConfiguredEconomyRole(interaction.member, interaction.guildId)) {
       throw new UserError('Solo quienes tengan un rol de balance configurado en `/setup` pueden usar este comando.');
     }
     const action = interaction.options.getSubcommand();
     if (action === 'crear-contexto') {
       const context = await contexts.createContext({
         guildId: interaction.guildId,
-        channelId: interaction.channelId,
         name: interaction.options.getString('nombre', true),
         createdBy: interaction.user.id,
       });
@@ -102,14 +96,12 @@ const execute = async (interaction) => {
     if (action === 'contextos') {
       const available = await contexts.listContexts(interaction.guildId);
       if (!available.length) return reply(interaction, 'Aún no hay contextos. Usa `/balance crear-contexto` para crear uno.');
-      const totals = await economy.getTotalsByContext(interaction.guildId, available.map((context) => ({
-        channelId: context.channelId, contextId: context.slug,
-      })));
+      const totals = await economy.getTotalsByContext(interaction.guildId, available.map((context) => context.slug));
       let content = `**Contextos de balance del servidor (${available.length})**`;
       let shown = 0;
       for (const context of available) {
-        const { totalBalance = 0, totalDebt = 0 } = totals.get(context.channelId)?.get(context.slug) || {};
-        const line = `\n• ${safeText(context.name)} · <#${context.channelId}> — Saldo: **${formatAmount(totalBalance)}** · Debe: **${formatAmount(totalDebt)}**`;
+        const { totalBalance = 0, totalDebt = 0 } = totals.get(context.slug) || {};
+        const line = `\n• ${safeText(context.name)} — Saldo: **${formatAmount(totalBalance)}** · Debe: **${formatAmount(totalDebt)}**`;
         if (content.length + line.length > 1750) break;
         content += line;
         shown++;
@@ -118,27 +110,26 @@ const execute = async (interaction) => {
       return reply(interaction, content);
     }
 
-    const context = await contexts.requireContext(interaction.guildId, selectedChannelId(interaction), interaction.options.getString('contexto', true));
-    const contextChannelId = context.channelId;
+    const context = await contexts.requireContext(interaction.guildId, interaction.options.getString('contexto', true));
     if (action === 'ranking') {
-      const leaders = await economy.getLeaderboard(interaction.guildId, contextChannelId, context.slug, 10);
+      const leaders = await economy.getLeaderboard(interaction.guildId, context.slug, 10);
       return reply(interaction, leaders.length
-        ? `**Mayores saldos · ${safeText(context.name)}** · <#${contextChannelId}>\n${leaders.map((item, index) => `${index + 1}. <@${item.userId}> — ${formatAmount(item.balance)}`).join('\n')}`
-        : `Todavía no hay saldos positivos en **${safeText(context.name)}** · <#${contextChannelId}>.`);
+        ? `**Mayores saldos · ${safeText(context.name)}**\n${leaders.map((item, index) => `${index + 1}. <@${item.userId}> — ${formatAmount(item.balance)}`).join('\n')}`
+        : `Todavía no hay saldos positivos en **${safeText(context.name)}**.`);
     }
 
     const userId = interaction.options.getUser('usuario', true).id;
     if (action === 'ver') {
-      const amount = await economy.getBalance(interaction.guildId, contextChannelId, context.slug, userId);
-      return reply(interaction, `**${safeText(context.name)}** · <#${contextChannelId}> · <@${userId}>: **${formatAmount(amount)}**`);
+      const amount = await economy.getBalance(interaction.guildId, context.slug, userId);
+      return reply(interaction, `**${safeText(context.name)}** · <@${userId}>: **${formatAmount(amount)}**`);
     }
     if (action === 'historial') {
-      const movements = await economy.getTransactions(interaction.guildId, contextChannelId, context.slug, userId, 10);
+      const movements = await economy.getTransactions(interaction.guildId, context.slug, userId, 10);
       const labels = { add: '➕', remove: '➖', reset: '🔄' };
-      if (!movements.length) return reply(interaction, `No hay movimientos de <@${userId}> en **${safeText(context.name)}** · <#${contextChannelId}>.`);
+      if (!movements.length) return reply(interaction, `No hay movimientos de <@${userId}> en **${safeText(context.name)}**.`);
       const embed = new EmbedBuilder()
         .setTitle(`Últimos movimientos · ${context.name}`)
-        .setDescription(`Usuario: <@${userId}> · Canal: <#${contextChannelId}>`)
+        .setDescription(`Usuario: <@${userId}>`)
         .setColor(0x5865f2);
       for (const item of movements) {
         const description = safeText(item.description).slice(0, 200);
@@ -152,7 +143,7 @@ const execute = async (interaction) => {
 
     // El canal debe estar listo antes de escribir. Cada movimiento queda además
     // en MongoDB dentro de la misma transacción que modifica el saldo.
-    const logChannelId = await economy.getLogChannel(interaction.guildId, contextChannelId);
+    const logChannelId = await economy.getLogChannel(interaction.guildId);
     if (!logChannelId) {
       throw new UserError('Configura el canal de auditoría en `/setup` antes de modificar balances.');
     }
@@ -172,7 +163,7 @@ const execute = async (interaction) => {
     let amount;
     let reason;
     let type;
-    const common = { guildId: interaction.guildId, channelId: contextChannelId, contextId: context.slug, userId, executorId: interaction.user.id };
+    const common = { guildId: interaction.guildId, contextId: context.slug, userId, executorId: interaction.user.id };
     if (action === 'agregar' || action === 'quitar') {
       amount = interaction.options.getInteger('cantidad', true);
       reason = interaction.options.getString('motivo', true).trim();
@@ -194,7 +185,7 @@ const execute = async (interaction) => {
       newBalance: result.newBalance,
       reason,
     });
-    return reply(interaction, `✅ **${safeText(context.name)}** · <#${contextChannelId}> · <@${userId}>: ${formatAmount(result.previousBalance)} → **${formatAmount(result.newBalance)}**.${published ? '' : ' ⚠️ El movimiento se guardó, pero no se pudo publicar en el canal de auditoría.'}`);
+    return reply(interaction, `✅ **${safeText(context.name)}** · <@${userId}>: ${formatAmount(result.previousBalance)} → **${formatAmount(result.newBalance)}**.${published ? '' : ' ⚠️ El movimiento se guardó, pero no se pudo publicar en el canal de auditoría.'}`);
   } catch (error) {
     if (!isUserError(error)) console.error('[ERROR] Comando balance:', error);
     return reply(interaction, `❌ ${isUserError(error) ? error.message : 'No se pudo completar la operación de balance.'}`);
@@ -203,11 +194,10 @@ const execute = async (interaction) => {
 
 const autocomplete = async (interaction) => {
   try {
-    if (!interaction.guildId || !interaction.channelId || !await hasConfiguredEconomyRole(interaction.member, interaction.guildId)) {
+    if (!interaction.guildId || !await hasConfiguredEconomyRole(interaction.member, interaction.guildId)) {
       return interaction.respond([]);
     }
-    const contextChannelId = selectedChannelId(interaction);
-    const available = await contexts.searchContexts(interaction.guildId, contextChannelId, interaction.options.getFocused());
+    const available = await contexts.searchContexts(interaction.guildId, interaction.options.getFocused());
     return interaction.respond(available.map((context) => ({ name: context.name, value: context.slug })));
   } catch (error) {
     console.error('[ERROR] Autocompletado balance:', error);

@@ -17,17 +17,16 @@ const ensureSafeBalance = (balance) => {
   }
 };
 
-const ensureChannelId = (channelId) => {
-  if (!channelId) throw new UserError('Este comando debe usarse dentro de un canal de Discord.');
+const ensureAuditChannelId = (channelId) => {
+  if (!channelId) throw new UserError('Selecciona un canal de auditoría.');
 };
 
 const ensureGuildId = (guildId) => {
   if (!guildId) throw new UserError('Este comando debe usarse dentro de un servidor de Discord.');
 };
 
-const ensureBalanceScope = (guildId, channelId, contextId) => {
+const ensureBalanceScope = (guildId, contextId) => {
   ensureGuildId(guildId);
-  ensureChannelId(channelId);
   if (!contextId) throw new UserError('Selecciona un contexto de balance.');
 };
 
@@ -66,81 +65,65 @@ const runInTransaction = async (work) => {
   }
 };
 
-const getLogChannel = async (guildId, channelId) => {
+const getLogChannel = async (guildId) => {
   ensureGuildId(guildId);
-  ensureChannelId(channelId);
-  const doc = await EconomyLogChannel.findOne({ guildId, sourceChannelId: channelId });
+  const doc = await EconomyLogChannel.findOne({ guildId });
   return doc?.channelId || null;
 };
 
-const setLogChannel = async ({ guildId, sourceChannelId, channelId, setBy }) => {
+const setLogChannel = async ({ guildId, channelId, setBy }) => {
   ensureGuildId(guildId);
-  ensureChannelId(sourceChannelId);
-  ensureChannelId(channelId);
+  ensureAuditChannelId(channelId);
   return await EconomyLogChannel.findOneAndUpdate(
-    { guildId, sourceChannelId },
+    { guildId },
     { channelId, setBy, setAt: new Date() },
     { upsert: true, new: true },
   );
 };
 
-const getBalance = async (guildId, channelId, contextId, userId) => {
-  ensureBalanceScope(guildId, channelId, contextId);
+const getBalance = async (guildId, contextId, userId) => {
+  ensureBalanceScope(guildId, contextId);
   ensureUserId(userId);
-  const doc = await EconomyBalance.findOne({ guildId, channelId, contextId, userId });
+  const doc = await EconomyBalance.findOne({ guildId, contextId, userId });
   return doc?.balance || 0;
 };
 
-const getLeaderboard = async (guildId, channelId, contextId, limit = 10) => {
-  ensureBalanceScope(guildId, channelId, contextId);
+const getLeaderboard = async (guildId, contextId, limit = 10) => {
+  ensureBalanceScope(guildId, contextId);
   const safeLimit = Math.min(Math.max(1, limit), 100);
-  return await EconomyBalance.find({ guildId, channelId, contextId, balance: { $gt: 0 } })
+  return await EconomyBalance.find({ guildId, contextId, balance: { $gt: 0 } })
     .sort({ balance: -1 })
     .limit(safeLimit)
     .select('userId balance');
 };
 
-const getTotalsByContext = async (guildId, contextScopes) => {
+const getTotalsByContext = async (guildId, contextIds) => {
   ensureGuildId(guildId);
-  const scopes = [...new Map((contextScopes || [])
-    .filter(({ channelId, contextId }) => channelId && contextId)
-    .map(({ channelId, contextId }) => [`${channelId}:${contextId}`, { channelId, contextId }]))
-    .values()];
-  if (!scopes.length) return new Map();
-
+  const ids = [...new Set((contextIds || []).filter(Boolean))];
+  if (!ids.length) return new Map();
   const totals = await EconomyBalance.aggregate([
-    {
-      $match: {
-        guildId,
-        $or: scopes.map(({ channelId, contextId }) => ({ channelId, contextId })),
-      },
-    },
+    { $match: { guildId, contextId: { $in: ids } } },
     { $group: {
-      _id: { channelId: '$channelId', contextId: '$contextId' },
+      _id: '$contextId',
       totalBalance: { $sum: '$balance' },
       totalDebt: { $sum: { $cond: [{ $lt: ['$balance', 0] }, { $abs: '$balance' }, 0] } },
     } },
   ]);
-  const totalsByChannel = new Map();
-  for (const { _id, totalBalance, totalDebt } of totals) {
-    if (!totalsByChannel.has(_id.channelId)) totalsByChannel.set(_id.channelId, new Map());
-    totalsByChannel.get(_id.channelId).set(_id.contextId, { totalBalance, totalDebt });
-  }
-  return totalsByChannel;
+  return new Map(totals.map(({ _id, totalBalance, totalDebt }) => [_id, { totalBalance, totalDebt }]));
 };
 
-const addMoney = async ({ guildId, channelId, contextId, userId, executorId, amount, description = '' }) => {
+const addMoney = async ({ guildId, contextId, userId, executorId, amount, description = '' }) => {
   ensurePositiveAmount(amount);
-  ensureBalanceScope(guildId, channelId, contextId);
+  ensureBalanceScope(guildId, contextId);
   ensureUserId(userId);
 
   return runInTransaction(async (session) => {
     const oldDoc = await EconomyBalance.findOneAndUpdate(
-      { guildId, channelId, contextId, userId },
+      { guildId, contextId, userId },
       {
         $inc: { balance: amount },
         $set: { updatedAt: new Date() },
-        $setOnInsert: { guildId, channelId, contextId, userId },
+        $setOnInsert: { guildId, contextId, userId },
       },
       withSession({ upsert: true, new: false }, session),
     );
@@ -148,31 +131,30 @@ const addMoney = async ({ guildId, channelId, contextId, userId, executorId, amo
     const newBalance = previousBalance + amount;
     ensureSafeBalance(newBalance);
     await createWithSession([{
-      guildId, channelId, contextId, type: 'add', userId, affectedUserIds: [userId], executorId, amount,
+      guildId, contextId, type: 'add', userId, affectedUserIds: [userId], executorId, amount,
       description: String(description || '').trim(),
     }], session);
     return { previousBalance, newBalance };
   });
 };
 
-const clearLogChannel = async (guildId, sourceChannelId) => {
+const clearLogChannel = async (guildId) => {
   ensureGuildId(guildId);
-  ensureChannelId(sourceChannelId);
-  return await EconomyLogChannel.findOneAndDelete({ guildId, sourceChannelId });
+  return await EconomyLogChannel.findOneAndDelete({ guildId });
 };
 
-const removeMoney = async ({ guildId, channelId, contextId, userId, executorId, amount, description = '' }) => {
+const removeMoney = async ({ guildId, contextId, userId, executorId, amount, description = '' }) => {
   ensurePositiveAmount(amount);
-  ensureBalanceScope(guildId, channelId, contextId);
+  ensureBalanceScope(guildId, contextId);
   ensureUserId(userId);
 
   return runInTransaction(async (session) => {
     const oldDoc = await EconomyBalance.findOneAndUpdate(
-      { guildId, channelId, contextId, userId },
+      { guildId, contextId, userId },
       {
         $inc: { balance: -amount },
         $set: { updatedAt: new Date() },
-        $setOnInsert: { guildId, channelId, contextId, userId },
+        $setOnInsert: { guildId, contextId, userId },
       },
       withSession({ upsert: true, new: false }, session),
     );
@@ -180,45 +162,45 @@ const removeMoney = async ({ guildId, channelId, contextId, userId, executorId, 
     const newBalance = previousBalance - amount;
     ensureSafeBalance(newBalance);
     await createWithSession([{
-      guildId, channelId, contextId, type: 'remove', userId, affectedUserIds: [userId], executorId, amount,
+      guildId, contextId, type: 'remove', userId, affectedUserIds: [userId], executorId, amount,
       description: String(description || '').trim(),
     }], session);
     return { previousBalance, newBalance };
   });
 };
 
-const resetBalance = async ({ guildId, channelId, contextId, userId, executorId }) => {
-  ensureBalanceScope(guildId, channelId, contextId);
+const resetBalance = async ({ guildId, contextId, userId, executorId }) => {
+  ensureBalanceScope(guildId, contextId);
   ensureUserId(userId);
   return runInTransaction(async (session) => {
     const oldDoc = await EconomyBalance.findOneAndUpdate(
-      { guildId, channelId, contextId, userId },
+      { guildId, contextId, userId },
       { $set: { balance: 0, updatedAt: new Date() } },
       withSession({ new: false }, session),
     );
     const previousBalance = oldDoc?.balance || 0;
     await createWithSession([{
-      guildId, channelId, contextId, type: 'reset', userId, affectedUserIds: [userId], executorId,
+      guildId, contextId, type: 'reset', userId, affectedUserIds: [userId], executorId,
       amount: previousBalance, description: 'Reset de balance',
     }], session);
     return { previousBalance };
   });
 };
 
-const getDebtors = async (guildId, channelId, contextId, limit = 10) => {
-  ensureBalanceScope(guildId, channelId, contextId);
+const getDebtors = async (guildId, contextId, limit = 10) => {
+  ensureBalanceScope(guildId, contextId);
   const safeLimit = Math.min(Math.max(1, limit), 100);
-  return await EconomyBalance.find({ guildId, channelId, contextId, balance: { $lt: 0 } })
+  return await EconomyBalance.find({ guildId, contextId, balance: { $lt: 0 } })
     .sort({ balance: 1 })
     .limit(safeLimit)
     .select('userId balance');
 };
 
-const getTransactions = (guildId, channelId, contextId, userId, limit = 10) => {
-  ensureBalanceScope(guildId, channelId, contextId);
+const getTransactions = (guildId, contextId, userId, limit = 10) => {
+  ensureBalanceScope(guildId, contextId);
   ensureUserId(userId);
   return EconomyTransaction.find({
-    guildId, channelId, contextId, affectedUserIds: userId,
+    guildId, contextId, affectedUserIds: userId,
   }).sort({ createdAt: -1, _id: -1 }).limit(Math.min(Math.max(1, limit), 25));
 };
 

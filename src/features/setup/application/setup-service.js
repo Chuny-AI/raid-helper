@@ -18,12 +18,12 @@ const {
   getTemporaryVoiceStatus,
   setTemporaryVoiceGenerators,
 } = require('../../../services/temporaryVoiceService');
-const getSetupStatus = async (guild, sourceChannelId) => {
+const getSetupStatus = async (guild) => {
   await getOrCreateServer(guild.id, guild.name);
   const [authorizedRoles, economyRoles, economyChannelId, temporaryVoiceStatus] = await Promise.all([
     getAuthorizedRoles(guild.id),
     listEconomyRoles(guild.id),
-    getLogChannel(guild.id, sourceChannelId),
+    getLogChannel(guild.id),
     getTemporaryVoiceStatus(guild),
   ]);
 
@@ -60,8 +60,7 @@ const saveEconomyRoles = async ({ guild, roleIds, userId }) => {
   return syncEconomyRoles({ guildId: guild.id, roles, addedBy: userId });
 };
 
-const saveEconomyChannel = async ({ guild, sourceChannelId, channelId, userId }) => {
-  if (!sourceChannelId) throw new Error('Abre `/setup` dentro del canal que quieres configurar.');
+const saveEconomyChannel = async ({ guild, channelId, userId }) => {
   const channel = guild.channels.cache.get(channelId);
   if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
     throw new Error('Selecciona un canal de texto válido.');
@@ -74,7 +73,7 @@ const saveEconomyChannel = async ({ guild, sourceChannelId, channelId, userId })
   ])) {
     throw new Error('El bot necesita ver el canal, enviar mensajes e insertar enlaces allí.');
   }
-  return setLogChannel({ guildId: guild.id, sourceChannelId, channelId, setBy: userId });
+  return setLogChannel({ guildId: guild.id, channelId, setBy: userId });
 };
 
 module.exports = {

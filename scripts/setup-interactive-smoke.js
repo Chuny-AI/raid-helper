@@ -31,7 +31,7 @@ const status = {
 const dashboard = ui.buildDashboard({ status, userId: 'user-1', guildId: 'guild-1', sourceChannelId: 'source-1' });
 assert.equal(dashboard.components.length, 2);
 assert.equal(dashboard.components[1].components[0].data.disabled, false);
-assert.match(dashboard.embeds[0].data.fields[1].name, /source-1/);
+assert.doesNotMatch(dashboard.embeds[0].data.fields[1].name, /source-1/);
 assert.equal(dashboard.components[0].components.some((button) => button.data.custom_id.includes('raidvoice')), false);
 assert.equal(dashboard.embeds[0].data.fields.length, 3);
 
@@ -42,7 +42,7 @@ assert.equal(roles.components[0].components[0].data.max_values, 25);
 const economy = ui.buildEconomyScreen({ status, userId: 'user-1', guildId: 'guild-1', sourceChannelId: 'source-1' });
 assert.equal(economy.components.length, 3);
 assert.equal(economy.components[1].components[0].data.type, ComponentType.ChannelSelect);
-assert.match(economy.embeds[0].data.description, /source-1/);
+assert.match(economy.embeds[0].data.description, /todos los canales e hilos/);
 assert(economy.components[2].components.some((button) => button.data.custom_id.includes('roles-clear')));
 const temporaryVoice = ui.buildTemporaryVoiceScreen({ status, userId: 'user-1', guildId: 'guild-1' });
 assert.equal(temporaryVoice.components[0].components[0].data.type, ComponentType.ChannelSelect);

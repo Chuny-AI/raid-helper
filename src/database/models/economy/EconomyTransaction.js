@@ -6,7 +6,7 @@ const economyTransactionSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
-  channelId: { type: String, required: true },
+  channelId: { type: String },
   // Mantener la misma regla que EconomyBalance: todo movimiento debe indicar
   // explícitamente el contexto al que pertenece.
   contextId: { type: String, required: true },
@@ -51,6 +51,6 @@ const economyTransactionSchema = new mongoose.Schema({
   },
 });
 
-economyTransactionSchema.index({ guildId: 1, channelId: 1, contextId: 1, affectedUserIds: 1, createdAt: -1 });
+economyTransactionSchema.index({ guildId: 1, contextId: 1, affectedUserIds: 1, createdAt: -1 });
 
 module.exports = mongoose.model('EconomyTransaction', economyTransactionSchema);

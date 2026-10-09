@@ -1,4 +1,8 @@
 const assert = require('node:assert/strict');
+const migration = require('../src/database/migrations/economy-global-contexts');
+const originalMigration = migration.migrateEconomyGlobalContexts;
+const events = [];
+migration.migrateEconomyGlobalContexts = async () => events.push('migrate:economy');
 const { ensureCollections } = require('../src/database/bootstrap');
 const EconomyBalance = require('../src/database/models/economy/EconomyBalance');
 const EconomyContext = require('../src/database/models/economy/EconomyContext');
@@ -36,7 +40,6 @@ const saved = models.map((model) => ({
 }));
 
 (async () => {
-  const events = [];
   for (const model of models) {
     model.createCollection = async () => {};
     model.createIndexes = async () => events.push(`create:${model.modelName}`);
@@ -50,9 +53,11 @@ const saved = models.map((model) => ({
     ]],
     [EconomyContext, [
       { name: 'guildId_1_slug_1', unique: true, key: { guildId: 1, slug: 1 } },
+      { name: 'guildId_1_channelId_1_slug_1', unique: true, key: { guildId: 1, channelId: 1, slug: 1 } },
     ]],
     [EconomyLogChannel, [
       { name: 'guildId_1', unique: true, key: { guildId: 1 } },
+      { name: 'guildId_1_sourceChannelId_1', unique: true, key: { guildId: 1, sourceChannelId: 1 } },
     ]],
   ]);
   for (const [model, existing] of indexes) {
@@ -62,9 +67,9 @@ const saved = models.map((model) => ({
   await ensureCollections();
   assert.deepEqual(events.filter((event) => event.startsWith('drop:')), [
     'drop:EconomyBalance:guildId_1_userId_1',
-    'drop:EconomyBalance:guildId_1_contextId_1_userId_1',
-    'drop:EconomyContext:guildId_1_slug_1',
-    'drop:EconomyLogChannel:guildId_1',
+    'drop:EconomyBalance:guildId_1_channelId_1_contextId_1_userId_1',
+    'drop:EconomyContext:guildId_1_channelId_1_slug_1',
+    'drop:EconomyLogChannel:guildId_1_sourceChannelId_1',
   ]);
   assert.deepEqual(events.filter((event) => event.startsWith('create:')), [
     'create:EconomyBalance',
@@ -80,12 +85,14 @@ const saved = models.map((model) => ({
     'create:AlbionRegistration',
     'create:UtcClockConfig',
   ]);
-  assert(events.indexOf('create:EconomyBalance') > events.indexOf('drop:EconomyLogChannel:guildId_1'));
+  assert(events.indexOf('migrate:economy') > events.indexOf('drop:EconomyLogChannel:guildId_1_sourceChannelId_1'));
+  assert(events.indexOf('create:EconomyBalance') > events.indexOf('migrate:economy'));
   console.log('✅ Migración de índices de economía verificada');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 }).finally(() => {
+  migration.migrateEconomyGlobalContexts = originalMigration;
   for (const entry of saved) {
     entry.model.createCollection = entry.createCollection;
     entry.model.createIndexes = entry.createIndexes;
