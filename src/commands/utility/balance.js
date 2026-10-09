@@ -34,7 +34,7 @@ const data = new SlashCommandBuilder()
     .setDescription('Lista los contextos del servidor y el total adeudado'))
   .addSubcommand((sub) => sub.setName('ver')
     .setDescription('Consulta el saldo de un miembro')
-    .addChannelOption(sourceChannelOption).addStringOption(contextOption).addUserOption(userOption))
+    .addStringOption(contextOption).addUserOption(userOption).addChannelOption(sourceChannelOption))
   .addSubcommand((sub) => sub.setName('agregar')
     .setDescription('Suma al saldo y registra el movimiento')
     .addStringOption(contextOption).addUserOption(userOption)
@@ -48,10 +48,10 @@ const data = new SlashCommandBuilder()
     .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('historial')
     .setDescription('Muestra los últimos movimientos de un miembro')
-    .addChannelOption(sourceChannelOption).addStringOption(contextOption).addUserOption(userOption))
+    .addStringOption(contextOption).addUserOption(userOption).addChannelOption(sourceChannelOption))
   .addSubcommand((sub) => sub.setName('ranking')
     .setDescription('Muestra los mayores saldos del contexto')
-    .addChannelOption(sourceChannelOption).addStringOption(contextOption));
+    .addStringOption(contextOption).addChannelOption(sourceChannelOption));
 
 const formatAmount = (amount) => new Intl.NumberFormat('es-CO').format(amount);
 const reply = (interaction, content) => interaction.editReply({ content, allowedMentions: { parse: [] } });

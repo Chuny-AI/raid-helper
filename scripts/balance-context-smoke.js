@@ -28,6 +28,13 @@ const saved = {
 };
 
 (async () => {
+  for (const subcommand of command.data.toJSON().options) {
+    let foundOptional = false;
+    for (const option of subcommand.options || []) {
+      if (!option.required) foundOptional = true;
+      else assert.equal(foundOptional, false, `${subcommand.name} no puede tener opciones obligatorias después de una opcional`);
+    }
+  }
   assert.ok(EconomyBalance.schema.indexes().some(([keys, options]) =>
     keys.guildId === 1 && keys.channelId === 1 && keys.contextId === 1 && keys.userId === 1 && options.unique));
   assert.ok(EconomyTransaction.schema.path('channelId'));
