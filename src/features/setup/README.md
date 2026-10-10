@@ -29,7 +29,7 @@ El parámetro de rol de visibilidad del raid controla quién puede ver cada sala
 
 La sección de economía define los roles de balance y el canal de auditoría del servidor.
 Solo quienes tengan uno de esos roles pueden usar `/balance`, incluso para crear contextos.
-Cada contexto es una categoría única del servidor. Sus saldos, movimientos y rankings
+Cada contexto es una categoría única del servidor. Sus deudas, movimientos y rankings
 se comparten en todos los canales e hilos. Configurar una vez la auditoría permite
 modificar balances desde cualquier lugar del servidor.
 
@@ -42,14 +42,14 @@ asignarles una categoría arbitraria.
 Comandos de balance:
 
 - `/balance crear-contexto nombre:<nombre>`: crea una categoría del servidor.
-- `/balance eliminar-contexto contexto:<nombre> confirmar:true`: elimina la categoría, todos sus saldos e historial, y registra la eliminación en auditoría.
-- `/balance contextos`: lista las categorías, el saldo total y la deuda de cada una.
-- `/balance ver contexto:<nombre> usuario:<miembro>`: consulta el saldo.
-- `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: modifica el saldo y registra el movimiento.
-- `/balance reiniciar contexto:<nombre> usuario:<miembro>`: deja el saldo en cero.
-- `/balance historial contexto:<nombre> usuario:<miembro>` y `/balance ranking contexto:<nombre>`: consultan movimientos y mayores saldos.
+- `/balance eliminar-contexto contexto:<nombre> confirmar:true`: elimina la categoría, todas sus deudas e historial, y registra la eliminación en auditoría.
+- `/balance contextos`: lista las categorías y la deuda total de cada una.
+- `/balance ver contexto:<nombre> usuario:<miembro>`: consulta la deuda.
+- `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: aumenta o reduce la deuda y registra el movimiento.
+- `/balance reiniciar contexto:<nombre> usuario:<miembro>`: deja la deuda en cero.
+- `/balance historial contexto:<nombre> usuario:<miembro>` y `/balance ranking contexto:<nombre>`: consultan movimientos y mayores deudas.
 
-Las respuestas son privadas para el operador. Cada cambio de saldo se registra
+Las respuestas son privadas para el operador. Cada cambio de deuda se registra
 atómicamente en MongoDB y se publica en el canal de auditoría configurado. Si
 Discord no acepta el mensaje de auditoría, el comando advierte que la operación
 sí quedó guardada; el historial conserva el registro.
@@ -57,3 +57,8 @@ sí quedó guardada; el historial conserva el registro.
 Los valores se guardan en MongoDB. `/setup` es la única
 interfaz de configuración de roles y economía; los antiguos comandos `/roles`
 y `/eco` fueron retirados para evitar configuraciones divergentes.
+
+Agregar aumenta la deuda; quitar la reduce y se rechaza si la cantidad supera
+la deuda actual. Los importes positivos guardados se conservan como deuda. No
+se invierten ni se borran importes históricos negativos automáticamente: ver y
+contextos avisan si encuentran esos registros para revisarlos antes de corregirlos.

@@ -7,10 +7,10 @@ const { hasConfiguredEconomyRole } = require('../../services/economy/economyRole
 const { UserError, isUserError } = require('../../utils/userError');
 
 const contextOption = (option) => option.setName('contexto')
-  .setDescription('Balance al que pertenece la operación')
+  .setDescription('Categoría a la que pertenece la deuda')
   .setRequired(true).setAutocomplete(true);
 const userOption = (option) => option.setName('usuario')
-  .setDescription('Miembro cuyo saldo se consulta o modifica')
+  .setDescription('Miembro cuya deuda se consulta o modifica')
   .setRequired(true);
 const amountOption = (option) => option.setName('cantidad')
   .setDescription('Cantidad entera positiva')
@@ -21,39 +21,39 @@ const reasonOption = (option) => option.setName('motivo')
 
 const data = new SlashCommandBuilder()
   .setName('balance')
-  .setDescription('Gestiona balances por contexto y consulta movimientos')
+  .setDescription('Gestiona deudas por categoría y consulta movimientos')
   .setContexts(InteractionContextType.Guild)
   .addSubcommand((sub) => sub.setName('crear-contexto')
-    .setDescription('Crea un balance independiente, como Avalonianas o Gremio')
+    .setDescription('Crea una categoría de deuda, como Avalonianas o Gremio')
     .addStringOption((option) => option.setName('nombre')
       .setDescription('Nombre del nuevo contexto').setRequired(true).setMaxLength(60)))
   .addSubcommand((sub) => sub.setName('contextos')
-    .setDescription('Lista los contextos del servidor, sus saldos y deudas'))
+    .setDescription('Lista las categorías del servidor y su deuda total'))
   .addSubcommand((sub) => sub.setName('eliminar-contexto')
-    .setDescription('Elimina una categoría con todos sus saldos e historial')
+    .setDescription('Elimina una categoría con todas sus deudas e historial')
     .addStringOption(contextOption)
     .addBooleanOption((option) => option.setName('confirmar')
-      .setDescription('Confirma la eliminación definitiva de la categoría, sus saldos e historial')
+      .setDescription('Confirma la eliminación definitiva de la categoría, sus deudas e historial')
       .setRequired(true)))
   .addSubcommand((sub) => sub.setName('ver')
-    .setDescription('Consulta el saldo de un miembro')
+    .setDescription('Consulta la deuda de un miembro')
     .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('agregar')
-    .setDescription('Suma al saldo y registra el movimiento')
+    .setDescription('Aumenta la deuda y registra el movimiento')
     .addStringOption(contextOption).addUserOption(userOption)
     .addIntegerOption(amountOption).addStringOption(reasonOption))
   .addSubcommand((sub) => sub.setName('quitar')
-    .setDescription('Resta del saldo y registra el movimiento')
+    .setDescription('Reduce la deuda sin permitir importes negativos')
     .addStringOption(contextOption).addUserOption(userOption)
     .addIntegerOption(amountOption).addStringOption(reasonOption))
   .addSubcommand((sub) => sub.setName('reiniciar')
-    .setDescription('Deja el saldo en cero y registra el movimiento')
+    .setDescription('Deja la deuda en cero y registra el movimiento')
     .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('historial')
     .setDescription('Muestra los últimos movimientos de un miembro')
     .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('ranking')
-    .setDescription('Muestra los mayores saldos del contexto')
+    .setDescription('Muestra las mayores deudas de la categoría')
     .addStringOption(contextOption));
 
 const formatAmount = (amount) => new Intl.NumberFormat('es-CO').format(amount);
@@ -62,9 +62,9 @@ const safeText = (value) => escapeMarkdown(String(value || '').replace(/\s+/g, '
 
 const auditMovement = async (interaction, channel, { context, type, userId, amount, previousBalance, newBalance, reason }) => {
   try {
-    const labels = { add: 'Ingreso', remove: 'Retiro', reset: 'Reinicio' };
+    const labels = { add: 'Aumento', remove: 'Reducción', reset: 'Reinicio' };
     const embed = new EmbedBuilder()
-      .setTitle(`💰 ${labels[type]} de balance`)
+      .setTitle(`💰 ${labels[type]} de deuda`)
       .setColor(type === 'add' ? 0x57f287 : type === 'remove' ? 0xfee75c : 0xed4245)
       .addFields(
         { name: 'Canal de origen', value: interaction.channelId ? `<#${interaction.channelId}>` : 'No disponible', inline: true },
@@ -72,9 +72,9 @@ const auditMovement = async (interaction, channel, { context, type, userId, amou
         { name: 'Usuario', value: `<@${userId}>`, inline: true },
         { name: 'Responsable', value: `<@${interaction.user.id}>`, inline: true },
         { name: 'Cantidad', value: formatAmount(amount), inline: true },
-        { name: 'Antes', value: formatAmount(previousBalance), inline: true },
-        { name: 'Después', value: formatAmount(newBalance), inline: true },
-        { name: 'Motivo', value: safeText(reason || 'Reinicio de balance') },
+        { name: 'Deuda anterior', value: formatAmount(previousBalance), inline: true },
+        { name: 'Deuda actual', value: formatAmount(newBalance), inline: true },
+        { name: 'Motivo', value: safeText(reason || 'Reinicio de deuda') },
       ).setTimestamp();
     await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
     return true;
@@ -106,8 +106,8 @@ const execute = async (interaction) => {
       let content = `**Contextos de balance del servidor (${available.length})**`;
       let shown = 0;
       for (const context of available) {
-        const { totalBalance = 0, totalDebt = 0 } = totals.get(context.slug) || {};
-        const line = `\n• ${safeText(context.name)} — Saldo: **${formatAmount(totalBalance)}** · Debe: **${formatAmount(totalDebt)}**`;
+        const { totalDebt = 0 } = totals.get(context.slug) || {};
+        const line = `\n• ${safeText(context.name)} — Deuda: **${formatAmount(totalDebt)}**`;
         if (content.length + line.length > 1750) break;
         content += line;
         shown++;
@@ -120,24 +120,24 @@ const execute = async (interaction) => {
     if (action === 'ranking') {
       const leaders = await economy.getLeaderboard(interaction.guildId, context.slug, 10);
       return reply(interaction, leaders.length
-        ? `**Mayores saldos · ${safeText(context.name)}**\n${leaders.map((item, index) => `${index + 1}. <@${item.userId}> — ${formatAmount(item.balance)}`).join('\n')}`
-        : `Todavía no hay saldos positivos en **${safeText(context.name)}**.`);
+        ? `**Mayores deudas · ${safeText(context.name)}**\n${leaders.map((item, index) => `${index + 1}. <@${item.userId}> — ${formatAmount(item.balance)}`).join('\n')}`
+        : `Todavía no hay deudas pendientes en **${safeText(context.name)}**.`);
     }
 
     if (action === 'eliminar-contexto' && interaction.options.getBoolean('confirmar', true) !== true) {
-      return reply(interaction, `No se eliminó **${safeText(context.name)}**. Usa \`confirmar:true\` para borrar la categoría, todos sus saldos e historial.`);
+      return reply(interaction, `No se eliminó **${safeText(context.name)}**. Usa \`confirmar:true\` para borrar la categoría, todas sus deudas e historial.`);
     }
     const userId = action === 'eliminar-contexto' ? null : interaction.options.getUser('usuario', true).id;
     if (action === 'ver') {
       const amount = await economy.getBalance(interaction.guildId, context.slug, userId);
-      return reply(interaction, `**${safeText(context.name)}** · <@${userId}>: **${formatAmount(amount)}**`);
+      return reply(interaction, `**${safeText(context.name)}** · <@${userId}>: **${formatAmount(amount)}** de deuda`);
     }
     if (action === 'historial') {
       const movements = await economy.getTransactions(interaction.guildId, context.slug, userId, 10);
-      const labels = { add: '➕', remove: '➖', reset: '🔄' };
+      const labels = { add: '➕ Aumento de deuda', remove: '➖ Reducción de deuda', reset: '🔄 Reinicio de deuda' };
       if (!movements.length) return reply(interaction, `No hay movimientos de <@${userId}> en **${safeText(context.name)}**.`);
       const embed = new EmbedBuilder()
-        .setTitle(`Últimos movimientos · ${context.name}`)
+        .setTitle(`Movimientos de deuda · ${context.name}`)
         .setDescription(`Usuario: <@${userId}>`)
         .setColor(0x5865f2);
       for (const item of movements) {
@@ -151,7 +151,7 @@ const execute = async (interaction) => {
     }
 
     // El canal debe estar listo antes de escribir. Cada movimiento queda además
-    // en MongoDB dentro de la misma transacción que modifica el saldo.
+    // en MongoDB dentro de la misma transacción que modifica la deuda.
     const logChannelId = await economy.getLogChannel(interaction.guildId);
     if (!logChannelId) {
       throw new UserError('Configura el canal de auditoría en `/setup` antes de modificar balances.');
@@ -181,7 +181,7 @@ const execute = async (interaction) => {
             .addFields(
               { name: 'Contexto', value: safeText(context.name) },
               { name: 'Responsable', value: `<@${interaction.user.id}>` },
-              { name: 'Saldos eliminados', value: formatAmount(balancesDeleted), inline: true },
+              { name: 'Registros de deuda eliminados', value: formatAmount(balancesDeleted), inline: true },
               { name: 'Movimientos eliminados', value: formatAmount(transactionsDeleted), inline: true },
             ).setTimestamp()],
           allowedMentions: { parse: [] },
@@ -190,7 +190,7 @@ const execute = async (interaction) => {
         published = false;
         console.error('[ERROR] No se pudo publicar la eliminación de contexto:', error);
       }
-      return reply(interaction, `✅ Contexto **${safeText(context.name)}** eliminado: **${formatAmount(balancesDeleted)}** saldos y **${formatAmount(transactionsDeleted)}** movimientos.${published ? '' : ' ⚠️ La eliminación se completó, pero no se pudo publicar en el canal de auditoría.'}`);
+      return reply(interaction, `✅ Contexto **${safeText(context.name)}** eliminado: **${formatAmount(balancesDeleted)}** registros de deuda y **${formatAmount(transactionsDeleted)}** movimientos.${published ? '' : ' ⚠️ La eliminación se completó, pero no se pudo publicar en el canal de auditoría.'}`);
     }
     let result;
     let amount;
@@ -208,7 +208,7 @@ const execute = async (interaction) => {
       result = await economy.resetBalance(common);
       amount = result.previousBalance;
       result.newBalance = 0;
-      reason = 'Reinicio de balance';
+      reason = 'Reinicio de deuda';
     } else {
       throw new UserError('Operación de balance desconocida.');
     }
@@ -218,7 +218,7 @@ const execute = async (interaction) => {
       newBalance: result.newBalance,
       reason,
     });
-    return reply(interaction, `✅ **${safeText(context.name)}** · <@${userId}>: ${formatAmount(result.previousBalance)} → **${formatAmount(result.newBalance)}**.${published ? '' : ' ⚠️ El movimiento se guardó, pero no se pudo publicar en el canal de auditoría.'}`);
+    return reply(interaction, `✅ **${safeText(context.name)}** · <@${userId}> · Deuda: ${formatAmount(result.previousBalance)} → **${formatAmount(result.newBalance)}**.${published ? '' : ' ⚠️ El movimiento se guardó, pero no se pudo publicar en el canal de auditoría.'}`);
   } catch (error) {
     if (!isUserError(error)) console.error('[ERROR] Comando balance:', error);
     return reply(interaction, `❌ ${isUserError(error) ? error.message : 'No se pudo completar la operación de balance.'}`);

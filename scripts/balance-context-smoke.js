@@ -89,9 +89,9 @@ const saved = {
   EconomyBalance.aggregate = async (pipeline) => {
     const match = pipeline[0].$match;
     assert.equal(match.balance, undefined, 'El resumen debe incluir también saldos positivos');
-    assert.deepEqual(pipeline[1].$group.totalBalance, { $sum: '$balance' });
+    assert.equal(pipeline[1].$group.totalBalance, undefined);
     assert.deepEqual(pipeline[1].$group.totalDebt, {
-      $sum: { $cond: [{ $lt: ['$balance', 0] }, { $abs: '$balance' }, 0] },
+      $sum: '$balance',
     });
     const totals = new Map();
     for (const [key, balance] of balances.entries()) {
@@ -99,9 +99,9 @@ const saved = {
       if (guildId !== match.guildId
         || !match.contextId.$in.includes(contextId)) continue;
       const totalKey = contextId;
-      const total = totals.get(totalKey) || { totalBalance: 0, totalDebt: 0 };
-      total.totalBalance += balance;
-      total.totalDebt += balance < 0 ? Math.abs(balance) : 0;
+      const total = totals.get(totalKey) || { totalDebt: 0, negativeRecords: 0 };
+      total.totalDebt += balance;
+      total.negativeRecords += balance < 0 ? 1 : 0;
       totals.set(totalKey, total);
     }
     return Array.from(totals, ([key, total]) => {
@@ -113,6 +113,10 @@ const saved = {
     assert.ok(options.session);
     const key = `${filter.guildId}:${filter.contextId}:${filter.userId}`;
     const previous = balances.get(key) || 0;
+    if (filter.balance && (previous < filter.balance.$gte || previous > filter.balance.$lte || (!balances.has(key) && !options.upsert))) {
+      if (options.upsert) { const error = new Error('duplicate'); error.code = 11000; throw error; }
+      return null;
+    }
     balances.set(key, update.$inc ? previous + update.$inc.balance : update.$set.balance);
     return { balance: previous };
   };
@@ -240,9 +244,9 @@ const saved = {
     assert.match(await run('ranking', { contexto: 'avalonianas' }, true, channel), /<@member> — 107/);
     const summary = await run('contextos', {}, true, channel);
     assert.match(summary, /servidor \(2\)/);
-    assert.match(summary, /Avalonianas — Saldo: \*\*107\*\* · Debe: \*\*0\*\*/);
-    assert.match(summary, /Gremio — Saldo: \*\*40\*\*/);
-    assert.doesNotMatch(summary, /<#/);
+    assert.match(summary, /Avalonianas — Deuda: \*\*107\*\*/);
+    assert.match(summary, /Gremio — Deuda: \*\*40\*\*/);
+    assert.doesNotMatch(summary, /<#|saldo/i);
   }
   assert.match(await run('ver', { ...avalon, contexto: 'Avalonianas' }), /107/);
   assert.equal(transactions.length, 3);
@@ -253,13 +257,19 @@ const saved = {
   assert.match(await run('ver', avalon), /<@member>: \*\*95\*\*/);
   assert.match(await run('reiniciar', avalon, true, 'thread-c'), /95 → \*\*0\*\*/);
   assert.match(await run('ver', avalon), /<@member>: \*\*0\*\*/);
-  assert.match(await run('historial', avalon), /Reset de balance/);
-  assert.match(await run('ranking', { contexto: 'avalonianas' }), /no hay saldos positivos/);
+  assert.match(await run('historial', avalon), /Reinicio de deuda/);
+  assert.match(await run('ranking', { contexto: 'avalonianas' }), /no hay deudas pendientes/);
   assert.match(await run('ver', gremio), /<@member>: \*\*40\*\*/);
-  await run('quitar', { ...gremio, cantidad: 50, motivo: 'Deuda' }, true, 'thread-c');
+  const beforeExcess = transactions.length;
+  assert.match(await run('quitar', { ...gremio, cantidad: 50, motivo: 'Exceso' }, true, 'thread-c'), /más de la deuda actual/);
+  assert.match(await run('quitar', { ...gremio, usuario: 'missing', cantidad: 1, motivo: 'Sin deuda' }), /más de la deuda actual/);
+  assert.equal(transactions.length, beforeExcess);
+  assert.equal(balances.has('guild:gremio:missing'), false);
+  assert.match(await run('ver', gremio), /\*\*40\*\*/);
+  assert.match(await run('quitar', { ...gremio, cantidad: 40, motivo: 'Liquidar' }), /40 → \*\*0\*\*/);
   await run('agregar', { ...gremio, usuario: 'creditor', cantidad: 30, motivo: 'Crédito' });
   balances.set('other-guild:gremio:member', 999);
-  assert.match(await run('contextos'), /Gremio — Saldo: \*\*20\*\* · Debe: \*\*10\*\*/);
+  assert.match(await run('contextos'), /Gremio — Deuda: \*\*30\*\*/);
   assert.match(await run('ver', { ...avalon, usuario: 'unknown' }), /<@unknown>: \*\*0\*\*/);
   assert.match(await run('historial', { ...avalon, usuario: 'unknown' }), /No hay movimientos/);
   const beforeInvalid = transactions.length;
@@ -292,7 +302,7 @@ const saved = {
   assert.equal(transactions.length, beforeInvalid);
   const otherTransactions = transactions.filter(t => t.contextId !== 'gremio');
   const removedTransactions = transactions.length - otherTransactions.length;
-  assert.match(await run('eliminar-contexto', deletion, true, 'thread-c'), new RegExp('eliminado: \\*\\*2\\*\\* saldos y \\*\\*' + removedTransactions + '\\*\\* movimientos'));
+  assert.match(await run('eliminar-contexto', deletion, true, 'thread-c'), new RegExp('eliminado: \\*\\*2\\*\\* registros de deuda y \\*\\*' + removedTransactions + '\\*\\* movimientos'));
   assert.deepEqual(transactions, otherTransactions);
   assert.equal(balances.get('other-guild:gremio:member'), 999);
   assert.equal(balances.has('guild:avalonianas:member'), true);
@@ -304,7 +314,7 @@ const saved = {
   assert.match(await run('crear-contexto', { nombre: 'Gremio' }), /creado/);
   assert.match(await run('ver', gremio), /<@member>: \*\*0\*\*/);
   assert.match(await run('historial', gremio), /No hay movimientos/);
-  assert.match(await run('eliminar-contexto', deletion), /\*\*0\*\* saldos y \*\*0\*\* movimientos/);
+  assert.match(await run('eliminar-contexto', deletion), /\*\*0\*\* registros de deuda y \*\*0\*\* movimientos/);
 
   EconomyLogChannel.findOneAndUpdate = async (filter, update, options) => {
     assert.deepEqual(filter, { guildId: 'guild' });

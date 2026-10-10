@@ -148,7 +148,7 @@ const buildEconomyScreen = ({ status, userId, guildId }) => {
   return {
     embeds: [new EmbedBuilder()
       .setTitle('💰 Configuración de economía')
-      .setDescription('Los contextos son categorías del servidor. Los saldos y movimientos se comparten entre todos los canales e hilos; la auditoría se publica en el canal configurado aquí.')
+      .setDescription('Los contextos son categorías del servidor. Las deudas y movimientos se comparten entre todos los canales e hilos; la auditoría se publica en el canal configurado aquí.')
       .setColor(0xf1c40f)],
     components: [
       new ActionRowBuilder().addComponents(roleSelect),
@@ -199,7 +199,7 @@ const buildEconomyClearConfirmation = ({ userId, guildId }) => ({
 const buildEconomyRolesClearConfirmation = ({ userId, guildId }) => ({
   embeds: [new EmbedBuilder()
     .setTitle('⚠️ Quitar roles de balance')
-    .setDescription('Se revocará el acceso a `/balance` en todos los canales del servidor. Los contextos, saldos, movimientos y canales de auditoría configurados se conservarán.')
+    .setDescription('Se revocará el acceso a `/balance` en todos los canales del servidor. Los contextos, deudas, movimientos y canales de auditoría configurados se conservarán.')
     .setColor(0xed4245)],
   components: [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(componentId('economy-roles-clear-confirm', userId, guildId)).setLabel('Sí, quitar roles').setStyle(ButtonStyle.Danger),

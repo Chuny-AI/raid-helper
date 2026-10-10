@@ -14,7 +14,7 @@ const ensurePositiveAmount = (amount) => {
 
 const ensureSafeBalance = (balance) => {
   if (!Number.isSafeInteger(balance)) {
-    throw new UserError('El saldo resultante excede el rango permitido de números enteros.');
+    throw new UserError('La deuda resultante excede el rango permitido de números enteros.');
   }
 };
 
@@ -86,7 +86,10 @@ const getBalance = async (guildId, contextId, userId) => {
   ensureBalanceScope(guildId, contextId);
   ensureUserId(userId);
   const doc = await EconomyBalance.findOne({ guildId, contextId, userId });
-  return doc?.balance || 0;
+  const debt = doc?.balance || 0;
+  ensureSafeBalance(debt);
+  if (debt < 0) throw new UserError('Este registro antiguo tiene un importe negativo. Revisa su historial y corrígelo con `/balance reiniciar` antes de registrar la deuda correcta.');
+  return debt;
 };
 
 const getLeaderboard = async (guildId, contextId, limit = 10) => {
@@ -106,11 +109,15 @@ const getTotalsByContext = async (guildId, contextIds) => {
     { $match: { guildId, contextId: { $in: ids } } },
     { $group: {
       _id: '$contextId',
-      totalBalance: { $sum: '$balance' },
-      totalDebt: { $sum: { $cond: [{ $lt: ['$balance', 0] }, { $abs: '$balance' }, 0] } },
+      totalDebt: { $sum: '$balance' },
+      negativeRecords: { $sum: { $cond: [{ $lt: ['$balance', 0] }, 1, 0] } },
     } },
   ]);
-  return new Map(totals.map(({ _id, totalBalance, totalDebt }) => [_id, { totalBalance, totalDebt }]));
+  if (totals.some(({ negativeRecords }) => negativeRecords > 0)) {
+    throw new UserError('Hay registros antiguos con importes negativos. Revisa y corrige esas deudas antes de consultar el total; no se han convertido sus signos.');
+  }
+  for (const { totalDebt } of totals) ensureSafeBalance(totalDebt);
+  return new Map(totals.map(({ _id, totalDebt }) => [_id, { totalDebt }]));
 };
 
 const addMoney = async ({ guildId, contextId, userId, executorId, amount, description = '' }) => {
@@ -120,14 +127,19 @@ const addMoney = async ({ guildId, contextId, userId, executorId, amount, descri
 
   return runInTransaction(async (session) => {
     const oldDoc = await EconomyBalance.findOneAndUpdate(
-      { guildId, contextId, userId },
+      { guildId, contextId, userId, balance: { $gte: 0, $lte: Number.MAX_SAFE_INTEGER - amount } },
       {
         $inc: { balance: amount },
         $set: { updatedAt: new Date() },
         $setOnInsert: { guildId, contextId, userId },
       },
       withSession({ upsert: true, new: false }, session),
-    );
+    ).catch((error) => {
+      // Un registro fuera del rango no coincide; el índice único impide que
+      // el upsert lo duplique. No se modifica su importe ni se crea historial.
+      if (error.code === 11000) throw new UserError('No se pudo agregar: la deuda excede el límite permitido o el registro antiguo tiene un importe negativo. Revisa la deuda actual.');
+      throw error;
+    });
     const previousBalance = oldDoc?.balance || 0;
     const newBalance = previousBalance + amount;
     ensureSafeBalance(newBalance);
@@ -151,15 +163,15 @@ const removeMoney = async ({ guildId, contextId, userId, executorId, amount, des
 
   return runInTransaction(async (session) => {
     const oldDoc = await EconomyBalance.findOneAndUpdate(
-      { guildId, contextId, userId },
+      { guildId, contextId, userId, balance: { $gte: amount } },
       {
         $inc: { balance: -amount },
         $set: { updatedAt: new Date() },
-        $setOnInsert: { guildId, contextId, userId },
       },
-      withSession({ upsert: true, new: false }, session),
+      withSession({ new: false }, session),
     );
-    const previousBalance = oldDoc?.balance || 0;
+    if (!oldDoc) throw new UserError('No puedes quitar más de la deuda actual. No se modificó la deuda.');
+    const previousBalance = oldDoc.balance;
     const newBalance = previousBalance - amount;
     ensureSafeBalance(newBalance);
     await createWithSession([{
@@ -182,20 +194,13 @@ const resetBalance = async ({ guildId, contextId, userId, executorId }) => {
     const previousBalance = oldDoc?.balance || 0;
     await createWithSession([{
       guildId, contextId, type: 'reset', userId, affectedUserIds: [userId], executorId,
-      amount: previousBalance, description: 'Reset de balance',
+      amount: previousBalance, description: 'Reinicio de deuda',
     }], session);
     return { previousBalance };
   });
 };
 
-const getDebtors = async (guildId, contextId, limit = 10) => {
-  ensureBalanceScope(guildId, contextId);
-  const safeLimit = Math.min(Math.max(1, limit), 100);
-  return await EconomyBalance.find({ guildId, contextId, balance: { $lt: 0 } })
-    .sort({ balance: 1 })
-    .limit(safeLimit)
-    .select('userId balance');
-};
+const getDebtors = getLeaderboard;
 
 const getTransactions = (guildId, contextId, userId, limit = 10) => {
   ensureBalanceScope(guildId, contextId);

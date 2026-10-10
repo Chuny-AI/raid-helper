@@ -19,8 +19,9 @@ const originals = {
   let transactionOptions;
   mongoose.startSession = async () => fakeSession;
   EconomyBalance.findOneAndUpdate = async (filter, _update, options) => {
-    assert.deepStrictEqual(filter, { guildId: 'guild', contextId: 'avalonianas', userId: 'user' });
+    assert.deepStrictEqual(filter, { guildId: 'guild', contextId: 'avalonianas', userId: 'user', balance: { $gte: 0, $lte: Number.MAX_SAFE_INTEGER - _update.$inc.balance } });
     balanceOptions = options;
+    if (10 > filter.balance.$lte) { const error = new Error('duplicate'); error.code = 11000; throw error; }
     return { balance: 10 };
   };
   EconomyTransaction.create = async (docs, options) => {
@@ -65,7 +66,7 @@ const originals = {
     require('../src/services/economy/economyService').addMoney({
       guildId: 'guild', contextId: 'avalonianas', userId: 'user', executorId: 'admin', amount: Number.MAX_SAFE_INTEGER,
     }),
-    /saldo resultante excede/i,
+    /deuda excede el límite/i,
   );
 
   console.log('✅ Transacciones y fallback de economía verificados');

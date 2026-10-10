@@ -56,13 +56,41 @@ const dbName = `codex_economy_test_${randomUUID().replaceAll('-', '')}`;
   assert.equal(await economy.getBalance('guild', 'avalonianas', 'member'), 100, 'Reiniciar no debe sobrescribir movimientos nuevos');
   assert.equal((await economy.getTransactions('guild', 'avalonianas', 'member')).length, 3);
   assert.equal((await economy.getLeaderboard('guild', 'avalonianas'))[0].balance, 100);
-  await economy.removeMoney({ ...scope, userId: 'debtor', executorId: 'admin', amount: 10 });
-  assert.deepEqual((await economy.getTotalsByContext('guild', ['avalonianas'])).get('avalonianas'), { totalBalance: 90, totalDebt: 10 });
+  await economy.addMoney({ ...scope, userId: 'debtor', executorId: 'admin', amount: 10 });
+  assert.deepEqual((await economy.getTotalsByContext('guild', ['avalonianas'])).get('avalonianas'), { totalDebt: 110 });
   await economy.resetBalance({ ...scope, executorId: 'admin' });
   assert.equal(await economy.getBalance('guild', 'avalonianas', 'member'), 0);
   await assert.rejects(contexts.createContext({ guildId: 'guild', name: 'AVALONIANAS', createdBy: 'admin' }), /Ya existe/);
   await economy.setLogChannel({ guildId: 'guild', channelId: 'new-logs', setBy: 'admin' });
   assert.equal(await economy.getLogChannel('guild'), 'new-logs');
+
+  // Las validaciones forman parte de la escritura atómica, también sin sesiones.
+  const limitScope = { ...scope, contextId: 'limits', executorId: 'admin' };
+  await economy.addMoney({ ...limitScope, amount: Number.MAX_SAFE_INTEGER });
+  await assert.rejects(economy.addMoney({ ...limitScope, amount: 1 }), /deuda excede el límite/);
+  assert.equal(await economy.getBalance('guild', 'limits', 'member'), Number.MAX_SAFE_INTEGER);
+  assert.equal((await economy.getTransactions('guild', 'limits', 'member')).length, 1);
+  await assert.rejects(economy.removeMoney({ ...limitScope, userId: 'missing', amount: 1 }), /más de la deuda actual/);
+  assert.equal(await Balance.countDocuments({ contextId: 'limits', userId: 'missing' }), 0);
+  const concurrent = { ...limitScope, userId: 'concurrent' };
+  await economy.addMoney({ ...concurrent, amount: 50 });
+  const removals = await Promise.allSettled([
+    economy.removeMoney({ ...concurrent, amount: 40 }),
+    economy.removeMoney({ ...concurrent, amount: 40 }),
+  ]);
+  assert.equal(removals.filter(result => result.status === 'fulfilled').length, 1);
+  assert.match(removals.find(result => result.status === 'rejected').reason.message, /más de la deuda actual/);
+  assert.equal(await economy.getBalance('guild', 'limits', 'concurrent'), 10);
+  assert.equal((await economy.getTransactions('guild', 'limits', 'concurrent')).length, 2);
+  await economy.removeMoney({ ...concurrent, amount: 10 });
+  assert.equal(await economy.getBalance('guild', 'limits', 'concurrent'), 0);
+
+  const negative = { ...scope, contextId: 'old-negative', balance: -5 };
+  await Balance.collection.insertOne(negative);
+  await assert.rejects(economy.getBalance('guild', 'old-negative', 'member'), /registro antiguo/);
+  await assert.rejects(economy.getTotalsByContext('guild', ['old-negative']), /registros antiguos/);
+  await assert.rejects(economy.addMoney({ ...limitScope, contextId: 'old-negative', amount: 10 }), /importe negativo/);
+  assert.equal((await Balance.collection.findOne({ contextId: 'old-negative' })).balance, -5);
 
   // Simular caída después de borrar duplicados y antes de escribir el total.
   await Balance.collection.dropIndex('guildId_1_contextId_1_userId_1');
