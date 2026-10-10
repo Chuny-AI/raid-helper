@@ -54,7 +54,13 @@ const data = new SlashCommandBuilder()
     .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('ranking')
     .setDescription('Muestra las mayores deudas de la categoría')
-    .addStringOption(contextOption));
+    .addStringOption(contextOption))
+  .addSubcommand((sub) => sub.setName('pendientes')
+    .setDescription('Muestra cuántas personas tienen saldo, el total a pagar y el listado por contexto')
+    .addStringOption(contextOption)
+    .addIntegerOption((option) => option.setName('pagina')
+      .setDescription('Página del listado de personas con saldo (20 por página)')
+      .setMinValue(1)));
 
 const formatAmount = (amount) => new Intl.NumberFormat('es-CO').format(amount);
 const reply = (interaction, content) => interaction.editReply({ content, allowedMentions: { parse: [] } });
@@ -87,10 +93,11 @@ const auditMovement = async (interaction, channel, { context, type, userId, amou
 const execute = async (interaction) => {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    if (!interaction.guildId || !await hasConfiguredEconomyRole(interaction.member, interaction.guildId)) {
+    const action = interaction.options.getSubcommand();
+    if (!interaction.guildId) throw new UserError('Este comando debe usarse dentro de un servidor de Discord.');
+    if (action !== 'ver' && !await hasConfiguredEconomyRole(interaction.member, interaction.guildId)) {
       throw new UserError('Solo quienes tengan un rol de balance configurado en `/setup` pueden usar este comando.');
     }
-    const action = interaction.options.getSubcommand();
     if (action === 'crear-contexto') {
       const context = await contexts.createContext({
         guildId: interaction.guildId,
@@ -117,6 +124,15 @@ const execute = async (interaction) => {
     }
 
     const context = await contexts.requireContext(interaction.guildId, interaction.options.getString('contexto', true));
+    if (action === 'pendientes') {
+      const { totalDebt, personCount, people, page, pageCount, offset } = await economy.getPendingBalances(
+        interaction.guildId, context.slug, interaction.options.getInteger('pagina') ?? 1,
+      );
+      const summary = `**Pagos pendientes · ${safeText(context.name)}**\nPersonas con saldo: **${formatAmount(personCount)}**\nTotal a pagar: **${formatAmount(totalDebt)}**`;
+      if (!personCount) return reply(interaction, `${summary}\n\nNo hay personas con saldo pendiente en este contexto.`);
+      const list = people.map((item, index) => `${offset + index + 1}. <@${item.userId}> — ${formatAmount(item.balance)}`).join('\n');
+      return reply(interaction, `${summary}\n\n${list}\n\nPágina **${page}/${pageCount}**.${pageCount > 1 ? ' Usa la opción `pagina` de `/balance pendientes` para recorrer el listado completo.' : ''}`);
+    }
     if (action === 'ranking') {
       const leaders = await economy.getLeaderboard(interaction.guildId, context.slug, 10);
       return reply(interaction, leaders.length
@@ -227,7 +243,8 @@ const execute = async (interaction) => {
 
 const autocomplete = async (interaction) => {
   try {
-    if (!interaction.guildId || !await hasConfiguredEconomyRole(interaction.member, interaction.guildId)) {
+    const action = interaction.options.getSubcommand(false);
+    if (!interaction.guildId || (action !== 'ver' && !await hasConfiguredEconomyRole(interaction.member, interaction.guildId))) {
       return interaction.respond([]);
     }
     const available = await contexts.searchContexts(interaction.guildId, interaction.options.getFocused());

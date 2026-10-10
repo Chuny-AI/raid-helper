@@ -10,7 +10,7 @@ const permissionsConfig = {
   'registro-miembros': ['admin'],
   'setup-registro': ['admin'],
   'registro-panel': ['admin'],
-  balance: ['balancerole'],
+  balance: { default: ['balancerole'], subcommands: { ver: ['all'] } },
   status: ['admin'],
   split: [['admin', 'authorizedroles']],
   notify: [['admin', 'authorizedroles']],

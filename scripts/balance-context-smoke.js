@@ -1,12 +1,13 @@
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
-const { ApplicationCommandOptionType, CommandInteractionOptionResolver } = require('discord.js');
+const { ApplicationCommandOptionType, CommandInteractionOptionResolver, MessageFlags } = require('discord.js');
 const EconomyRole = require('../src/database/models/economy/EconomyRole');
 const EconomyContext = require('../src/database/models/economy/EconomyContext');
 const EconomyBalance = require('../src/database/models/economy/EconomyBalance');
 const EconomyTransaction = require('../src/database/models/economy/EconomyTransaction');
 const EconomyLogChannel = require('../src/database/models/economy/EconomyLogChannel');
 const command = require('../src/commands/utility/balance');
+const { filterCommand } = require('../src/utils/commandFilter');
 const economyService = require('../src/services/economy/economyService');
 const contextService = require('../src/services/economy/economyContextService');
 const setupService = require('../src/features/setup/application/setup-service');
@@ -79,13 +80,21 @@ const saved = {
     return { sort: () => query };
   };
   EconomyBalance.findOne = async (filter) => ({ balance: balances.get(`${filter.guildId}:${filter.contextId}:${filter.userId}`) || 0 });
-  EconomyBalance.find = (filter) => ({
-    sort: () => ({ limit: (limit) => ({ select: async () => Array.from(balances.entries())
+  EconomyBalance.find = (filter) => {
+    let offset = 0;
+    let limit = Infinity;
+    const query = {
+      sort: () => query,
+      skip: (value) => { offset = value; return query; },
+      limit: (value) => { limit = value; return query; },
+      select: async () => Array.from(balances.entries())
       .filter(([key, balance]) => key.startsWith(`${filter.guildId}:${filter.contextId}:`)
         && (filter.balance.$gt !== undefined ? balance > 0 : balance < 0))
       .map(([key, balance]) => ({ userId: key.split(':')[2], balance }))
-      .sort((a, b) => b.balance - a.balance).slice(0, limit) }) }),
-  });
+      .sort((a, b) => b.balance - a.balance || a.userId.localeCompare(b.userId)).slice(offset, offset + limit),
+    };
+    return query;
+  };
   EconomyBalance.aggregate = async (pipeline) => {
     const match = pipeline[0].$match;
     assert.equal(match.balance, undefined, 'El resumen debe incluir también saldos positivos');
@@ -93,14 +102,18 @@ const saved = {
     assert.deepEqual(pipeline[1].$group.totalDebt, {
       $sum: '$balance',
     });
+    assert.deepEqual(pipeline[1].$group.personCount, {
+      $sum: { $cond: [{ $gt: ['$balance', 0] }, 1, 0] },
+    });
     const totals = new Map();
     for (const [key, balance] of balances.entries()) {
       const [guildId, contextId] = key.split(':');
       if (guildId !== match.guildId
         || !match.contextId.$in.includes(contextId)) continue;
       const totalKey = contextId;
-      const total = totals.get(totalKey) || { totalDebt: 0, negativeRecords: 0 };
+      const total = totals.get(totalKey) || { totalDebt: 0, negativeRecords: 0, personCount: 0 };
       total.totalDebt += balance;
+      total.personCount += balance > 0 ? 1 : 0;
       total.negativeRecords += balance < 0 ? 1 : 0;
       totals.set(totalKey, total);
     }
@@ -181,14 +194,15 @@ const saved = {
           name, value,
           type: name === 'usuario' ? ApplicationCommandOptionType.User
             : name === 'canal' ? ApplicationCommandOptionType.Channel
-              : name === 'cantidad' ? ApplicationCommandOptionType.Integer
+              : ['cantidad', 'pagina'].includes(name) ? ApplicationCommandOptionType.Integer
                 : name === 'confirmar' ? ApplicationCommandOptionType.Boolean : ApplicationCommandOptionType.String,
           ...(name === 'usuario' ? { user: { id: value } } : {}),
           ...(name === 'canal' ? { channel: { id: value } } : {}),
         })),
       }]),
-      async deferReply() {},
+      async deferReply(payload) { interaction.deferred = payload; },
       async editReply(payload) {
+        interaction.payload = payload;
         interaction.answer = payload.content || [
           payload.embeds[0].data.title,
           ...payload.embeds[0].data.fields.map((field) => `${field.name} ${field.value}`),
@@ -214,14 +228,15 @@ const saved = {
   assert.match(await run('crear-contexto', { nombre: 'AVALONIANAS' }, true, 'thread-b'), /Ya existe/);
   assert.equal(contexts.length, 2);
   assert.equal(contexts[0].channelId, undefined);
-  const autocomplete = async (channelId, focused, authorized = true) => {
+  const autocomplete = async (channelId, focused, authorized = true, action = 'ranking') => {
     let choices;
     await command.autocomplete({
       guildId: 'guild', channelId,
       member: { roles: authorized ? ['balance-role'] : [] },
-      options: new CommandInteractionOptionResolver({}, [
-        { name: 'contexto', type: ApplicationCommandOptionType.String, value: focused, focused: true },
-      ]),
+      options: new CommandInteractionOptionResolver({}, [{
+        name: action, type: ApplicationCommandOptionType.Subcommand,
+        options: [{ name: 'contexto', type: ApplicationCommandOptionType.String, value: focused, focused: true }],
+      }]),
       respond: async (result) => { choices = result; },
     });
     return choices;
@@ -231,11 +246,42 @@ const saved = {
   }
   assert.deepEqual(await autocomplete('thread-b', '(.*'), []);
   assert.deepEqual(await autocomplete('thread-b', '', false), []);
+  assert.deepEqual((await autocomplete('thread-b', '', false, 'ver')).map(c => c.value), ['avalonianas', 'gremio']);
   const avalon = { contexto: 'avalonianas', usuario: 'member' };
   const gremio = { contexto: 'gremio', usuario: 'member' };
   assert.match(await run('agregar', { ...avalon, cantidad: 100, motivo: 'Botín' }), /0 → \*\*100\*\*/);
   assert.match(await run('agregar', { ...gremio, cantidad: 40, motivo: 'Aporte' }), /0 → \*\*40\*\*/);
   assert.match(await run('agregar', { ...avalon, cantidad: 7, motivo: 'Desde hilo' }, true, 'thread-b'), /100 → \*\*107\*\*/);
+  const ownBalance = makeInteraction('ver', avalon, false);
+  ownBalance.user.id = 'member';
+  ownBalance.commandName = 'balance';
+  ownBalance.isChatInputCommand = () => true;
+  assert.equal(await filterCommand(ownBalance), true);
+  await command.execute(ownBalance);
+  assert.match(ownBalance.answer, /<@member>: \*\*107\*\*/);
+  assert.equal(ownBalance.deferred.flags, MessageFlags.Ephemeral);
+  assert.match(await run('ver', avalon, false), /<@member>: \*\*107\*\*/);
+  const noGuild = makeInteraction('ver', avalon, false);
+  noGuild.guildId = null;
+  await command.execute(noGuild);
+  assert.match(noGuild.answer, /dentro de un servidor/);
+  for (const sub of command.data.toJSON().options.filter(sub => sub.name !== 'ver')) {
+    const restricted = makeInteraction(sub.name, avalon, false);
+    restricted.commandName = 'balance';
+    restricted.isChatInputCommand = () => true;
+    restricted.reply = async (payload) => { restricted.denied = payload; };
+    assert.equal(await filterCommand(restricted), false, `${sub.name} debe seguir restringido en el filtro`);
+    assert.ok(restricted.denied);
+    await command.execute(restricted);
+    assert.match(restricted.answer, /Solo quienes tengan/, `${sub.name} debe seguir restringido en el comando`);
+    assert.deepEqual(await autocomplete('thread-b', '', false, sub.name), []);
+  }
+  const configuredRoleFind = EconomyRole.find;
+  EconomyRole.find = () => ({ sort: async () => [] });
+  assert.equal(await filterCommand(ownBalance), true);
+  assert.match(await run('ver', avalon, false), /<@member>: \*\*107\*\*/);
+  assert.deepEqual((await autocomplete('thread-b', '', false, 'ver')).map(c => c.value), ['avalonianas', 'gremio']);
+  EconomyRole.find = configuredRoleFind;
   for (const channel of ['channel-a', 'channel-b', 'thread-b', null]) {
     assert.match(await run('ver', avalon, true, channel), /<@member>: \*\*107\*\*/);
     assert.match(await run('ver', gremio, true, channel), /<@member>: \*\*40\*\*/);
@@ -315,6 +361,57 @@ const saved = {
   assert.match(await run('ver', gremio), /<@member>: \*\*0\*\*/);
   assert.match(await run('historial', gremio), /No hay movimientos/);
   assert.match(await run('eliminar-contexto', deletion), /\*\*0\*\* registros de deuda y \*\*0\*\* movimientos/);
+
+  // El listado recorre todos los pendientes; los totales no dependen de la página.
+  const pendingDefinition = command.data.toJSON().options.find(sub => sub.name === 'pendientes');
+  assert.ok(pendingDefinition);
+  assert.equal(pendingDefinition.options[0].name, 'contexto');
+  assert.equal(pendingDefinition.options[0].required, true);
+  assert.equal(pendingDefinition.options[0].autocomplete, true);
+  assert.equal(pendingDefinition.options[1].name, 'pagina');
+  assert.equal(pendingDefinition.options[1].min_value, 1);
+  await run('crear-contexto', { nombre: 'Pagos' });
+  assert.match(await run('pendientes', { contexto: 'pagos' }), /Personas con saldo: \*\*0\*\*\nTotal a pagar: \*\*0\*\*/);
+  const personIds = Array.from({ length: 45 }, (_, i) => String(100000000000000000n + BigInt(i)));
+  for (const id of personIds) balances.set(`guild:pagos:${id}`, 100);
+  balances.set('guild:pagos:paid', 0);
+  balances.set(`other-guild:pagos:${personIds[0]}`, 999);
+  balances.set(`guild:avalonianas:${personIds[0]}`, 888);
+  const balancesBeforeListing = new Map(balances);
+  const transactionsBeforeListing = transactions.length;
+  const publishedBeforeListing = published.length;
+  EconomyLogChannel.findOne = async () => null;
+  const listedIds = [];
+  for (let page = 1; page <= 3; page++) {
+    const interaction = makeInteraction('pendientes', { contexto: 'pagos', ...(page > 1 ? { pagina: page } : {}) }, true, 'thread-b');
+    await command.execute(interaction);
+    assert.equal(interaction.deferred.flags, MessageFlags.Ephemeral);
+    assert.deepEqual(interaction.payload.allowedMentions, { parse: [] });
+    assert.ok(interaction.answer.length <= 2000);
+    assert.match(interaction.answer, /Personas con saldo: \*\*45\*\*\nTotal a pagar: \*\*4\.500\*\*/);
+    assert.ok(interaction.answer.includes(`Página **${page}/3**`));
+    assert.ok(interaction.answer.includes(`${(page - 1) * 20 + 1}. <@`));
+    const ids = [...interaction.answer.matchAll(/<@(\d+)>/g)].map(match => match[1]);
+    assert.equal(ids.length, page === 3 ? 5 : 20);
+    listedIds.push(...ids);
+  }
+  assert.deepEqual(listedIds, personIds);
+  assert.deepEqual(balances, balancesBeforeListing);
+  assert.equal(transactions.length, transactionsBeforeListing);
+  assert.equal(published.length, publishedBeforeListing);
+  assert.match(await run('pendientes', { contexto: 'pagos', pagina: 4 }), /entre 1 y 3/);
+  assert.match(await run('pendientes', { contexto: 'pagos' }, false), /Solo quienes tengan/);
+  assert.match(await run('pendientes', { contexto: 'inexistente' }), /no existe en este servidor/);
+  await assert.rejects(economyService.getPendingBalances('guild', undefined), /contexto/);
+  await assert.rejects(economyService.getPendingBalances(undefined, 'pagos'), /servidor/);
+  for (const page of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(economyService.getPendingBalances('guild', 'pagos', page), /entero positivo/);
+  }
+  balances.set('guild:pagos:legacy', -10);
+  assert.match(await run('pendientes', { contexto: 'pagos' }), /registros antiguos/);
+  balances.set('guild:pagos:legacy', Number.MAX_SAFE_INTEGER);
+  assert.match(await run('pendientes', { contexto: 'pagos' }), /rango permitido/);
+  balances.delete('guild:pagos:legacy');
 
   EconomyLogChannel.findOneAndUpdate = async (filter, update, options) => {
     assert.deepEqual(filter, { guildId: 'guild' });

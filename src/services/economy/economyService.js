@@ -110,6 +110,7 @@ const getTotalsByContext = async (guildId, contextIds) => {
     { $group: {
       _id: '$contextId',
       totalDebt: { $sum: '$balance' },
+      personCount: { $sum: { $cond: [{ $gt: ['$balance', 0] }, 1, 0] } },
       negativeRecords: { $sum: { $cond: [{ $lt: ['$balance', 0] }, 1, 0] } },
     } },
   ]);
@@ -117,7 +118,24 @@ const getTotalsByContext = async (guildId, contextIds) => {
     throw new UserError('Hay registros antiguos con importes negativos. Revisa y corrige esas deudas antes de consultar el total; no se han convertido sus signos.');
   }
   for (const { totalDebt } of totals) ensureSafeBalance(totalDebt);
-  return new Map(totals.map(({ _id, totalDebt }) => [_id, { totalDebt }]));
+  return new Map(totals.map(({ _id, totalDebt, personCount }) => [_id, { totalDebt, personCount }]));
+};
+
+const PENDING_PAGE_SIZE = 20;
+const getPendingBalances = async (guildId, contextId, page = 1) => {
+  ensureBalanceScope(guildId, contextId);
+  if (!Number.isSafeInteger(page) || page < 1) throw new UserError('La página debe ser un entero positivo.');
+  const totals = await getTotalsByContext(guildId, [contextId]);
+  const { totalDebt = 0, personCount = 0 } = totals.get(contextId) || {};
+  const pageCount = Math.max(1, Math.ceil(personCount / PENDING_PAGE_SIZE));
+  if (page > pageCount) throw new UserError(`Este contexto tiene ${pageCount} página(s). Selecciona una página entre 1 y ${pageCount}.`);
+  const offset = (page - 1) * PENDING_PAGE_SIZE;
+  const people = await EconomyBalance.find({ guildId, contextId, balance: { $gt: 0 } })
+    .sort({ balance: -1, userId: 1 })
+    .skip(offset)
+    .limit(PENDING_PAGE_SIZE)
+    .select('userId balance');
+  return { totalDebt, personCount, people, page, pageCount, offset };
 };
 
 const addMoney = async ({ guildId, contextId, userId, executorId, amount, description = '' }) => {
@@ -231,6 +249,7 @@ module.exports = {
   getBalance,
   getLeaderboard,
   getTotalsByContext,
+  getPendingBalances,
   getDebtors,
   getTransactions,
   addMoney,

@@ -28,7 +28,8 @@ una categoría de voz, se usa la del canal de publicación o la raíz del servid
 El parámetro de rol de visibilidad del raid controla quién puede ver cada sala.
 
 La sección de economía define los roles de balance y el canal de auditoría del servidor.
-Solo quienes tengan uno de esos roles pueden usar `/balance`, incluso para crear contextos.
+Cualquier miembro puede usar `/balance ver` para consultar su deuda o la del usuario seleccionado, con respuesta privada.
+Los demás subcomandos de `/balance`, incluida la creación de contextos, requieren uno de esos roles.
 Cada contexto es una categoría única del servidor. Sus deudas, movimientos y rankings
 se comparten en todos los canales e hilos. Configurar una vez la auditoría permite
 modificar balances desde cualquier lugar del servidor.
@@ -44,7 +45,8 @@ Comandos de balance:
 - `/balance crear-contexto nombre:<nombre>`: crea una categoría del servidor.
 - `/balance eliminar-contexto contexto:<nombre> confirmar:true`: elimina la categoría, todas sus deudas e historial, y registra la eliminación en auditoría.
 - `/balance contextos`: lista las categorías y la deuda total de cada una.
-- `/balance ver contexto:<nombre> usuario:<miembro>`: consulta la deuda.
+- `/balance pendientes contexto:<nombre> [pagina:<número>]`: muestra la cantidad de personas con saldo mayor que cero, el total a pagar del contexto y el listado completo en páginas de 20 personas, ordenado de mayor a menor saldo. La cantidad y el total corresponden a todo el contexto, no solo a la página. La respuesta es privada y requiere un rol de balance configurado.
+- `/balance ver contexto:<nombre> usuario:<miembro>`: consulta la deuda del miembro seleccionado; disponible para todos, sin rol de balance.
 - `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: aumenta o reduce la deuda y registra el movimiento.
 - `/balance reiniciar contexto:<nombre> usuario:<miembro>`: deja la deuda en cero.
 - `/balance historial contexto:<nombre> usuario:<miembro>` y `/balance ranking contexto:<nombre>`: consultan movimientos y mayores deudas.

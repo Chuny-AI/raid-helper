@@ -57,7 +57,13 @@ const dbName = `codex_economy_test_${randomUUID().replaceAll('-', '')}`;
   assert.equal((await economy.getTransactions('guild', 'avalonianas', 'member')).length, 3);
   assert.equal((await economy.getLeaderboard('guild', 'avalonianas'))[0].balance, 100);
   await economy.addMoney({ ...scope, userId: 'debtor', executorId: 'admin', amount: 10 });
-  assert.deepEqual((await economy.getTotalsByContext('guild', ['avalonianas'])).get('avalonianas'), { totalDebt: 110 });
+  assert.deepEqual((await economy.getTotalsByContext('guild', ['avalonianas'])).get('avalonianas'), { totalDebt: 110, personCount: 2 });
+  const pending = await economy.getPendingBalances('guild', 'avalonianas');
+  assert.equal(pending.personCount, 2);
+  assert.equal(pending.totalDebt, 110);
+  assert.deepEqual(pending.people.map(({ userId, balance }) => ({ userId, balance })), [
+    { userId: 'member', balance: 100 }, { userId: 'debtor', balance: 10 },
+  ]);
   await economy.resetBalance({ ...scope, executorId: 'admin' });
   assert.equal(await economy.getBalance('guild', 'avalonianas', 'member'), 0);
   await assert.rejects(contexts.createContext({ guildId: 'guild', name: 'AVALONIANAS', createdBy: 'admin' }), /Ya existe/);
