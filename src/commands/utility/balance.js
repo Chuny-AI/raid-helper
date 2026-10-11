@@ -54,7 +54,10 @@ const data = new SlashCommandBuilder()
     .addStringOption(contextOption).addUserOption(userOption))
   .addSubcommand((sub) => sub.setName('ranking')
     .setDescription('Muestra las mayores deudas de la categoría')
-    .addStringOption(contextOption))
+    .addStringOption(contextOption)
+    .addIntegerOption((option) => option.setName('cantidad')
+      .setDescription('Máximo de personas a mostrar (1 a 100; por defecto 10)')
+      .setMinValue(1).setMaxValue(100)))
   .addSubcommand((sub) => sub.setName('pendientes')
     .setDescription('Muestra cuántas personas tienen saldo, el total a pagar y el listado por contexto')
     .addStringOption(contextOption)
@@ -134,10 +137,21 @@ const execute = async (interaction) => {
       return reply(interaction, `${summary}\n\n${list}\n\nPágina **${page}/${pageCount}**.${pageCount > 1 ? ' Usa la opción `pagina` de `/balance pendientes` para recorrer el listado completo.' : ''}`);
     }
     if (action === 'ranking') {
-      const leaders = await economy.getLeaderboard(interaction.guildId, context.slug, 10);
-      return reply(interaction, leaders.length
-        ? `**Mayores deudas · ${safeText(context.name)}**\n${leaders.map((item, index) => `${index + 1}. <@${item.userId}> — ${formatAmount(item.balance)}`).join('\n')}`
-        : `Todavía no hay deudas pendientes en **${safeText(context.name)}**.`);
+      const quantity = interaction.options.getInteger('cantidad') ?? 10;
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100) {
+        throw new UserError('La cantidad de personas debe ser un entero entre 1 y 100.');
+      }
+      const leaders = await economy.getLeaderboard(interaction.guildId, context.slug, quantity);
+      if (!leaders.length) return reply(interaction, `Todavía no hay deudas pendientes en **${safeText(context.name)}**.`);
+      // Dividir el listado evita superar el límite de texto de Discord.
+      for (let offset = 0; offset < leaders.length; offset += 20) {
+        const list = leaders.slice(offset, offset + 20)
+          .map((item, index) => `${offset + index + 1}. <@${item.userId}> — ${formatAmount(item.balance)}`).join('\n');
+        const content = `**Mayores deudas · ${safeText(context.name)}**\nPersonas: ${offset + 1}–${Math.min(offset + 20, leaders.length)} de ${leaders.length}\n${list}`;
+        if (offset === 0) await reply(interaction, content);
+        else await interaction.followUp({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+      }
+      return;
     }
 
     if (action === 'eliminar-contexto' && interaction.options.getBoolean('confirmar', true) !== true) {

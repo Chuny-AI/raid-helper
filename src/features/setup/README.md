@@ -49,7 +49,8 @@ Comandos de balance:
 - `/balance ver contexto:<nombre> usuario:<miembro>`: consulta la deuda del miembro seleccionado; disponible para todos, sin rol de balance.
 - `/balance agregar|quitar contexto:<nombre> usuario:<miembro> cantidad:<entero> motivo:<texto>`: aumenta o reduce la deuda y registra el movimiento.
 - `/balance reiniciar contexto:<nombre> usuario:<miembro>`: deja la deuda en cero.
-- `/balance historial contexto:<nombre> usuario:<miembro>` y `/balance ranking contexto:<nombre>`: consultan movimientos y mayores deudas.
+- `/balance historial contexto:<nombre> usuario:<miembro>`: consulta los movimientos.
+- `/balance ranking contexto:<nombre> [cantidad:<número>]`: muestra hasta esa cantidad de personas con mayor saldo pendiente (de 1 a 100; por defecto 10). Los listados largos se entregan en mensajes privados de hasta 20 personas cada uno.
 
 Las respuestas son privadas para el operador. Cada cambio de deuda se registra
 atómicamente en MongoDB y se publica en el canal de auditoría configurado. Si

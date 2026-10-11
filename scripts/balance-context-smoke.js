@@ -201,6 +201,9 @@ const saved = {
         })),
       }]),
       async deferReply(payload) { interaction.deferred = payload; },
+      async followUp(payload) {
+        (interaction.followUps ||= []).push(payload);
+      },
       async editReply(payload) {
         interaction.payload = payload;
         interaction.answer = payload.content || [
@@ -412,6 +415,39 @@ const saved = {
   balances.set('guild:pagos:legacy', Number.MAX_SAFE_INTEGER);
   assert.match(await run('pendientes', { contexto: 'pagos' }), /rango permitido/);
   balances.delete('guild:pagos:legacy');
+
+  const rankingDefinition = command.data.toJSON().options.find(sub => sub.name === 'ranking');
+  const quantityOption = rankingDefinition.options.find(option => option.name === 'cantidad');
+  assert.equal(quantityOption.type, ApplicationCommandOptionType.Integer);
+  assert.equal(Boolean(quantityOption.required), false);
+  assert.equal(quantityOption.min_value, 1);
+  assert.equal(quantityOption.max_value, 100);
+  assert.equal((await run('ranking', { contexto: 'pagos', cantidad: 100 })).includes('de 45'), true);
+  await run('crear-contexto', { nombre: 'Ranking' });
+  const rankingIds = Array.from({ length: 105 }, (_, i) => String(200000000000000000n + BigInt(i)));
+  for (const [index, id] of rankingIds.entries()) {
+    balances.set(`guild:ranking:${id}`, Number.MAX_SAFE_INTEGER - index);
+  }
+  balances.set('guild:ranking:paid', 0);
+  balances.set('guild:ranking:negative', -1);
+  balances.set('other-guild:ranking:outsider', Number.MAX_SAFE_INTEGER);
+  for (const quantity of [undefined, 1, 30, 100]) {
+    const interaction = makeInteraction('ranking', { contexto: 'ranking', ...(quantity === undefined ? {} : { cantidad: quantity }) });
+    await command.execute(interaction);
+    const messages = [interaction.payload, ...(interaction.followUps || [])];
+    const ids = messages.flatMap(payload => [...payload.content.matchAll(/<@(\d+)>/g)].map(match => match[1]));
+    assert.deepEqual(ids, rankingIds.slice(0, quantity ?? 10));
+    assert.equal(interaction.deferred.flags, MessageFlags.Ephemeral);
+    for (const [index, payload] of messages.entries()) {
+      assert.ok(payload.content.length <= 2000);
+      assert.deepEqual(payload.allowedMentions, { parse: [] });
+      if (index > 0) assert.equal(payload.flags, MessageFlags.Ephemeral);
+      assert.ok(payload.content.includes(`${index * 20 + 1}. <@`));
+    }
+  }
+  for (const quantity of [0, -1, 1.5, 101]) {
+    assert.match(await run('ranking', { contexto: 'ranking', cantidad: quantity }), /entero entre 1 y 100/);
+  }
 
   EconomyLogChannel.findOneAndUpdate = async (filter, update, options) => {
     assert.deepEqual(filter, { guildId: 'guild' });

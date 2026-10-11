@@ -96,7 +96,7 @@ const getLeaderboard = async (guildId, contextId, limit = 10) => {
   ensureBalanceScope(guildId, contextId);
   const safeLimit = Math.min(Math.max(1, limit), 100);
   return await EconomyBalance.find({ guildId, contextId, balance: { $gt: 0 } })
-    .sort({ balance: -1 })
+    .sort({ balance: -1, userId: 1 })
     .limit(safeLimit)
     .select('userId balance');
 };
