@@ -8,7 +8,7 @@ const service = require('../src/services/albionRegistrationService');
 
 const originals = {
   config: Config.findOne, rules: Rule.find, registration: Registration.findOne,
-  save: Registration.prototype.save, player: api.getPlayer,
+  save: Registration.prototype.save, player: api.getPlayer, findPlayer: api.findPlayerByName,
 };
 let fixture;
 const makeFixture = () => {
@@ -67,6 +67,7 @@ const confirmDeparture = async () => {
     if (fixture.apiError) throw fixture.apiError;
     return fixture.player;
   };
+  api.findPlayerByName = async () => fixture.player;
 
   fixture = makeFixture();
   fixture.record.assignedRoleIds = [];
@@ -110,7 +111,7 @@ const confirmDeparture = async () => {
   fixture.absent = false;
   fixture.player = { ...fixture.player, guildId: 'g1', guildName: 'Guild' };
   await service.handleDiscordMemberJoin(fixture.member);
-  assert.equal(fixture.kicked, 2, 'Volver a un gremio admitido restaura el acceso');
+  assert.equal(fixture.kicked, 2, 'Volver al gremio original restaura el acceso');
   assert.equal(fixture.record.departureConfirmedAt, null);
   assert.equal(fixture.record.departureGuildId, null);
   assert(fixture.member.roles.cache.has('primary'));
@@ -118,8 +119,89 @@ const confirmDeparture = async () => {
   fixture = makeFixture();
   fixture.rules.push({ ...fixture.rules[0], entityId: 'g2' });
   fixture.player = { ...fixture.player, guildId: 'g2', guildName: 'Guild 2' };
+  assert.equal((await confirmDeparture()).status, 'kicked', 'Cambiar a otro gremio configurado con roles compartidos también expulsa');
+  assert.equal(fixture.record.registeredGuildId, 'g1');
+  assert.equal(fixture.record.departureGuildId, 'g1');
+  assert(fixture.record.departureConfirmedAt);
+  assert(!fixture.member.roles.cache.has('primary'));
+  assert(!fixture.member.roles.cache.has('extra'));
+  fixture.absent = false;
+  await service.handleDiscordMemberJoin(fixture.member);
+  assert.equal(fixture.kicked, 2, 'Reingresar estando en otro gremio configurado no evita la expulsión');
+
+  fixture = makeFixture();
+  fixture.roles.set('secondary', { id: 'secondary', position: 1 });
+  fixture.rules.push({ entityType: 'guild', entityId: 'g2', primaryRoleId: 'secondary' });
+  fixture.player = { ...fixture.player, guildId: 'g2', guildName: 'Guild 2' };
+  await assert.rejects(service.registerPlayer({ member: fixture.member, playerName: 'Player' }), /gremio|desvincul/);
+  assert(!fixture.member.roles.cache.has('secondary'), 'Reenviar el registro no concede roles del nuevo gremio');
+  assert.equal(fixture.record.registeredGuildId, 'g1', 'El registro legado conserva su gremio de referencia al rechazar una transferencia');
+  fixture.permissions.delete(PermissionFlagsBits.KickMembers);
+  await assert.rejects(confirmDeparture(), /Expulsar miembros/);
+  assert(!fixture.member.roles.cache.has('primary'));
+  assert(!fixture.member.roles.cache.has('extra'));
+  assert(!fixture.member.roles.cache.has('secondary'));
+  fixture.record = new Registration(fixture.record.toObject());
+  fixture.permissions.add(PermissionFlagsBits.KickMembers);
+  assert.equal((await service.checkRegistration(fixture.guild, fixture.record)).status, 'kicked', 'Una salida hacia un gremio admitido conserva su confirmación tras recargar');
+
+  fixture = makeFixture();
+  fixture.roles.set('secondary', { id: 'secondary', position: 1 });
+  fixture.rules.push({ entityType: 'guild', entityId: 'g2', primaryRoleId: 'secondary' });
+  fixture.player = { ...fixture.player, guildId: 'g2', guildName: 'Guild 2' };
+  assert.equal((await service.checkRegistration(fixture.guild, fixture.record)).status, 'pending_confirmation');
+  ageConfirmation();
+  fixture.player = { ...fixture.player, guildId: 'g1', guildName: 'Guild' };
   assert.equal((await service.checkRegistration(fixture.guild, fixture.record)).status, 'synced');
-  assert.equal(fixture.kicked, 0, 'Cambiar entre gremios admitidos con roles compartidos no expulsa');
+  assert.equal(fixture.record.consecutiveMismatches, 0, 'Regresar al origen cancela la sospecha automáticamente');
+  assert.equal(fixture.kicked, 0);
+  assert(fixture.member.roles.cache.has('primary'));
+  assert(!fixture.member.roles.cache.has('secondary'));
+
+  fixture = makeFixture();
+  fixture.record.assignedRoleIds = [];
+  fixture.member.roles.cache.delete('primary');
+  fixture.member.roles.cache.delete('extra');
+  fixture.rules.push({ ...fixture.rules[0], entityId: 'g2' });
+  fixture.player = { ...fixture.player, guildId: 'g2', guildName: 'Guild 2' };
+  assert.equal((await confirmDeparture()).status, 'kicked', 'El cambio a un gremio configurado se verifica aunque no haya roles rastreados');
+
+  fixture = makeFixture();
+  fixture.roles.set('secondary', { id: 'secondary', position: 1 });
+  fixture.rules = [{ entityType: 'guild', entityId: 'g2', primaryRoleId: 'secondary' }];
+  fixture.player = { ...fixture.player, guildId: 'g2', guildName: 'Guild 2' };
+  assert.equal((await service.checkRegistration(fixture.guild, fixture.record)).status, 'synced');
+  assert.equal(fixture.kicked, 0, 'Eliminar la regla de origen no provoca una expulsión');
+  assert(!fixture.member.roles.cache.has('secondary'), 'Eliminar la regla de origen no transfiere a otro gremio configurado');
+  assert.equal(fixture.record.registeredGuildId, 'g1');
+
+  fixture = makeFixture();
+  fixture.record.lastGuildId = 'g2';
+  fixture.record.departureGuildId = 'g1';
+  fixture.record.departureConfirmedAt = new Date();
+  fixture.record.assignedRoleIds = [];
+  fixture.member.roles.cache.delete('primary');
+  fixture.member.roles.cache.delete('extra');
+  fixture.roles.set('secondary', { id: 'secondary', position: 1 });
+  fixture.member.roles.cache.set('secondary', fixture.roles.get('secondary'));
+  fixture.rules.push({ entityType: 'guild', entityId: 'g2', primaryRoleId: 'secondary' });
+  fixture.player = { ...fixture.player, guildId: 'g2', guildName: 'Guild 2' };
+  assert.equal((await service.checkRegistration(fixture.guild, fixture.record)).status, 'kicked');
+  assert.equal(fixture.record.registeredGuildId, 'g1', 'La confirmación histórica tiene prioridad sobre el último gremio observado');
+  assert(!fixture.member.roles.cache.has('secondary'), 'La expulsión pendiente retira también roles del nuevo gremio que se hayan concedido durante el reintento');
+
+  fixture = makeFixture();
+  fixture.record.lastGuildId = null;
+  fixture.roles.set('secondary', { id: 'secondary', position: 1 });
+  fixture.rules.push({ entityType: 'guild', entityId: 'g2', primaryRoleId: 'secondary' });
+  fixture.player = { ...fixture.player, guildId: 'g2', guildName: 'Guild 2' };
+  await assert.rejects(service.checkRegistration(fixture.guild, fixture.record), /gremio|desvincul|referencia/);
+  assert.equal(fixture.record.registeredGuildId, null);
+  assert.equal(fixture.record.lastGuildId, null, 'Una ficha actual no inventa el gremio original de un registro incompleto');
+  assert.equal(fixture.kicked, 0);
+  await assert.rejects(service.registerPlayer({ member: fixture.member, playerName: 'Player' }), /gremio|desvincul|referencia/);
+  assert.equal(fixture.record.registeredGuildId, null);
+  assert(!fixture.member.roles.cache.has('secondary'));
 
   for (const changedGuild of [false, true]) {
     fixture = makeFixture();
@@ -152,4 +234,5 @@ const confirmDeparture = async () => {
   Registration.findOne = originals.registration;
   Registration.prototype.save = originals.save;
   api.getPlayer = originals.player;
+  api.findPlayerByName = originals.findPlayer;
 });

@@ -106,6 +106,7 @@ const original = {
   assert(memberRoles.has(manual));
   assert.equal(member.nickname, '[BBB] Player');
   assert.equal(record.originalNickname, 'Nombre previo');
+  assert.equal(record.registeredGuildId, 'g1');
   assert.deepEqual(new Set(record.assignedRoleIds), new Set([primary1, extra1]));
 
   player = { ...player, guildId: 'g2', guildName: 'MONASTERIO' };
@@ -132,12 +133,18 @@ const original = {
   assert(memberRoles.has(primary1), 'tres lecturas en menos de 72 horas no quitan roles');
   record.mismatchStartedAt = new Date(Date.now() - 73 * 60 * 60_000);
   record.lastValidatedAt = new Date(Date.now() - 13 * 60 * 60_000);
-  assert.equal((await service.checkRegistration(guild, record)).status, 'synced');
+  assert.equal((await service.checkRegistration(guild, record)).status, 'kicked');
   assert(!memberRoles.has(primary1));
   assert(!memberRoles.has(extra1));
-  assert(memberRoles.has(primary2));
+  assert(!memberRoles.has(primary2), 'Cambiar a otro gremio configurado no concede sus roles');
   assert(memberRoles.has(manual));
-  assert.equal(member.nickname, '[MONS] Player');
+  assert.equal(member.nickname, 'Nombre previo');
+  assert.equal(record.registeredGuildId, 'g1');
+
+  player = { ...player, guildId: 'g1', guildName: 'Bon Bon Bum' };
+  await service.registerPlayer({ member, playerName: 'Player' });
+  assert(memberRoles.has(primary1));
+  assert.equal(record.departureConfirmedAt, null);
 
   player = { ...player, guildId: null, guildName: null };
   assert.equal((await service.checkRegistration(guild, record)).status, 'pending_confirmation');
@@ -153,7 +160,7 @@ const original = {
   assert.equal(member.nickname, 'Nombre previo');
   assert.equal(record.status, 'discord_absent');
   assert(record.departureConfirmedAt);
-  assert.equal(changes.filter(([kind]) => kind === 'kick').length, 1);
+  assert.equal(changes.filter(([kind]) => kind === 'kick').length, 2);
   assert(changes.some(([kind, ids]) => kind === 'remove' && ids.includes(primary1)));
 
   api.getPlayer = original.apiGet;

@@ -15,6 +15,9 @@ const albionRegistrationSchema = new mongoose.Schema({
   assignedRoleIds: { type: [String], default: [] },
   originalNickname: { type: String, default: null },
   managedNickname: { type: String, default: null },
+  // Gremio al vincular el personaje. La API puede cambiar lastGuildId, pero
+  // esa lectura nunca debe transferir el registro a otro gremio del Discord.
+  registeredGuildId: { type: String, default: null },
   lastGuildId: { type: String, default: null },
   lastGuildName: { type: String, default: null },
   lastAllianceId: { type: String, default: null },

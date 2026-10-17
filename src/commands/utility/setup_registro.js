@@ -36,7 +36,7 @@ const embedsFor = (config, rules, guild) => {
   ].map(([label, flag]) => `${bot?.permissions?.has(flag) ? '✅' : '❌'} ${label}`).join(' · ');
   const embeds = [new EmbedBuilder().setTitle('🛡️ Configuración de registro Albion')
     .setColor(0x5865f2)
-    .setDescription('Cada gremio tiene un rol principal, una etiqueta para el apodo y hasta 24 roles adicionales. Al confirmar la salida de todos los gremios configurados, se retiran los roles y se expulsa al usuario del servidor.')
+    .setDescription('Cada gremio tiene un rol principal, etiqueta y hasta 24 roles adicionales. El bot confirma las salidas por la API de Albion: si alguien deja su gremio de registro, retira sus roles y lo expulsa, aunque pase a otro gremio configurado.')
     .addFields(
       { name: 'Servidor Albion', value: config?.region || 'Sin configurar', inline: true },
       { name: 'Auditoría', value: config?.auditChannelId ? `<#${config.auditChannelId}>` : 'Sin configurar', inline: true },

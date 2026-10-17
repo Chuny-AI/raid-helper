@@ -19,7 +19,8 @@ const panelPayload = (config, client) => ({
     .setDescription([
       'Pulsa **Registrar personaje** y escribe el nombre exacto de tu personaje.',
       `Servidor: **${config.region}**. El bot comprobará tu gremio y asignará sus roles automáticamente.`,
-      'Tu apodo mostrará la etiqueta del gremio. Si se confirma que ya no perteneces a ningún gremio configurado, el bot retirará sus roles y te expulsará de este servidor de Discord.',
+      'Tu apodo mostrará la etiqueta del gremio. Quedas vinculado a ese gremio: si la API de Albion confirma que lo dejaste, el bot retirará sus roles y te expulsará de este Discord, aunque pases a otro gremio configurado.',
+      'Volver a enviar el registro no cambia el gremio vinculado. Solo un administrador puede desvincularte para registrar otro gremio.',
       'Albion puede responder lentamente: la verificación puede tardar varios minutos. Espera la respuesta del bot antes de volver a intentarlo.',
     ].join('\n\n'))
     .setFooter({ text: 'Chuny BOT · Registro de gremios' })],
