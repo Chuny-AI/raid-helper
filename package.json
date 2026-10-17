@@ -28,7 +28,7 @@
     "test:temporary-voice": "node scripts/temporary-voice-smoke.js",
     "test:raid-voice": "node scripts/raid-voice-smoke.js",
     "test:utc-clock": "node scripts/utc-clock-smoke.js",
-    "test:register": "node scripts/albion-register-smoke.js",
+    "test:register": "node scripts/albion-register-smoke.js && node scripts/albion-registration-setup-smoke.js && node scripts/albion-api-validation-smoke.js && node scripts/albion-registration-departure-smoke.js",
     "test:raid-edit": "node scripts/raid-edit-flow-smoke.js",
     "test:smart-waitlist": "node scripts/raid-smart-waitlist-smoke.js",
     "test:large-raid": "node scripts/raid-large-navigation-smoke.js",

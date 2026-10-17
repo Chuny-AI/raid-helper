@@ -32,10 +32,11 @@ const original = {
   const roles = new Map([primary1, extra1, primary2, manual].map((id) => [id, { id, name: id, position: 1 }]));
   const memberRoles = new Map([[manual, roles.get(manual)]]);
   const changes = [];
-  const bot = { permissions: { has: (flag) => [PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageNicknames].includes(flag) }, roles: { highest: { position: 10 } } };
+  const bot = { permissions: { has: (flag) => [PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageNicknames, PermissionFlagsBits.KickMembers].includes(flag) }, roles: { highest: { position: 10 } } };
   const guild = { id: guildId, name: 'Discord', members: { me: bot, fetch: async () => member },
     roles: { cache: roles }, channels: { fetch: async () => null } };
-  const member = { id: userId, guild, nickname: 'Nombre previo', manageable: true,
+  const member = { id: userId, guild, nickname: 'Nombre previo', manageable: true, kickable: true,
+    kick: async () => { changes.push(['kick']); },
     setNickname: async (nickname) => { member.nickname = nickname; changes.push(['nickname', nickname]); },
     roles: { cache: memberRoles,
       add: async (ids) => { ids.forEach((id) => memberRoles.set(id, roles.get(id))); changes.push(['add', ids]); },
@@ -90,8 +91,14 @@ const original = {
   assert.equal(setupReply.embeds[0].toJSON().title, '🛡️ Configuración de registro Albion');
 
   let shownModal;
-  await panel.handleInteraction({ customId: 'albion-register:open', guildId, isButton: () => true,
-    showModal: async (value) => { shownModal = value; } });
+  const getConfigBeforeModal = service.getConfig;
+  service.getConfig = async () => { throw new Error('El modal no debe esperar a la base de datos'); };
+  try {
+    await panel.handleInteraction({ customId: 'albion-register:open', guildId, isButton: () => true,
+      showModal: async (value) => { shownModal = value; } });
+  } finally {
+    service.getConfig = getConfigBeforeModal;
+  }
   assert.equal(shownModal.toJSON().custom_id, 'albion-register:submit');
   await service.registerPlayer({ member, playerName: 'Player' });
   assert(memberRoles.has(primary1));
@@ -139,12 +146,14 @@ const original = {
     record.lastValidatedAt = new Date(Date.now() - 13 * 60 * 60_000);
     const checked = await service.checkRegistration(guild, record);
     if (index === 0) assert.equal(checked.status, 'pending_confirmation');
-    else assert.equal(checked.status, 'synced');
+    else assert.equal(checked.status, 'kicked');
   }
   assert(!memberRoles.has(primary2));
   assert(memberRoles.has(manual));
   assert.equal(member.nickname, 'Nombre previo');
-  assert.equal(record.status, 'unmatched');
+  assert.equal(record.status, 'discord_absent');
+  assert(record.departureConfirmedAt);
+  assert.equal(changes.filter(([kind]) => kind === 'kick').length, 1);
   assert(changes.some(([kind, ids]) => kind === 'remove' && ids.includes(primary1)));
 
   api.getPlayer = original.apiGet;

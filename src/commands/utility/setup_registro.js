@@ -24,34 +24,42 @@ const row = (...components) => new ActionRowBuilder().addComponents(...component
 const button = (label, action, userId, guildId, entityId, style = ButtonStyle.Secondary) => new ButtonBuilder()
   .setCustomId(cid(action, userId, guildId, entityId)).setLabel(label).setStyle(style);
 const isAdmin = (interaction) => interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
-const safeName = (value) => escapeMarkdown(String(value || '').slice(0, 100));
+const safeName = (value, max = 100) => escapeMarkdown(String(value || '')).slice(0, max) || 'Sin nombre';
+const pendingKey = (interaction) => `${interaction.guildId}:${interaction.user.id}:${interaction.message?.id || ''}`;
 
 const embedsFor = (config, rules, guild) => {
   const bot = guild.members.me;
   const permissions = [
     ['Gestionar roles', PermissionFlagsBits.ManageRoles],
     ['Gestionar apodos', PermissionFlagsBits.ManageNicknames],
+    ['Expulsar miembros', PermissionFlagsBits.KickMembers],
   ].map(([label, flag]) => `${bot?.permissions?.has(flag) ? '✅' : '❌'} ${label}`).join(' · ');
   const embeds = [new EmbedBuilder().setTitle('🛡️ Configuración de registro Albion')
     .setColor(0x5865f2)
-    .setDescription('Cada gremio tiene un rol principal, una etiqueta para el apodo y hasta 24 roles adicionales. La asignación y retirada se sincronizan automáticamente.')
+    .setDescription('Cada gremio tiene un rol principal, una etiqueta para el apodo y hasta 24 roles adicionales. Al confirmar la salida de todos los gremios configurados, se retiran los roles y se expulsa al usuario del servidor.')
     .addFields(
       { name: 'Servidor Albion', value: config?.region || 'Sin configurar', inline: true },
       { name: 'Auditoría', value: config?.auditChannelId ? `<#${config.auditChannelId}>` : 'Sin configurar', inline: true },
       { name: 'Permisos del bot', value: permissions },
     )];
   if (!rules.length) embeds[0].addFields({ name: 'Gremios', value: 'Aún no hay gremios configurados.' });
+  // Discord limita a 6000 caracteres la suma de todos los embeds del mensaje.
+  // Los paneles grandes muestran el detalle de roles al seleccionar el gremio.
+  const compact = rules.length > 4;
   for (let offset = 0; offset < rules.length; offset += 8) {
     const embed = new EmbedBuilder().setTitle(`⚔️ Gremios configurados ${offset + 1}–${Math.min(offset + 8, rules.length)} de ${rules.length}`)
       .setColor(0x2b2d31);
     for (const rule of rules.slice(offset, offset + 8)) {
       const roles = registration.ruleRoles(rule);
+      const extras = roles.slice(1);
+      const extraSummary = compact && extras.length
+        ? `${extras.length} configurados` : extras.map((id) => `<@&${id}>`).join(', ') || 'Ninguno';
       embed.addFields({
-        name: safeName(rule.entityName),
+        name: safeName(rule.entityName, compact ? 70 : 100),
         value: [
           `Rol: ${roles[0] ? `<@&${roles[0]}>` : 'Sin rol'}`,
           `Tag: \`${registration.ruleTag(rule)}\``,
-          `Roles adicionales: ${roles.slice(1).map((id) => `<@&${id}>`).join(', ') || 'Ninguno'}`,
+          `Roles adicionales: ${extraSummary}`,
         ].join('\n'),
       });
     }
@@ -71,9 +79,10 @@ const render = ({ config, rules, guild, userId, screen = 'home', entityId = null
       .setPlaceholder('Rol principal del gremio').setMinValues(1).setMaxValues(1)));
     components.push(row(button('Cancelar', 'home', userId, guild.id)));
   } else if (screen === 'detail' && selected) {
-    embeds.push(new EmbedBuilder().setTitle(`✏️ ${safeName(selected.entityName)}`)
-      .setDescription('Cambia el rol principal, los roles adicionales o la etiqueta. Los cambios se guardan al seleccionar.').setColor(0x57f287));
     const roles = registration.ruleRoles(selected);
+    embeds.push(new EmbedBuilder().setTitle(`✏️ ${safeName(selected.entityName)}`)
+      .setDescription('Cambia el rol principal, los roles adicionales o la etiqueta. Los cambios se guardan al seleccionar.').setColor(0x57f287)
+      .addFields({ name: 'Roles adicionales', value: roles.slice(1).map((id) => `<@&${id}>`).join(', ') || 'Ninguno' }));
     const primary = new RoleSelectMenuBuilder().setCustomId(cid('primary', userId, guild.id, selected.entityId))
       .setPlaceholder('Rol principal').setMinValues(1).setMaxValues(1);
     if (roles[0]) primary.setDefaultRoles(roles[0]);
@@ -130,19 +139,35 @@ const execute = async (interaction) => {
 
 const modal = (customId, title, fields) => {
   const builder = new ModalBuilder().setCustomId(customId).setTitle(title);
-  for (const field of fields) builder.addComponents(row(new TextInputBuilder()
-    .setCustomId(field.id).setLabel(field.label).setStyle(TextInputStyle.Short)
-    .setMinLength(field.min || 1).setMaxLength(field.max || 100).setRequired(true)
-    .setValue(field.value || '')));
+  for (const field of fields) {
+    const input = new TextInputBuilder().setCustomId(field.id).setLabel(field.label).setStyle(TextInputStyle.Short)
+      .setMinLength(field.min || 1).setMaxLength(field.max || 100).setRequired(true);
+    if (field.value) input.setValue(field.value);
+    builder.addComponents(row(input));
+  }
   return builder;
 };
 
-const respondError = async (interaction, error) => {
-  console.error('[WARN] /setup-registro:', error);
-  const message = error instanceof registration.RegistrationError || error instanceof albionApi.AlbionApiError
-    ? error.message : 'No se pudo guardar el cambio. Revisa la API de Albion y los permisos.';
-  if (interaction.deferred) return interaction.followUp({ content: `❌ ${message}`, flags: MessageFlags.Ephemeral });
-  return interaction.reply({ content: `❌ ${message}`, flags: MessageFlags.Ephemeral });
+const respondError = async (interaction, error, { openingModal = false } = {}) => {
+  const action = parseId(interaction.customId)?.action;
+  // DiscordAPIError incluye la URL del token; registrar solo datos de diagnóstico.
+  console.error('[WARN] /setup-registro:', {
+    action, code: error?.code, name: error?.name, message: error?.message,
+  });
+  // Un token caducado ya no permite reply ni showModal. Reintentarlo oculta
+  // el error original con una segunda respuesta fallida.
+  if (error?.code === 10062 || error?.code === 10015) return;
+  let message = error instanceof registration.RegistrationError || error instanceof albionApi.AlbionApiError
+    ? error.message : openingModal
+      ? 'No se pudo abrir el formulario de registro. Abre `/setup-registro` de nuevo e inténtalo otra vez.'
+      : 'No se pudo guardar el cambio. Revisa la API de Albion y los permisos.';
+  if (error?.code === 50035) message = openingModal
+    ? 'Discord rechazó el formulario de registro. Abre `/setup-registro` de nuevo; si persiste, revisa el registro de errores del bot.'
+    : 'Discord rechazó la actualización del panel. Abre `/setup-registro` de nuevo.';
+  if (error?.code === 50013) message = 'Discord no permitió el cambio. Revisa los permisos y la jerarquía del bot.';
+  const payload = { content: `❌ ${message}`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } };
+  if (interaction.deferred || interaction.replied) return interaction.followUp(payload);
+  return interaction.reply(payload);
 };
 
 const handleInteraction = async (interaction) => {
@@ -154,19 +179,23 @@ const handleInteraction = async (interaction) => {
   }
   const { action, entityId } = parsed;
   if (['add', 'tag', 'unlink'].includes(action) && interaction.isButton?.()) {
-    if (action === 'add') await interaction.showModal(modal(cid('add-submit', parsed.userId, parsed.guildId), 'Añadir gremio', [
-      { id: 'name', label: 'Nombre exacto del gremio' }, { id: 'tag', label: 'Etiqueta para el apodo', max: 12 },
-    ]));
-    if (action === 'tag') {
-      const rule = (await registration.getRules(interaction.guildId)).find((item) => item.entityId === entityId);
-      if (!rule) return interaction.reply({ content: 'Gremio no encontrado. Actualiza el panel.', flags: MessageFlags.Ephemeral });
-      await interaction.showModal(modal(cid('tag-submit', parsed.userId, parsed.guildId, entityId), 'Editar etiqueta', [
-        { id: 'tag', label: 'Etiqueta para el apodo', max: 12, value: registration.ruleTag(rule) },
+    try {
+      // showModal debe ser la primera respuesta; las consultas se hacen al enviar.
+      if (action === 'add') {
+        pending.delete(pendingKey(interaction));
+        await interaction.showModal(modal(cid('add-submit', parsed.userId, parsed.guildId), 'Añadir gremio', [
+          { id: 'name', label: 'Nombre exacto del gremio' }, { id: 'tag', label: 'Etiqueta para el apodo', max: 12 },
+        ]));
+      }
+      if (action === 'tag') await interaction.showModal(modal(cid('tag-submit', parsed.userId, parsed.guildId, entityId), 'Editar etiqueta', [
+        { id: 'tag', label: 'Nueva etiqueta para el apodo', max: 12 },
       ]));
+      if (action === 'unlink') await interaction.showModal(modal(cid('unlink-submit', parsed.userId, parsed.guildId), 'Desvincular usuario', [
+        { id: 'user-id', label: 'ID del usuario de Discord', min: 15, max: 22 },
+      ]));
+    } catch (error) {
+      await respondError(interaction, error, { openingModal: true });
     }
-    if (action === 'unlink') await interaction.showModal(modal(cid('unlink-submit', parsed.userId, parsed.guildId), 'Desvincular usuario', [
-      { id: 'user-id', label: 'ID del usuario de Discord', min: 15, max: 22 },
-    ]));
     return true;
   }
   await interaction.deferUpdate();
@@ -183,18 +212,23 @@ const handleInteraction = async (interaction) => {
       ])) throw new registration.RegistrationError('El bot necesita ver, escribir y enviar embeds en el canal de auditoría.');
       await registration.configure({ guildId: state.guild.id, region: state.config.region, auditChannelId: channel.id, updatedBy: state.userId });
     } else if (action === 'add-submit' && interaction.isModalSubmit?.()) {
-      if (!state.config?.region) throw new registration.RegistrationError('Selecciona primero el servidor de Albion.');
+      if (!state.config?.enabled || !state.config?.region) throw new registration.RegistrationError('Selecciona primero el servidor de Albion.');
+      if (state.rules.length >= registration.MAX_RULES) throw new registration.RegistrationError(`Este servidor alcanzó el límite de ${registration.MAX_RULES} gremios.`);
       const name = interaction.fields.getTextInputValue('name').trim();
       const tag = interaction.fields.getTextInputValue('tag').trim().toUpperCase();
       if (!/^[A-Z0-9]{1,12}$/.test(tag)) throw new registration.RegistrationError('La etiqueta debe tener entre 1 y 12 letras o números.');
       const entity = await albionApi.findGuildByName(state.config.region, name);
-      const candidate = { entity, tag, expiresAt: Date.now() + 10 * 60_000 };
-      pending.set(`${state.guild.id}:${state.userId}`, candidate);
+      if (state.rules.some((item) => item.entityId === entity.id)) throw new registration.RegistrationError('Ese gremio ya está configurado. Selecciónalo en el panel para editarlo.');
+      const candidate = { entity, tag, region: state.config.region, expiresAt: Date.now() + 10 * 60_000 };
+      for (const [key, value] of pending) if (value.expiresAt < Date.now()) pending.delete(key);
+      pending.set(pendingKey(interaction), candidate);
       return interaction.editReply(render({ ...state, screen: 'pending', candidate }));
     } else if (action === 'create-role' && interaction.isRoleSelectMenu?.()) {
-      const key = `${state.guild.id}:${state.userId}`;
+      const key = pendingKey(interaction);
       const candidate = pending.get(key);
       if (!candidate || candidate.expiresAt < Date.now()) throw new registration.RegistrationError('La selección expiró. Pulsa Añadir gremio de nuevo.');
+      if (candidate.region !== state.config?.region) throw new registration.RegistrationError('Cambió el servidor de Albion. Pulsa Añadir gremio y busca el gremio de nuevo.');
+      if (state.rules.some((item) => item.entityId === candidate.entity.id)) throw new registration.RegistrationError('Ese gremio ya está configurado. Selecciónalo en el panel para editarlo.');
       await registration.saveGuildRule({ guild: state.guild, entity: candidate.entity, tag: candidate.tag,
         primaryRoleId: interaction.values[0], createdBy: state.userId });
       pending.delete(key);
@@ -230,6 +264,7 @@ const handleInteraction = async (interaction) => {
     } else if (!['home', 'detail', 'remove'].includes(action)) {
       throw new registration.RegistrationError('Acción desconocida. Abre `/setup-registro` de nuevo.');
     }
+    if (action === 'home') pending.delete(pendingKey(interaction));
     const updated = await load(interaction);
     const nextScreen = ['primary', 'additional', 'tag-submit', 'clear-extra', 'detail'].includes(action) ? 'detail'
       : action === 'remove' ? 'confirm' : 'home';

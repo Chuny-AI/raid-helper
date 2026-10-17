@@ -189,6 +189,10 @@ const applyPlayer = async ({ member, registration, player, config, rules }) => {
   registration.mismatchGuildId = null;
   registration.lastError = null;
   registration.status = desired.size ? 'active' : 'unmatched';
+  if (desired.size) {
+    registration.departureConfirmedAt = null;
+    registration.departureGuildId = null;
+  }
   registration.updatedAt = new Date();
   await registration.save();
   if (result.added.length || result.removed.length) {
@@ -248,28 +252,62 @@ const registerPlayer = async ({ member, playerName }) => {
   }
 };
 
+const kickDepartedMember = async ({ member, registration, player, config }) => {
+  if (!member.guild.members.me?.permissions?.has(PermissionFlagsBits.KickMembers)) {
+    throw new RegistrationError('El bot necesita el permiso Expulsar miembros para completar la salida del gremio.', 'kick_permission_missing');
+  }
+  if (!member.kickable) {
+    throw new RegistrationError('El bot no puede expulsar a este miembro. Revisa la jerarquía de roles y el propietario del servidor.', 'member_not_kickable');
+  }
+  await member.kick('Salida confirmada de los gremios de Albion configurados');
+  registration.status = 'discord_absent';
+  registration.assignedRoleIds = [];
+  registration.lastError = null;
+  await registration.save();
+  await sendAudit(member.guild, config, '🚪 Miembro expulsado por salida de gremio', [
+    { name: 'Miembro', value: `<@${member.id}>`, inline: true },
+    { name: 'Personaje', value: clean(player.name), inline: true },
+    { name: 'Gremio actual', value: clean(player.guildName || 'Sin gremio') },
+    { name: 'Motivo', value: 'Salida confirmada; ya no pertenece a ningún gremio configurado. Roles gestionados retirados y miembro expulsado del servidor.' },
+  ]);
+};
+
 const checkRegistration = async (guild, registration) => {
   const key = lockKey(guild.id, registration.discordUserId);
   if (runningUsers.has(key)) return { status: 'busy' };
   runningUsers.add(key);
+  const previousError = registration.lastError;
+  let config;
   try {
-    const config = await getConfig(guild.id);
+    config = await getConfig(guild.id);
     if (!config?.enabled || config.region !== registration.region) return { status: 'disabled' };
-    const member = await guild.members.fetch(registration.discordUserId).catch(() => null);
+    const member = await guild.members.fetch({ user: registration.discordUserId, force: true }).catch((error) => {
+      if (error?.code === 10007) return null;
+      throw error;
+    });
     if (!member) {
       registration.status = 'discord_absent';
+      registration.assignedRoleIds = [];
       registration.nextCheckAt = nextCheckAt(config.checkIntervalMinutes || DEFAULT_INTERVAL_MINUTES);
       await registration.save();
       return { status: 'discord_absent' };
     }
     const player = await albionApi.getPlayer(registration.region, registration.playerId);
     const rules = await getRules(guild.id);
+    if (registration.departureConfirmedAt
+      && !rules.some((rule) => rule.entityId === registration.departureGuildId)) {
+      registration.departureConfirmedAt = null;
+      registration.departureGuildId = null;
+    }
     const desired = matchingRoleIds(player, rules);
     const current = new Set(registration.assignedRoleIds || []);
     const losesRole = [...current].some((id) => !desired.has(id));
+    const leavesConfiguredGuild = !desired.size && registration.lastGuildId
+      && rules.some((rule) => rule.entityId === registration.lastGuildId);
     // Un cambio de reglas con el mismo gremio es inmediato; una salida o
     // cambio de gremio informado por la API necesita confirmaciones duraderas.
-    if (losesRole && player.guildId !== registration.lastGuildId) {
+    if (!registration.departureConfirmedAt && ((losesRole && desired.size) || leavesConfiguredGuild)
+      && player.guildId !== registration.lastGuildId) {
       const now = new Date();
       const candidateGuildId = player.guildId || null;
       const priorCount = registration.consecutiveMismatches || 0;
@@ -296,13 +334,32 @@ const checkRegistration = async (guild, registration) => {
         await registration.save();
         return { status: 'pending_confirmation', player };
       }
+      if (leavesConfiguredGuild) {
+        // Persistir la confirmación antes de retirar roles mantiene pendiente
+        // la expulsión aunque Discord falle o el proceso se reinicie.
+        registration.departureConfirmedAt = now;
+        registration.departureGuildId = registration.lastGuildId;
+        await registration.save();
+      }
     }
     const result = await applyPlayer({ member, registration, player, config, rules });
+    if (!desired.size && registration.departureConfirmedAt) {
+      await kickDepartedMember({ member, registration, player, config });
+      return { status: 'kicked', player, result };
+    }
     return { status: 'synced', player, result };
   } catch (error) {
     registration.lastError = String(error.message || error).slice(0, 500);
     registration.nextCheckAt = nextCheckAt(60);
     await registration.save().catch(() => {});
+    if (registration.departureConfirmedAt && registration.lastError !== previousError) {
+      await sendAudit(guild, config, '⚠️ Salida de gremio pendiente de completar', [
+        { name: 'Miembro', value: `<@${registration.discordUserId}>` },
+        { name: 'Personaje', value: clean(registration.playerName) },
+        { name: 'Error', value: clean(registration.lastError) },
+        { name: 'Próximo intento', value: 'Dentro de una hora. Revisa los permisos y la jerarquía del bot.' },
+      ]);
+    }
     throw error;
   } finally {
     runningUsers.delete(key);

@@ -22,6 +22,8 @@ const albionRegistrationSchema = new mongoose.Schema({
   consecutiveMismatches: { type: Number, default: 0 },
   mismatchStartedAt: { type: Date, default: null },
   mismatchGuildId: { type: String, default: null },
+  departureConfirmedAt: { type: Date, default: null },
+  departureGuildId: { type: String, default: null },
   lastValidatedAt: { type: Date, default: null },
   nextCheckAt: { type: Date, default: Date.now, index: true },
   lastError: { type: String, default: null, maxlength: 500 },

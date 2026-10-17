@@ -130,6 +130,20 @@ const value = (object, ...keys) => {
   return null;
 };
 
+const isRecord = (item) => item !== null && typeof item === 'object' && !Array.isArray(item);
+const isNonemptyText = (item) => typeof item === 'string' && item.trim().length > 0;
+
+const searchResults = (payload, key, alternateKey, label) => {
+  const entries = value(payload, key, alternateKey);
+  if (!isRecord(payload) || !Array.isArray(entries)
+    || entries.some((entry) => !isRecord(entry)
+      || !isNonemptyText(value(entry, 'Id', 'id'))
+      || !isNonemptyText(value(entry, 'Name', 'name')))) {
+    throw new AlbionApiError(`Albion devolvió una búsqueda de ${label} incompleta o inválida.`, 'invalid_response');
+  }
+  return entries;
+};
+
 const normalizePlayer = (raw) => ({
   id: String(value(raw, 'Id', 'id') || ''),
   name: String(value(raw, 'Name', 'name') || ''),
@@ -157,7 +171,7 @@ const findPlayerByName = async (region, playerName) => {
   const name = String(playerName || '').trim();
   if (!name || name.length > 100) throw new AlbionApiError('Escribe un nombre de personaje válido.', 'invalid_name');
   const payload = await requestJson(region, `/search?q=${encodeURIComponent(name)}`, INTERACTIVE_OPTIONS);
-  const players = value(payload, 'players', 'Players') || [];
+  const players = searchResults(payload, 'players', 'Players', 'personajes');
   const match = players.find((player) => exactName(value(player, 'Name', 'name'), name));
   if (!match) throw new AlbionApiError(`No se encontró el personaje exacto **${name}** en esa región.`, 'player_not_found');
   const playerId = value(match, 'Id', 'id');
@@ -165,20 +179,28 @@ const findPlayerByName = async (region, playerName) => {
   return getPlayer(region, playerId, INTERACTIVE_OPTIONS);
 };
 
-const getGuild = async (region, guildId, options = BACKGROUND_OPTIONS) => requestJson(region, `/guilds/${encodeURIComponent(guildId)}`, options);
+const getGuild = async (region, guildId, options = BACKGROUND_OPTIONS) => {
+  if (!isNonemptyText(guildId)) throw new AlbionApiError('Albion no devolvió un ID de gremio válido.', 'invalid_response');
+  const raw = await requestJson(region, `/guilds/${encodeURIComponent(guildId)}`, options);
+  if (!isRecord(raw) || !isNonemptyText(value(raw, 'Id', 'id'))
+    || value(raw, 'Id', 'id') !== guildId || !isNonemptyText(value(raw, 'Name', 'name'))) {
+    throw new AlbionApiError('La ficha del gremio está incompleta o no corresponde al gremio solicitado.', 'invalid_response');
+  }
+  return raw;
+};
 
 const findGuildByName = async (region, guildName) => {
   const name = String(guildName || '').trim();
   if (!name || name.length > 100) throw new AlbionApiError('Escribe un nombre de gremio válido.', 'invalid_name');
   const payload = await requestJson(region, `/search?q=${encodeURIComponent(name)}`, INTERACTIVE_OPTIONS);
-  const guilds = value(payload, 'guilds', 'Guilds') || [];
+  const guilds = searchResults(payload, 'guilds', 'Guilds', 'gremios');
   const match = guilds.find((guild) => exactName(value(guild, 'Name', 'name'), name));
   if (!match) throw new AlbionApiError(`No se encontró el gremio exacto **${name}** en esa región.`, 'guild_not_found');
   const guildId = value(match, 'Id', 'id');
   const raw = await getGuild(region, guildId, INTERACTIVE_OPTIONS);
   return {
-    id: String(value(raw, 'Id', 'id') || guildId),
-    name: String(value(raw, 'Name', 'name') || name),
+    id: value(raw, 'Id', 'id'),
+    name: value(raw, 'Name', 'name'),
     allianceId: value(raw, 'AllianceId', 'allianceId') ? String(value(raw, 'AllianceId', 'allianceId')) : null,
     allianceName: value(raw, 'AllianceName', 'allianceName') ? String(value(raw, 'AllianceName', 'allianceName')) : null,
     allianceTag: value(raw, 'AllianceTag', 'allianceTag') ? String(value(raw, 'AllianceTag', 'allianceTag')) : '',

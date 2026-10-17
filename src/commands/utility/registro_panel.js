@@ -19,7 +19,7 @@ const panelPayload = (config, client) => ({
     .setDescription([
       'Pulsa **Registrar personaje** y escribe el nombre exacto de tu personaje.',
       `Servidor: **${config.region}**. El bot comprobará tu gremio y asignará sus roles automáticamente.`,
-      'Tu apodo mostrará la etiqueta del gremio. El bot revisará tu pertenencia periódicamente y retirará los roles si sales del gremio.',
+      'Tu apodo mostrará la etiqueta del gremio. Si se confirma que ya no perteneces a ningún gremio configurado, el bot retirará sus roles y te expulsará de este servidor de Discord.',
       'Albion puede responder lentamente: la verificación puede tardar varios minutos. Espera la respuesta del bot antes de volver a intentarlo.',
     ].join('\n\n'))
     .setFooter({ text: 'Chuny BOT · Registro de gremios' })],
@@ -51,8 +51,7 @@ const execute = async (interaction) => {
 
 const handleInteraction = async (interaction) => {
   if (interaction.customId === 'albion-register:open' && interaction.isButton?.()) {
-    const config = await registration.getConfig(interaction.guildId);
-    if (!config?.enabled) return interaction.reply({ content: 'El registro no está disponible en este momento.', flags: MessageFlags.Ephemeral });
+    // Abrir el modal es la respuesta inicial; la configuración se valida al enviarlo.
     const modal = new ModalBuilder().setCustomId('albion-register:submit').setTitle('Registro de Albion Online');
     modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder()
       .setCustomId('player-name').setLabel('Nombre exacto de tu personaje')
