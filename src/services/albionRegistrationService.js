@@ -12,7 +12,8 @@ const MISMATCH_GRACE_MINUTES = 72 * 60;
 const MIN_MISMATCH_CONFIRMATIONS = 3;
 const MAX_RULES = 25;
 const runningUsers = new Set();
-let sweepRunning = false;
+let sweepRunning = null;
+let dailySweepsQueued = 0;
 
 class RegistrationError extends Error {
   constructor(message, code = 'registration_error') {
@@ -366,27 +367,75 @@ const checkRegistration = async (guild, registration) => {
   }
 };
 
-const sweepRegistrations = async (client, limit = 20) => {
-  if (sweepRunning) return 0;
-  sweepRunning = true;
+const acquireSweep = () => {
+  let release;
+  sweepRunning = new Promise((resolve) => { release = resolve; });
+  return () => {
+    sweepRunning = null;
+    release();
+  };
+};
+
+const checkSweepBatch = async (client, registrations) => {
   let checked = 0;
+  for (const registration of registrations) {
+    const guild = client.guilds.cache.get(registration.guildId);
+    if (!guild) continue;
+    try {
+      await checkRegistration(guild, registration);
+      checked += 1;
+    } catch (error) {
+      console.error(`[WARN] Verificación Albion ${registration.guildId}/${registration.discordUserId}:`, error?.message);
+    }
+  }
+  return checked;
+};
+
+const sweepRegistrations = async (client, limit = 20) => {
+  if (sweepRunning || dailySweepsQueued) return 0;
+  const release = acquireSweep();
   try {
     const due = await AlbionRegistration.find({
       status: { $in: ['pending', 'active', 'unmatched'] }, nextCheckAt: { $lte: new Date() },
     }).sort({ nextCheckAt: 1 }).limit(limit);
-    for (const registration of due) {
-      const guild = client.guilds.cache.get(registration.guildId);
-      if (!guild) continue;
-      try {
-        await checkRegistration(guild, registration);
-        checked += 1;
-      } catch (error) {
-        console.error(`[WARN] Verificación Albion ${registration.guildId}/${registration.discordUserId}:`, error?.message);
-      }
-    }
-    return checked;
+    return await checkSweepBatch(client, due);
   } finally {
-    sweepRunning = false;
+    release();
+  }
+};
+
+const sweepAllRegistrations = async (client, batchSize = 20) => {
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+    throw new RangeError('El tamaño del lote debe ser un entero positivo.');
+  }
+  // Una revisión diaria espera su turno aunque la revisión periódica esté
+  // activa. Los ciclos periódicos ceden mientras haya revisiones diarias.
+  dailySweepsQueued += 1;
+  try {
+    while (sweepRunning) await sweepRunning;
+    const release = acquireSweep();
+    try {
+      const guildIds = [...client.guilds.cache.keys()];
+      if (!guildIds.length) return 0;
+      let checked = 0;
+      let cursor;
+      while (true) {
+        const query = { guildId: { $in: guildIds } };
+        if (cursor) query._id = { $gt: cursor };
+        const batch = await AlbionRegistration.find(query).sort({ _id: 1 }).limit(batchSize);
+        if (!batch.length) break;
+        // La validación cambia estado y próxima fecha. El cursor usa solamente
+        // el identificador estable para recorrer todos sin saltos ni repeticiones.
+        cursor = batch[batch.length - 1]._id;
+        checked += await checkSweepBatch(client, batch);
+        if (batch.length < batchSize) break;
+      }
+      return checked;
+    } finally {
+      release();
+    }
+  } finally {
+    dailySweepsQueued -= 1;
   }
 };
 
@@ -459,6 +508,7 @@ module.exports = {
   ruleTag,
   saveGuildRule,
   sendAudit,
+  sweepAllRegistrations,
   sweepRegistrations,
   validateRoles,
 };

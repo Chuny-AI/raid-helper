@@ -19,6 +19,7 @@ const {
   handleDiscordMemberLeave,
   sweepRegistrations,
 } = require('../services/albionRegistrationService');
+const { startDailyRegistrationCheck } = require('../services/albionRegistrationScheduler');
 const {
   handleMemberJoin,
   handleMemberLeave,
@@ -151,6 +152,12 @@ function restoreReminder(raid) {
 const getEvents = () => {
   client.once(Events.ClientReady, async (readyClient) => {
     console.log(`El bot ${readyClient.user.tag} está listo.`);
+
+    try {
+      startDailyRegistrationCheck(readyClient);
+    } catch (error) {
+      console.error('[ERROR] No se pudo programar la revisión diaria Albion:', error?.message);
+    }
 
     try {
       const guilds = readyClient.guilds.cache;

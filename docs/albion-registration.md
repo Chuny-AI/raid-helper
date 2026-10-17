@@ -29,7 +29,11 @@ La API pública de Albion muestra el gremio de un personaje, pero no demuestra q
 
 ## Sincronización automática
 
-El bot revisa los registros cada seis horas, en lotes pequeños. Cuando una salida o cambio de gremio requiere retirar roles, espera al menos **72 horas** desde la primera detección y exige al menos **tres lecturas válidas del mismo gremio de destino**, separadas por **12 horas**. Una lectura del gremio original cancela la sospecha; un destino distinto reinicia la confirmación. Los errores o respuestas incompletas de la API no retiran roles ni provocan expulsiones.
+Todos los días a la **1:00 a. m., hora de Colombia (`America/Bogota`)**, el bot inicia una revisión completa de los usuarios registrados en sus servidores de Discord. Recorre todos los registros en lotes de 20, aunque su próxima revisión individual todavía no haya vencido. También comprueba los registros marcados como ausentes para recuperar posibles reingresos que no hayan generado un evento. La revisión continúa si falla un usuario y espera cualquier lote periódico que ya esté en curso. Registra en la consola el inicio, la finalización y los errores del proceso diario.
+
+El proceso se programa automáticamente cuando el bot se conecta a Discord y se vuelve a programar al reiniciar. El bot debe estar encendido a la 1:00 a. m. para ejecutar la revisión diaria. Además conserva las revisiones individuales cada seis horas y los reintentos pendientes, procesados en lotes cada cinco minutos.
+
+Cuando una salida o cambio de gremio requiere retirar roles, espera al menos **72 horas** desde la primera detección y exige al menos **tres lecturas válidas del mismo gremio de destino**, separadas por **12 horas**. Una lectura del gremio original cancela la sospecha; un destino distinto reinicia la confirmación. Los errores o respuestas incompletas de la API no retiran roles ni provocan expulsiones.
 
 Si el personaje pasa a otro gremio configurado, el bot asigna los roles correspondientes y actualiza el apodo sin expulsarlo. Si se confirma que ya no pertenece a ninguno de los gremios configurados, retira los roles gestionados, restaura el apodo anterior siempre que nadie lo haya editado manualmente y **expulsa al usuario de este servidor de Discord**. Esta salida también se comprueba si el registro ya no tiene roles asignados. Es una expulsión, no un baneo.
 
