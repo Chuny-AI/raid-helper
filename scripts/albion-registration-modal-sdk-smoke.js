@@ -58,11 +58,16 @@ const modalSubmit = (name, id = panelId) => decorate(new ModalSubmitInteraction(
   },
 }));
 
-const roleSelect = (id = panelId) => decorate(new RoleSelectMenuInteraction(client, {
+const roleSelect = (id = panelId, values = [roleId]) => decorate(new RoleSelectMenuInteraction(client, {
   ...baseData(InteractionType.MessageComponent, sourceMessage(id)),
   data: {
     custom_id: `regcfg:create-role:${userId}:${guildId}`,
-    component_type: ComponentType.RoleSelect, values: [roleId], resolved: {},
+    component_type: ComponentType.RoleSelect, values,
+    resolved: {
+      roles: Object.fromEntries([...values].reverse().map((id, index) => [id, {
+        id, name: `Rol ${index + 1}`, position: index + 1, permissions: '0',
+      }])),
+    },
   },
 }));
 
@@ -75,8 +80,8 @@ const hasRoleSelect = (body) => body.components?.some((row) => (
   console.info = () => {};
   registration.getConfig = async () => ({ enabled: true, region: 'americas' });
   registration.getRules = async () => rules;
-  registration.saveGuildRule = async ({ entity, tag, primaryRoleId }) => {
-    const saved = { entityId: entity.id, entityName: entity.name, entityTag: tag, primaryRoleId };
+  registration.saveGuildRule = async ({ entity, tag, primaryRoleId, additionalRoleIds = [] }) => {
+    const saved = { entityId: entity.id, entityName: entity.name, entityTag: tag, primaryRoleId, additionalRoleIds };
     rules.push(saved);
     return saved;
   };
@@ -110,6 +115,10 @@ const hasRoleSelect = (body) => body.components?.some((row) => (
   await setup.handleInteraction(modal);
   assert.equal(requests[0].body.type, 6);
   assert(hasRoleSelect(requests.at(-1).body), 'la respuesta serializada contiene un selector real de roles');
+  const serializedSelect = requests.at(-1).body.components.flatMap((row) => row.components)
+    .find((component) => component.type === ComponentType.RoleSelect);
+  assert.equal(serializedSelect.min_values, 1, 'el selector requiere al menos un rol');
+  assert.equal(serializedSelect.max_values, 25, 'el selector admite el principal y hasta 24 roles adicionales');
 
   const role = roleSelect();
   assert(role.isRoleSelectMenu());
@@ -118,6 +127,21 @@ const hasRoleSelect = (body) => body.components?.some((row) => (
   assert.equal(rules.length, 1);
   assert.equal(rules[0].entityName, 'BonBonBum');
   assert.equal(rules[0].primaryRoleId, roleId);
+  assert.deepEqual(rules[0].additionalRoleIds, [], 'seleccionar solo un rol sigue siendo válido');
+
+  const multiPanelId = '333333333333333334';
+  await setup.handleInteraction(modalSubmit('Gremio multirrol', multiPanelId));
+  const selectedRoleIds = ['999999999999999998', roleId, '777777777777777778'];
+  const multiRole = roleSelect(multiPanelId, selectedRoleIds);
+  assert.deepEqual(multiRole.values, selectedRoleIds, 'el SDK conserva el orden de los IDs recibido en values');
+  assert.deepEqual([...multiRole.roles.keys()], [...selectedRoleIds].reverse(),
+    'el orden de las entidades resueltas es distinto al array de selección');
+  await setup.handleInteraction(multiRole);
+  assert.equal(rules.length, 2);
+  assert.equal(rules[1].entityName, 'Gremio multirrol');
+  assert.equal(rules[1].primaryRoleId, selectedRoleIds[0], 'el primer ID del payload es el rol principal');
+  assert.deepEqual(rules[1].additionalRoleIds, selectedRoleIds.slice(1),
+    'los demás IDs se guardan como roles adicionales sin perder ninguno');
 
   failPendingOnce = true;
   await setup.handleInteraction(modalSubmit('Otro gremio', '999999999999999999'));
@@ -126,8 +150,8 @@ const hasRoleSelect = (body) => body.components?.some((row) => (
     'el rechazo asíncrono queda en el diagnóstico específico de registro');
   assert.match(requests.at(-1).body.content, /Discord rechazó la actualización del panel/,
     'el mismo panel muestra el error de Discord después del rechazo');
-  assert.equal(rules.length, 1, 'una actualización rechazada no guarda un gremio incompleto');
-  console.log('Albion registration modal SDK smoke: OK (modal real, wrapper, webhook, panel, rol y rechazo 50035)');
+  assert.equal(rules.length, 2, 'una actualización rechazada no guarda un gremio incompleto');
+  console.log('Albion registration modal SDK smoke: OK (modal real, wrapper, webhook, selección de 1 a 25 roles y rechazo 50035)');
 })().catch((error) => {
   originals.error(error);
   if (warnings.length) originals.error('Registration test diagnostics:', warnings);

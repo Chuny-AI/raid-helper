@@ -82,7 +82,7 @@ const render = ({ config, rules, guild, userId, screen = 'home', entityId = null
   const components = [];
   if (screen === 'search') {
     embeds.push(new EmbedBuilder().setTitle('🔎 Buscando gremio en Albion')
-      .setDescription(`Buscando **${safeName(query?.name)}** y verificando su ficha en la API de Albion.\nCuando termine, selecciona el rol principal para guardar el gremio.`)
+      .setDescription(`Buscando **${safeName(query?.name)}** y verificando su ficha en la API de Albion.\nCuando termine, selecciona al menos un rol para guardar el gremio.`)
       .setColor(0x5865f2));
     components.push(row(button('Cancelar', 'home', userId, guild.id)));
   } else if (screen === 'error') {
@@ -95,9 +95,9 @@ const render = ({ config, rules, guild, userId, screen = 'home', entityId = null
     components.push(row(...recovery));
   } else if (screen === 'pending' && candidate) {
     embeds.push(new EmbedBuilder().setTitle(`✅ Gremio encontrado: ${safeName(candidate.entity.name)}`)
-      .setDescription(`Tag: \`${candidate.tag}\`. Selecciona el rol principal para guardar el gremio.\nEl gremio se registra al elegir el rol.`).setColor(0x57f287));
+      .setDescription(`Tag: \`${candidate.tag}\`. Selecciona entre 1 y 25 roles para asignar a los miembros.\nSe guardarán un rol principal y hasta 24 adicionales. El gremio se registra al seleccionar los roles.`).setColor(0x57f287));
     components.push(row(new RoleSelectMenuBuilder().setCustomId(cid('create-role', userId, guild.id))
-      .setPlaceholder('Rol principal del gremio').setMinValues(1).setMaxValues(1)));
+      .setPlaceholder('Roles del gremio (mínimo 1, máximo 25)').setMinValues(1).setMaxValues(25)));
     components.push(row(button('Cancelar', 'home', userId, guild.id)));
   } else if (screen === 'detail' && selected) {
     const roles = registration.ruleRoles(selected);
@@ -289,13 +289,19 @@ const handleInteraction = async (interaction) => {
       if (!candidate || candidate.expiresAt < Date.now()) throw new registration.RegistrationError('La selección expiró. Pulsa Añadir gremio de nuevo.');
       if (candidate.region !== state.config?.region) throw new registration.RegistrationError('Cambió el servidor de Albion. Pulsa Añadir gremio y busca el gremio de nuevo.');
       if (state.rules.some((item) => item.entityId === candidate.entity.id)) throw new registration.RegistrationError('Ese gremio ya está configurado. Selecciónalo en el panel para editarlo.');
-      logStep(interaction, 'role-selected', { entityId: candidate.entity.id, roleId: interaction.values[0] });
+      const roleIds = interaction.values;
+      if (!Array.isArray(roleIds) || roleIds.length < 1 || roleIds.length > 25 || new Set(roleIds).size !== roleIds.length) {
+        throw new registration.RegistrationError('Selecciona entre 1 y 25 roles distintos para guardar el gremio.');
+      }
+      const [primaryRoleId, ...additionalRoleIds] = roleIds;
+      logStep(interaction, 'role-selected', { entityId: candidate.entity.id, roleId: primaryRoleId, roleCount: roleIds.length });
       await registration.saveGuildRule({ guild: state.guild, entity: candidate.entity, tag: candidate.tag,
-        primaryRoleId: interaction.values[0], createdBy: state.userId });
+        primaryRoleId, additionalRoleIds, createdBy: state.userId });
       pending.delete(key);
       savedGuild = true;
-      notice = `✅ Gremio **${safeName(candidate.entity.name)}** guardado con el rol principal <@&${interaction.values[0]}>.`;
-      logStep(interaction, 'guild-saved', { entityId: candidate.entity.id, elapsedMs: Date.now() - startedAt });
+      notice = `✅ Gremio **${safeName(candidate.entity.name)}** guardado con el rol principal <@&${primaryRoleId}>.`;
+      if (additionalRoleIds.length) notice += ` Roles adicionales: ${additionalRoleIds.map((id) => `<@&${id}>`).join(', ')}.`;
+      logStep(interaction, 'guild-saved', { entityId: candidate.entity.id, roleCount: roleIds.length, elapsedMs: Date.now() - startedAt });
     } else if (action === 'select' && interaction.isStringSelectMenu?.()) {
       return await interaction.editReply(render({ ...state, screen: 'detail', entityId: interaction.values[0] }));
     } else if (action === 'primary' && interaction.isRoleSelectMenu?.()) {

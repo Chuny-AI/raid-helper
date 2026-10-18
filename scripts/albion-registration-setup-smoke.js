@@ -18,9 +18,11 @@ const originals = {
   const userId = '111111111111111111';
   const roleId = '333333333333333333';
   const invalidRoleId = '444444444444444444';
+  const additionalRoleIds = Array.from({ length: 24 }, (_, index) => String(600000000000000000n + BigInt(index)));
   const roles = new Map([
     [roleId, { id: roleId, position: 1, name: 'Miembro' }],
     [invalidRoleId, { id: invalidRoleId, position: 15, name: 'Administrador' }],
+    ...additionalRoleIds.map((id, index) => [id, { id, position: 2, name: `Adicional ${index + 1}` }]),
   ]);
   const bot = { permissions: { has: () => true }, roles: { highest: { position: 10 } } };
   const audit = { id: '555555555555555555', send: async () => {}, permissionsFor: () => ({ has: () => true }) };
@@ -98,7 +100,8 @@ const originals = {
     return current;
   };
   const chooseRole = async (selectedRole = roleId, messageId = 'panel-a') => {
-    const current = interaction('create-role', { message: { id: messageId }, isRoleSelectMenu: () => true, values: [selectedRole] });
+    const current = interaction('create-role', { message: { id: messageId }, isRoleSelectMenu: () => true,
+      values: Array.isArray(selectedRole) ? selectedRole : [selectedRole] });
     await setup.handleInteraction(current);
     return current;
   };
@@ -144,21 +147,58 @@ const originals = {
   assert.match(lastPayload(pending).embeds[0].toJSON().title, /Gremio encontrado: Bon Bon Bum/);
   assert(!JSON.stringify(lastPayload(pending).embeds.map((embed) => embed.toJSON())).includes('Aún no hay gremios'), 'el primer estado destaca que falta seleccionar el rol');
   assert.equal(lastPayload(pending).components[0].toJSON().components[0].type, 6);
+  assert.equal(lastPayload(pending).components[0].toJSON().components[0].min_values, 1);
+  assert.equal(lastPayload(pending).components[0].toJSON().components[0].max_values, 25);
+  assert.match(lastPayload(pending).embeds[0].toJSON().description, /entre 1 y 25 roles/);
   const invalidRole = await chooseRole(invalidRoleId);
   assert.match(lastPayload(invalidRole).content, /debajo del rol/);
   assert.equal(lastPayload(invalidRole).components[0].toJSON().components[0].type, 6, 'un rol inválido permite seleccionar otro en el mismo panel');
   assert(!invalidRole.events.some(([type]) => type === 'followUp'));
   assert.equal(rules.length, 0, 'un rol superior al bot no guarda el gremio');
+  const invalidSelections = [
+    { values: [], expected: /entre 1 y 25 roles/ },
+    { values: [roleId, ...additionalRoleIds, invalidRoleId], expected: /entre 1 y 25 roles/ },
+    { values: [roleId, roleId], expected: /roles distintos/ },
+    { values: [roleId, invalidRoleId], expected: /debajo del rol/ },
+    { values: [roleId, '999999999999999999'], expected: /roles existentes/ },
+  ];
+  for (const { values, expected } of invalidSelections) {
+    const invalid = await chooseRole(values);
+    assert.match(lastPayload(invalid).content, expected);
+    const selector = lastPayload(invalid).components[0].toJSON().components[0];
+    assert.equal(selector.type, 6, 'las selecciones inválidas conservan el selector para corregirlas');
+    assert.equal(selector.min_values, 1);
+    assert.equal(selector.max_values, 25);
+    assert.equal(rules.length, 0, 'una selección inválida no guarda parte de los roles');
+    assert.equal(rescheduled, 0);
+  }
   const saved = await chooseRole();
   assert.match(lastPayload(saved).content, /Bon Bon Bum.*guardado con el rol principal/);
   assert.equal(rules.length, 1);
   assert.equal(rules[0].entityName, 'Bon Bon Bum');
   assert.equal(rules[0].entityTag, 'BBB');
   assert.equal(rules[0].primaryRoleId, roleId);
+  assert.deepEqual(rules[0].additionalRoleIds, []);
+  assert.deepEqual(rules[0].roleIds, [roleId], 'la selección de un rol conserva el comportamiento anterior');
   assert.equal(rescheduled, 1);
   assert.match(lastPayload(await chooseRole()).content, /expiró/, 'un rol seleccionado dos veces no duplica el alta');
   assert.match(lastPayload(await submit('Bon Bon Bum', 'OTRO')).content, /ya está configurado/);
   assert.equal(rules[0].entityTag, 'BBB', 'Añadir no sobrescribe un gremio existente');
+  for (const [name, roleIds] of [
+    ['Dos roles', [additionalRoleIds[0], roleId]],
+    ['Tres roles', [additionalRoleIds[1], roleId, additionalRoleIds[0]]],
+    ['Máximo de roles', [roleId, ...additionalRoleIds]],
+  ]) {
+    await submit(name, 'MULTI');
+    const multiple = await chooseRole(roleIds);
+    const stored = rules.find((item) => item.entityName === name);
+    assert.equal(stored.primaryRoleId, roleIds[0], 'el primer ID recibido queda como rol principal');
+    assert.deepEqual(stored.additionalRoleIds, roleIds.slice(1), 'todos los demás roles se guardan como adicionales');
+    assert.deepEqual(stored.roleIds, roleIds);
+    assert.match(lastPayload(multiple).content, /guardado con el rol principal/);
+    for (const id of roleIds) assert(lastPayload(multiple).content.includes(`<@&${id}>`), 'la confirmación muestra todos los roles guardados');
+    assert.deepEqual(lastPayload(multiple).allowedMentions, { parse: [] });
+  }
   const callsBeforeTag = apiCalls;
   assert.match(lastPayload(await submit('Otro', 'mal tag')).content, /etiqueta/);
   assert.equal(apiCalls, callsBeforeTag, 'la etiqueta se valida antes de consultar Albion');
@@ -175,7 +215,7 @@ const originals = {
   await slowLookup.started;
   assert.equal(slowFinished, false, 'la consulta permanece pendiente durante la comprobación de progreso');
   assert.match(lastPayload(slow.current).embeds[0].toJSON().title, /Buscando gremio/);
-  assert.match(lastPayload(slow.current).embeds[0].toJSON().description, /selecciona el rol principal para guardar/);
+  assert.match(lastPayload(slow.current).embeds[0].toJSON().description, /selecciona al menos un rol para guardar/);
   assert.equal(lastPayload(slow.current).components[0].toJSON().components[0].label, 'Cancelar');
   slowLookup.resolve({ id: 'albion-lento', name: 'Consulta lenta' });
   await slow.completion;

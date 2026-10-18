@@ -1,0 +1,86 @@
+{
+  "title": "BBB",
+  "description": "Composición BBB para 11 jugadores.",
+  "image": "",
+  "color": "",
+  "url": "",
+  "roles": [],
+  "notifyAll": false,
+  "reminder": "5m",
+  "weapons": {
+    "group_0": {
+      "displayName": "Clapper",
+      "defaultEmoji": "1543135218427363379",
+      "max_players": 1,
+      "data": [
+        { "name": "Maza íncubo", "units": 1, "emoji": "1543135218427363379", "image": "", "url": "" },
+        { "name": "Buscador de grial", "units": 1, "emoji": "1543135160407429120", "image": "", "url": "" }
+      ]
+    },
+    "group_1": {
+      "displayName": "Gran bastón sagrado",
+      "defaultEmoji": "1543135199934685194",
+      "max_players": 1,
+      "data": [
+        { "name": "Gran bastón sagrado", "units": 1, "emoji": "1543135199934685194", "image": "", "url": "" }
+      ]
+    },
+    "group_2": {
+      "displayName": "Flamígero",
+      "defaultEmoji": "1543135235338797106",
+      "max_players": 1,
+      "data": [
+        { "name": "Bastón flamígero", "units": 1, "emoji": "1543135235338797106", "image": "", "url": "" }
+      ]
+    },
+    "group_3": {
+      "displayName": "Modelador de energía",
+      "defaultEmoji": "1543135257384067142",
+      "max_players": 1,
+      "data": [
+        { "name": "Modelador de energía", "units": 1, "emoji": "1543135257384067142", "image": "", "url": "" }
+      ]
+    },
+    "group_4": {
+      "displayName": "Bastón oculto",
+      "defaultEmoji": "1543135290913198100",
+      "max_players": 1,
+      "data": [
+        { "name": "Bastón oculto", "units": 1, "emoji": "1543135290913198100", "image": "", "url": "" }
+      ]
+    },
+    "group_5": {
+      "displayName": "Sangrador",
+      "defaultEmoji": "1543135253294485544",
+      "max_players": 1,
+      "data": [
+        { "name": "Sangradora", "units": 1, "emoji": "1543135253294485544", "image": "", "url": "" }
+      ]
+    },
+    "group_6": {
+      "displayName": "DPS",
+      "defaultEmoji": "1543135232658776144",
+      "max_players": 3,
+      "data": [
+        { "name": "Prisma de hielos", "units": 3, "emoji": "1543135232658776144", "image": "", "url": "" },
+        { "name": "Gran bastón de hielo", "units": 3, "emoji": "1543135229370179636", "image": "", "url": "" }
+      ]
+    },
+    "group_7": {
+      "displayName": "Prisma de hielos",
+      "defaultEmoji": "1543135232658776144",
+      "max_players": 1,
+      "data": [
+        { "name": "Prisma de hielos", "units": 1, "emoji": "1543135232658776144", "image": "", "url": "" }
+      ]
+    },
+    "group_8": {
+      "displayName": "Gran bastón de hielo",
+      "defaultEmoji": "1543135229370179636",
+      "max_players": 1,
+      "data": [
+        { "name": "Gran bastón de hielo", "units": 1, "emoji": "1543135229370179636", "image": "", "url": "" }
+      ]
+    }
+  }
+}
