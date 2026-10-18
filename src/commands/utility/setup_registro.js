@@ -14,6 +14,7 @@ const data = new SlashCommandBuilder()
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
 const pending = new Map();
+const searches = new Map();
 const cid = (action, userId, guildId, entityId = '') => `regcfg:${action}:${userId}:${guildId}${entityId ? `:${entityId}` : ''}`;
 const parseId = (value) => {
   const [prefix, action, userId, guildId, entityId, extra] = String(value || '').split(':');
@@ -26,6 +27,11 @@ const button = (label, action, userId, guildId, entityId, style = ButtonStyle.Se
 const isAdmin = (interaction) => interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
 const safeName = (value, max = 100) => escapeMarkdown(String(value || '')).slice(0, max) || 'Sin nombre';
 const pendingKey = (interaction) => `${interaction.guildId}:${interaction.user.id}:${interaction.message?.id || ''}`;
+const logStep = (interaction, stage, details = {}) => console.info('[INFO] /setup-registro:', {
+  action: parseId(interaction.customId)?.action, stage,
+  guildId: interaction.guildId, userId: interaction.user.id, messageId: interaction.message?.id,
+  ...details,
+});
 
 const embedsFor = (config, rules, guild) => {
   const bot = guild.members.me;
@@ -68,13 +74,28 @@ const embedsFor = (config, rules, guild) => {
   return embeds;
 };
 
-const render = ({ config, rules, guild, userId, screen = 'home', entityId = null, candidate = null }) => {
-  const embeds = embedsFor(config, rules, guild);
+const render = ({ config, rules, guild, userId, screen = 'home', entityId = null, candidate = null, query = null, errorMessage = '', notice = '', savedGuild = false }) => {
+  // Los estados de búsqueda/error reemplazan el resumen para que la respuesta
+  // siga siendo visible incluso en servidores con el máximo de gremios.
+  const embeds = ['search', 'error', 'pending'].includes(screen) ? [] : embedsFor(config, rules, guild);
   const selected = rules.find((rule) => rule.entityId === entityId);
   const components = [];
-  if (screen === 'pending' && candidate) {
-    embeds.push(new EmbedBuilder().setTitle(`➕ ${safeName(candidate.entity.name)}`)
-      .setDescription(`Tag: \`${candidate.tag}\`. Selecciona el rol principal para guardar el gremio.`).setColor(0x57f287));
+  if (screen === 'search') {
+    embeds.push(new EmbedBuilder().setTitle('🔎 Buscando gremio en Albion')
+      .setDescription(`Buscando **${safeName(query?.name)}** y verificando su ficha en la API de Albion.\nCuando termine, selecciona el rol principal para guardar el gremio.`)
+      .setColor(0x5865f2));
+    components.push(row(button('Cancelar', 'home', userId, guild.id)));
+  } else if (screen === 'error') {
+    embeds.push(new EmbedBuilder().setTitle(savedGuild ? '✅ Gremio guardado' : '❌ No se pudo añadir el gremio')
+      .setDescription(savedGuild ? 'Pulsa Volver para actualizar la configuración.'
+        : 'Pulsa Reintentar para abrir el formulario de nuevo o Volver para regresar a la configuración.')
+      .setColor(0xed4245));
+    const recovery = [button('Volver', 'home', userId, guild.id)];
+    if (!savedGuild) recovery.unshift(button('Reintentar', 'add', userId, guild.id, '', ButtonStyle.Primary));
+    components.push(row(...recovery));
+  } else if (screen === 'pending' && candidate) {
+    embeds.push(new EmbedBuilder().setTitle(`✅ Gremio encontrado: ${safeName(candidate.entity.name)}`)
+      .setDescription(`Tag: \`${candidate.tag}\`. Selecciona el rol principal para guardar el gremio.\nEl gremio se registra al elegir el rol.`).setColor(0x57f287));
     components.push(row(new RoleSelectMenuBuilder().setCustomId(cid('create-role', userId, guild.id))
       .setPlaceholder('Rol principal del gremio').setMinValues(1).setMaxValues(1)));
     components.push(row(button('Cancelar', 'home', userId, guild.id)));
@@ -121,7 +142,7 @@ const render = ({ config, rules, guild, userId, screen = 'home', entityId = null
       button('Actualizar', 'home', userId, guild.id),
     ));
   }
-  return { embeds, components, allowedMentions: { parse: [] } };
+  return { content: (errorMessage ? `${savedGuild ? '⚠️' : '❌'} ${errorMessage}` : notice).slice(0, 1500), embeds, components, allowedMentions: { parse: [] } };
 };
 
 const load = async (interaction) => ({
@@ -148,11 +169,12 @@ const modal = (customId, title, fields) => {
   return builder;
 };
 
-const respondError = async (interaction, error, { openingModal = false } = {}) => {
+const respondError = async (interaction, error, { openingModal = false, panelState = null, candidate = null, savedGuild = false } = {}) => {
   const action = parseId(interaction.customId)?.action;
   // DiscordAPIError incluye la URL del token; registrar solo datos de diagnóstico.
   console.error('[WARN] /setup-registro:', {
-    action, code: error?.code, name: error?.name, message: error?.message,
+    action, code: error?.code, name: error?.name,
+    message: error instanceof registration.RegistrationError || error instanceof albionApi.AlbionApiError ? error.message.slice(0, 300) : undefined,
   });
   // Un token caducado ya no permite reply ni showModal. Reintentarlo oculta
   // el error original con una segunda respuesta fallida.
@@ -165,6 +187,19 @@ const respondError = async (interaction, error, { openingModal = false } = {}) =
     ? 'Discord rechazó el formulario de registro. Abre `/setup-registro` de nuevo; si persiste, revisa el registro de errores del bot.'
     : 'Discord rechazó la actualización del panel. Abre `/setup-registro` de nuevo.';
   if (error?.code === 50013) message = 'Discord no permitió el cambio. Revisa los permisos y la jerarquía del bot.';
+  if (savedGuild) message = 'El gremio se guardó, pero no se pudo actualizar el panel. Pulsa Volver para ver la configuración actual.';
+  if (panelState && (interaction.deferred || interaction.replied)) {
+    try {
+      return await interaction.editReply(render({
+        ...panelState, screen: candidate ? 'pending' : 'error', candidate, errorMessage: message, savedGuild,
+      }));
+    } catch (panelError) {
+      console.error('[WARN] /setup-registro: no se pudo mostrar el error en el panel', {
+        action, code: panelError?.code, name: panelError?.name,
+      });
+      if (panelError?.code === 10062 || panelError?.code === 10015) return;
+    }
+  }
   const payload = { content: `❌ ${message}`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } };
   if (interaction.deferred || interaction.replied) return interaction.followUp(payload);
   return interaction.reply(payload);
@@ -183,6 +218,7 @@ const handleInteraction = async (interaction) => {
       // showModal debe ser la primera respuesta; las consultas se hacen al enviar.
       if (action === 'add') {
         pending.delete(pendingKey(interaction));
+        searches.delete(pendingKey(interaction));
         await interaction.showModal(modal(cid('add-submit', parsed.userId, parsed.guildId), 'Añadir gremio', [
           { id: 'name', label: 'Nombre exacto del gremio' }, { id: 'tag', label: 'Etiqueta para el apodo', max: 12 },
         ]));
@@ -198,9 +234,30 @@ const handleInteraction = async (interaction) => {
     }
     return true;
   }
-  await interaction.deferUpdate();
+  const key = pendingKey(interaction);
+  const isGuildSearch = action === 'add-submit' && interaction.isModalSubmit?.();
+  const searchToken = isGuildSearch ? {} : null;
+  const currentSearch = () => searches.get(key) === searchToken;
+  if (action === 'home' || isGuildSearch) {
+    pending.delete(key);
+    searches.delete(key);
+  }
+  if (searchToken) searches.set(key, searchToken);
+  let state;
+  let notice = '';
+  let savedGuild = false;
+  const startedAt = Date.now();
   try {
-    const state = await load(interaction);
+    await interaction.deferUpdate();
+    if (isGuildSearch) {
+      logStep(interaction, 'submit-received');
+      // El modal se cierra con deferUpdate. Sustituir el panel antes de esperar
+      // la base de datos o Albion evita que parezca que no ocurrió nada.
+      await interaction.editReply(render({ config: null, rules: [], guild: interaction.guild, userId: parsed.userId,
+        screen: 'search', query: { name: interaction.fields.getTextInputValue('name').trim() } }));
+    }
+    state = await load(interaction);
+    if (searchToken && !currentSearch()) return true;
     const rule = state.rules.find((item) => item.entityId === entityId);
     if (action === 'region' && interaction.isStringSelectMenu?.()) {
       await registration.configure({ guildId: state.guild.id, region: interaction.values[0], auditChannelId: state.config?.auditChannelId || null, updatedBy: state.userId });
@@ -217,23 +274,30 @@ const handleInteraction = async (interaction) => {
       const name = interaction.fields.getTextInputValue('name').trim();
       const tag = interaction.fields.getTextInputValue('tag').trim().toUpperCase();
       if (!/^[A-Z0-9]{1,12}$/.test(tag)) throw new registration.RegistrationError('La etiqueta debe tener entre 1 y 12 letras o números.');
+      logStep(interaction, 'search-start', { region: state.config.region });
       const entity = await albionApi.findGuildByName(state.config.region, name);
+      // Cancelar o abrir una búsqueda nueva invalida la respuesta anterior.
+      if (!currentSearch()) return true;
+      logStep(interaction, 'search-success', { region: state.config.region, entityId: entity.id, elapsedMs: Date.now() - startedAt });
       if (state.rules.some((item) => item.entityId === entity.id)) throw new registration.RegistrationError('Ese gremio ya está configurado. Selecciónalo en el panel para editarlo.');
       const candidate = { entity, tag, region: state.config.region, expiresAt: Date.now() + 10 * 60_000 };
       for (const [key, value] of pending) if (value.expiresAt < Date.now()) pending.delete(key);
-      pending.set(pendingKey(interaction), candidate);
-      return interaction.editReply(render({ ...state, screen: 'pending', candidate }));
+      pending.set(key, candidate);
+      return await interaction.editReply(render({ ...state, screen: 'pending', candidate }));
     } else if (action === 'create-role' && interaction.isRoleSelectMenu?.()) {
-      const key = pendingKey(interaction);
       const candidate = pending.get(key);
       if (!candidate || candidate.expiresAt < Date.now()) throw new registration.RegistrationError('La selección expiró. Pulsa Añadir gremio de nuevo.');
       if (candidate.region !== state.config?.region) throw new registration.RegistrationError('Cambió el servidor de Albion. Pulsa Añadir gremio y busca el gremio de nuevo.');
       if (state.rules.some((item) => item.entityId === candidate.entity.id)) throw new registration.RegistrationError('Ese gremio ya está configurado. Selecciónalo en el panel para editarlo.');
+      logStep(interaction, 'role-selected', { entityId: candidate.entity.id, roleId: interaction.values[0] });
       await registration.saveGuildRule({ guild: state.guild, entity: candidate.entity, tag: candidate.tag,
         primaryRoleId: interaction.values[0], createdBy: state.userId });
       pending.delete(key);
+      savedGuild = true;
+      notice = `✅ Gremio **${safeName(candidate.entity.name)}** guardado con el rol principal <@&${interaction.values[0]}>.`;
+      logStep(interaction, 'guild-saved', { entityId: candidate.entity.id, elapsedMs: Date.now() - startedAt });
     } else if (action === 'select' && interaction.isStringSelectMenu?.()) {
-      return interaction.editReply(render({ ...state, screen: 'detail', entityId: interaction.values[0] }));
+      return await interaction.editReply(render({ ...state, screen: 'detail', entityId: interaction.values[0] }));
     } else if (action === 'primary' && interaction.isRoleSelectMenu?.()) {
       if (!rule) throw new registration.RegistrationError('Gremio no encontrado. Actualiza el panel.');
       await registration.saveGuildRule({ guild: state.guild, entity: { id: rule.entityId, name: rule.entityName },
@@ -264,13 +328,25 @@ const handleInteraction = async (interaction) => {
     } else if (!['home', 'detail', 'remove'].includes(action)) {
       throw new registration.RegistrationError('Acción desconocida. Abre `/setup-registro` de nuevo.');
     }
-    if (action === 'home') pending.delete(pendingKey(interaction));
     const updated = await load(interaction);
     const nextScreen = ['primary', 'additional', 'tag-submit', 'clear-extra', 'detail'].includes(action) ? 'detail'
       : action === 'remove' ? 'confirm' : 'home';
-    return interaction.editReply(render({ ...updated, screen: nextScreen, entityId }));
+    return await interaction.editReply(render({ ...updated, screen: nextScreen, entityId, notice }));
   } catch (error) {
+    if (searchToken && !currentSearch()) return true;
+    if (isGuildSearch || action === 'create-role') {
+      const candidate = action === 'create-role' ? pending.get(key) : null;
+      const reusableCandidate = candidate && candidate.expiresAt >= Date.now()
+        && candidate.region === state?.config?.region ? candidate : null;
+      if (!reusableCandidate) pending.delete(key);
+      return respondError(interaction, error, {
+        panelState: state || { config: null, rules: [], guild: interaction.guild, userId: parsed.userId },
+        candidate: reusableCandidate, savedGuild,
+      });
+    }
     return respondError(interaction, error);
+  } finally {
+    if (searchToken && currentSearch()) searches.delete(key);
   }
 };
 

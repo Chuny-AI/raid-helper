@@ -10,7 +10,7 @@ const originals = {
   configFind: Config.findOne, configUpdate: Config.findOneAndUpdate,
   ruleFind: Rule.find, ruleFindOne: Rule.findOne, ruleCount: Rule.countDocuments, ruleUpdate: Rule.findOneAndUpdate,
   registrationCount: Registration.countDocuments, registrationUpdate: Registration.updateMany,
-  apiFind: api.findGuildByName, error: console.error, now: Date.now,
+  apiFind: api.findGuildByName, error: console.error, info: console.info, now: Date.now,
 };
 
 (async () => {
@@ -31,8 +31,19 @@ const originals = {
   let apiCalls = 0;
   let rescheduled = 0;
   let searchingInteraction;
+  const delayedLookups = new Map();
+  const panels = new Map();
+  const delayLookup = (name) => {
+    const delayed = {};
+    delayed.started = new Promise((resolve) => { delayed.markStarted = resolve; });
+    delayed.result = new Promise((resolve, reject) => { delayed.resolve = resolve; delayed.reject = reject; });
+    delayedLookups.set(name, delayed);
+    return delayed;
+  };
   const warnings = [];
+  const stages = [];
   console.error = (...args) => warnings.push(args);
+  console.info = (...args) => stages.push(args);
   Config.findOne = async () => { configReads += 1; return config; };
   Config.findOneAndUpdate = async (_query, update) => { config = { ...config, ...update.$set }; return config; };
   Rule.find = () => ({ sort: async () => rules });
@@ -48,8 +59,15 @@ const originals = {
   Registration.updateMany = async () => { rescheduled += 1; return { modifiedCount: 0 }; };
   api.findGuildByName = async (region, name) => {
     assert(searchingInteraction.deferred, 'la búsqueda lenta empieza después de confirmar la interacción');
+    assert(searchingInteraction.events.some(([type, payload]) => type === 'edit'
+      && payload.embeds?.[0]?.toJSON().title.includes('Buscando gremio')), 'el panel muestra progreso antes de consultar Albion');
     assert.equal(region, config.region);
     apiCalls += 1;
+    if (delayedLookups.has(name)) {
+      const delayed = delayedLookups.get(name);
+      delayed.markStarted();
+      return delayed.result;
+    }
     if (name === 'Falla API') throw new api.AlbionApiError('Albion no está disponible. Inténtalo de nuevo.', 'timeout');
     return { id: `albion-${name.replaceAll(' ', '-')}`, name };
   };
@@ -63,16 +81,20 @@ const originals = {
     deferReply: async function deferReply(payload) { this.deferred = true; this.events.push(['deferReply', payload]); },
     deferUpdate: async function deferUpdate() { this.deferred = true; this.events.push(['deferUpdate']); },
     showModal: async function showModal(payload) { this.replied = true; this.events.push(['modal', payload.toJSON()]); },
-    editReply: async function editReply(payload) { this.events.push(['edit', payload]); return payload; },
+    editReply: async function editReply(payload) { this.events.push(['edit', payload]); panels.set(this.message.id, payload); return payload; },
     reply: async function reply(payload) { this.replied = true; this.events.push(['reply', payload]); return payload; },
     followUp: async function followUp(payload) { this.events.push(['followUp', payload]); return payload; },
     ...overrides,
   });
-  const submit = async (name, tag, messageId = 'panel-a') => {
+  const startSubmit = (name, tag, messageId = 'panel-a', overrides = {}) => {
     const current = interaction('add-submit', { message: { id: messageId }, isModalSubmit: () => true,
-      fields: { getTextInputValue: (id) => id === 'name' ? name : tag } });
+      fields: { getTextInputValue: (id) => id === 'name' ? name : tag }, ...overrides });
     searchingInteraction = current;
-    await setup.handleInteraction(current);
+    return { current, completion: setup.handleInteraction(current) };
+  };
+  const submit = async (name, tag, messageId = 'panel-a') => {
+    const { current, completion } = startSubmit(name, tag, messageId);
+    await completion;
     return current;
   };
   const chooseRole = async (selectedRole = roleId, messageId = 'panel-a') => {
@@ -119,11 +141,16 @@ const originals = {
   assert.equal(config.auditChannelId, audit.id);
 
   const pending = await submit(' Bon Bon Bum ', 'bbb');
+  assert.match(lastPayload(pending).embeds[0].toJSON().title, /Gremio encontrado: Bon Bon Bum/);
+  assert(!JSON.stringify(lastPayload(pending).embeds.map((embed) => embed.toJSON())).includes('Aún no hay gremios'), 'el primer estado destaca que falta seleccionar el rol');
   assert.equal(lastPayload(pending).components[0].toJSON().components[0].type, 6);
   const invalidRole = await chooseRole(invalidRoleId);
   assert.match(lastPayload(invalidRole).content, /debajo del rol/);
+  assert.equal(lastPayload(invalidRole).components[0].toJSON().components[0].type, 6, 'un rol inválido permite seleccionar otro en el mismo panel');
+  assert(!invalidRole.events.some(([type]) => type === 'followUp'));
   assert.equal(rules.length, 0, 'un rol superior al bot no guarda el gremio');
-  await chooseRole();
+  const saved = await chooseRole();
+  assert.match(lastPayload(saved).content, /Bon Bon Bum.*guardado con el rol principal/);
   assert.equal(rules.length, 1);
   assert.equal(rules[0].entityName, 'Bon Bon Bum');
   assert.equal(rules[0].entityTag, 'BBB');
@@ -138,6 +165,105 @@ const originals = {
   const apiFailure = await submit('Falla API', 'FAIL');
   assert.match(lastPayload(apiFailure).content, /Albion no está disponible/);
   assert.deepEqual(lastPayload(apiFailure).allowedMentions, { parse: [] });
+  assert.equal(apiFailure.events.at(-1)[0], 'edit', 'los errores se muestran en el panel original');
+  assert.deepEqual(lastPayload(apiFailure).components[0].toJSON().components.map((item) => item.label), ['Reintentar', 'Volver']);
+
+  const slowLookup = delayLookup('Consulta lenta');
+  const slow = startSubmit('Consulta lenta', 'L', 'panel-slow');
+  let slowFinished = false;
+  slow.completion.then(() => { slowFinished = true; });
+  await slowLookup.started;
+  assert.equal(slowFinished, false, 'la consulta permanece pendiente durante la comprobación de progreso');
+  assert.match(lastPayload(slow.current).embeds[0].toJSON().title, /Buscando gremio/);
+  assert.match(lastPayload(slow.current).embeds[0].toJSON().description, /selecciona el rol principal para guardar/);
+  assert.equal(lastPayload(slow.current).components[0].toJSON().components[0].label, 'Cancelar');
+  slowLookup.resolve({ id: 'albion-lento', name: 'Consulta lenta' });
+  await slow.completion;
+  assert.equal(lastPayload(slow.current).components[0].toJSON().components[0].type, 6);
+  await chooseRole(roleId, 'panel-slow');
+  assert(rules.some((item) => item.entityId === 'albion-lento'), 'la selección de rol guarda el resultado de la búsqueda lenta en el mismo panel');
+
+  const timeoutLookup = delayLookup('Consulta agotada');
+  const timedOut = startSubmit('Consulta agotada', 'T', 'panel-timeout');
+  await timeoutLookup.started;
+  assert.match(panels.get('panel-timeout').embeds[0].toJSON().title, /Buscando gremio/);
+  timeoutLookup.reject(new api.AlbionApiError('Albion tardó demasiado en responder.', 'timeout'));
+  await timedOut.completion;
+  assert.match(panels.get('panel-timeout').content, /Albion tardó demasiado/);
+  assert.equal(timedOut.current.events.at(-1)[0], 'edit');
+  const readsBeforeRetry = configReads;
+  const retry = interaction('add', { message: { id: 'panel-timeout' }, isButton: () => true });
+  await setup.handleInteraction(retry);
+  assert.equal(retry.events[0][0], 'modal', 'Reintentar abre el formulario sin esperar Albion ni la base de datos');
+  assert.equal(configReads, readsBeforeRetry);
+  await submit('Reintento correcto', 'R', 'panel-timeout');
+  await chooseRole(roleId, 'panel-timeout');
+  assert(rules.some((item) => item.entityName === 'Reintento correcto'));
+  assert.match(panels.get('panel-timeout').content, /Reintento correcto.*guardado/, 'el reintento exitoso confirma el guardado y elimina el error anterior');
+  assert(!panels.get('panel-timeout').content.includes('tardó demasiado'));
+
+  const canceledLookup = delayLookup('Cancelación lenta');
+  const canceled = startSubmit('Cancelación lenta', 'C', 'panel-cancel');
+  await canceledLookup.started;
+  await setup.handleInteraction(interaction('home', { message: { id: 'panel-cancel' } }));
+  const canceledPanel = panels.get('panel-cancel');
+  canceledLookup.resolve({ id: 'albion-cancelado', name: 'Cancelación lenta' });
+  await canceled.completion;
+  assert.equal(panels.get('panel-cancel'), canceledPanel, 'una respuesta tardía no reemplaza el panel después de cancelar');
+  assert.match(lastPayload(await chooseRole(roleId, 'panel-cancel')).content, /expiró/);
+
+  const staleLookup = delayLookup('Búsqueda anterior');
+  const stale = startSubmit('Búsqueda anterior', 'V', 'panel-retry');
+  await staleLookup.started;
+  await setup.handleInteraction(interaction('add', { message: { id: 'panel-retry' }, isButton: () => true }));
+  const replacementLookup = delayLookup('Búsqueda nueva');
+  const replacement = startSubmit('Búsqueda nueva', 'N', 'panel-retry');
+  await replacementLookup.started;
+  const replacementPanel = panels.get('panel-retry');
+  staleLookup.reject(new api.AlbionApiError('Error de una búsqueda descartada.', 'timeout'));
+  await stale.completion;
+  assert.equal(panels.get('panel-retry'), replacementPanel, 'un error tardío no interrumpe una búsqueda nueva');
+  replacementLookup.resolve({ id: 'albion-nuevo', name: 'Búsqueda nueva' });
+  await replacement.completion;
+  await chooseRole(roleId, 'panel-retry');
+  assert(rules.some((item) => item.entityId === 'albion-nuevo' && item.entityTag === 'N'));
+  assert(!rules.some((item) => item.entityId === 'albion-cancelado'));
+
+  let rejectedPending = false;
+  const rejected = startSubmit('Panel rechazado', 'P', 'panel-rejected', {
+    editReply: async function editReply(payload) {
+      if (!rejectedPending && payload.embeds[0]?.toJSON().title.includes('Gremio encontrado')) {
+        rejectedPending = true;
+        throw Object.assign(new Error('Invalid Form Body: https://discord.com/api/webhooks/id/SECRET_TOKEN'), { code: 50035 });
+      }
+      this.events.push(['edit', payload]); panels.set(this.message.id, payload); return payload;
+    },
+  });
+  await rejected.completion;
+  assert(rejectedPending);
+  assert.match(lastPayload(rejected.current).content, /Discord rechazó la actualización del panel/);
+  assert.equal(rejected.current.events.at(-1)[0], 'edit', 'el rechazo asíncrono al mostrar el rol se captura y se informa en el panel');
+  assert(!JSON.stringify(warnings).includes('SECRET_TOKEN'), 'los diagnósticos no registran URLs ni tokens de Discord');
+  assert.match(lastPayload(await chooseRole(roleId, 'panel-rejected')).content, /expiró/);
+
+  await submit('Guardado sin resumen', 'G', 'panel-saved-rejected');
+  let rejectedSummary = false;
+  const savedWithoutSummary = interaction('create-role', { message: { id: 'panel-saved-rejected' }, isRoleSelectMenu: () => true, values: [roleId],
+    editReply: async function editReply(payload) {
+      if (!rejectedSummary) {
+        rejectedSummary = true;
+        throw Object.assign(new Error('Invalid Form Body'), { code: 50035 });
+      }
+      this.events.push(['edit', payload]); panels.set(this.message.id, payload); return payload;
+    },
+  });
+  await setup.handleInteraction(savedWithoutSummary);
+  assert(rules.some((item) => item.entityName === 'Guardado sin resumen'));
+  assert.match(lastPayload(savedWithoutSummary).embeds[0].toJSON().title, /Gremio guardado/);
+  assert.match(lastPayload(savedWithoutSummary).content, /El gremio se guardó, pero no se pudo actualizar/);
+  assert.deepEqual(lastPayload(savedWithoutSummary).components[0].toJSON().components.map((item) => item.label), ['Volver']);
+  assert.deepEqual(stages.filter(([, detail]) => detail.messageId === 'panel-slow').map(([, detail]) => detail.stage),
+    ['submit-received', 'search-start', 'search-success', 'role-selected', 'guild-saved']);
 
   await submit('Panel A', 'A', 'panel-a');
   await submit('Panel B', 'B', 'panel-b');
@@ -161,11 +287,13 @@ const originals = {
     entityId: `g${index}`, entityName: '*'.repeat(100), entityTag: 'A'.repeat(12),
     primaryRoleId: '1'.repeat(20), additionalRoleIds: Array.from({ length: 24 }, (_, roleIndex) => String(roleIndex + 2).padStart(20, '0')),
   }));
-  for (const count of [1, 4, 5, 25]) for (const screen of ['home', 'detail', 'pending', 'confirm']) {
+  for (const count of [1, 4, 5, 25]) for (const screen of ['home', 'detail', 'pending', 'confirm', 'search', 'error']) {
     const payload = setup.render({ config, rules: worstRules.slice(0, count), guild, userId, screen, entityId: 'g0',
-      candidate: { entity: { name: '*'.repeat(100) }, tag: 'A'.repeat(12) } });
+      candidate: { entity: { name: '*'.repeat(100) }, tag: 'A'.repeat(12) }, query: { name: '*'.repeat(100) },
+      errorMessage: screen === 'error' ? 'E'.repeat(3000) : '' });
     assert(payload.embeds.reduce((total, embed) => total + embed.length, 0) <= 6000, `límite total de embeds: ${count}/${screen}`);
     assert(payload.components.length <= 5);
+    assert(payload.content.length <= 2000);
     for (const row of payload.components) for (const component of row.toJSON().components) {
       assert(component.custom_id.length <= 100);
       assert((component.options || []).length <= 25);
@@ -186,5 +314,5 @@ const originals = {
   Rule.find = originals.ruleFind; Rule.findOne = originals.ruleFindOne; Rule.countDocuments = originals.ruleCount;
   Rule.findOneAndUpdate = originals.ruleUpdate; Registration.countDocuments = originals.registrationCount;
   Registration.updateMany = originals.registrationUpdate; api.findGuildByName = originals.apiFind;
-  console.error = originals.error; Date.now = originals.now;
+  console.error = originals.error; console.info = originals.info; Date.now = originals.now;
 });

@@ -7,7 +7,7 @@ El bot necesita los permisos **Gestionar roles**, **Gestionar apodos**, **Expuls
 1. Ejecuta `/setup-registro` como administrador. El panel es privado para quien abrió el comando.
 2. Selecciona el servidor de Albion: Americas, Europe o Asia.
 3. Selecciona el canal de auditoría para los cambios de roles.
-4. Pulsa **Añadir gremio**, escribe el nombre exacto del gremio en Albion y una etiqueta de 1 a 12 letras o números. La búsqueda de Albion confirma el gremio. Selecciona el rol principal para guardarlo.
+4. Pulsa **Añadir gremio**, escribe el nombre exacto del gremio en Albion y una etiqueta de 1 a 12 letras o números. Al enviar el formulario se cierra el modal y el panel muestra la búsqueda en curso. Cuando Albion confirma el gremio, el panel indica **Gremio encontrado** y pide seleccionar su **rol principal**. El gremio se guarda al elegir ese rol; enviar solo el nombre y la etiqueta todavía no completa el alta. Si la búsqueda falla, el mismo panel muestra el error y permite reintentar.
 5. En **Editar un gremio** puedes cambiar el rol principal, añadir hasta 24 roles adicionales, editar la etiqueta o eliminar el gremio. El panel muestra todos los gremios; en configuraciones grandes resume los roles adicionales para respetar los límites de Discord. Al editar un gremio puedes ver su lista completa de roles.
 6. Ejecuta `/registro-panel` en el canal donde quieres publicar el formulario. El bot publica un embed con el botón **Registrar personaje**.
 
